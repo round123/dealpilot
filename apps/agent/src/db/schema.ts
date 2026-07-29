@@ -38,11 +38,11 @@ export const customers = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_customers_grade").on(table.grade),
-    index("idx_customers_status").on(table.status),
-    index("idx_customers_deleted_at").on(table.deleted_at),
-  ]
+  (table) => ({
+    gradeIdx: index("idx_customers_grade").on(table.grade),
+    statusIdx: index("idx_customers_status").on(table.status),
+    deletedAtIdx: index("idx_customers_deleted_at").on(table.deleted_at),
+  })
 );
 
 export const customersRelations = relations(customers, ({ many }) => ({
@@ -71,11 +71,11 @@ export const contacts = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_contacts_customer_id").on(table.customer_id),
-    index("idx_contacts_email").on(table.email),
-    index("idx_contacts_phone").on(table.phone),
-  ]
+  (table) => ({
+    customerIdIdx: index("idx_contacts_customer_id").on(table.customer_id),
+    emailIdx: index("idx_contacts_email").on(table.email),
+    phoneIdx: index("idx_contacts_phone").on(table.phone),
+  })
 );
 
 export const contactsRelations = relations(contacts, ({ one }) => ({
@@ -106,10 +106,10 @@ export const social_accounts = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    uniqueIndex("idx_social_accounts_platform_normalized").on(table.platform, table.normalized_identifier),
-    index("idx_social_accounts_customer_id").on(table.customer_id),
-  ]
+  (table) => ({
+    platformNormalizedIdx: uniqueIndex("idx_social_accounts_platform_normalized").on(table.platform, table.normalized_identifier),
+    customerIdIdx: index("idx_social_accounts_customer_id").on(table.customer_id),
+  })
 );
 
 export const socialAccountsRelations = relations(social_accounts, ({ one }) => ({
@@ -150,11 +150,11 @@ export const projects = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_projects_customer_id").on(table.customer_id),
-    index("idx_projects_stage").on(table.stage),
-    index("idx_projects_grade").on(table.grade),
-  ]
+  (table) => ({
+    customerIdIdx: index("idx_projects_customer_id").on(table.customer_id),
+    stageIdx: index("idx_projects_stage").on(table.stage),
+    gradeIdx: index("idx_projects_grade").on(table.grade),
+  })
 );
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -194,11 +194,11 @@ export const follow_ups = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_follow_ups_customer_id").on(table.customer_id),
-    index("idx_follow_ups_project_id").on(table.project_id),
-    index("idx_follow_ups_occurred_at").on(table.occurred_at),
-  ]
+  (table) => ({
+    customerIdIdx: index("idx_follow_ups_customer_id").on(table.customer_id),
+    projectIdIdx: index("idx_follow_ups_project_id").on(table.project_id),
+    occurredAtIdx: index("idx_follow_ups_occurred_at").on(table.occurred_at),
+  })
 );
 
 export const followUpsRelations = relations(follow_ups, ({ one }) => ({
@@ -245,13 +245,13 @@ export const reminders = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_reminders_status").on(table.status),
-    index("idx_reminders_due_at").on(table.due_at),
-    index("idx_reminders_customer_id").on(table.customer_id),
-    index("idx_reminders_project_id").on(table.project_id),
-    index("idx_reminders_priority").on(table.priority),
-  ]
+  (table) => ({
+    statusIdx: index("idx_reminders_status").on(table.status),
+    dueAtIdx: index("idx_reminders_due_at").on(table.due_at),
+    customerIdIdx: index("idx_reminders_customer_id").on(table.customer_id),
+    projectIdIdx: index("idx_reminders_project_id").on(table.project_id),
+    priorityIdx: index("idx_reminders_priority").on(table.priority),
+  })
 );
 
 export const remindersRelations = relations(reminders, ({ one }) => ({
@@ -287,11 +287,11 @@ export const risks = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_risks_project_id").on(table.project_id),
-    index("idx_risks_status").on(table.status),
-    index("idx_risks_severity").on(table.severity),
-  ]
+  (table) => ({
+    projectIdIdx: index("idx_risks_project_id").on(table.project_id),
+    statusIdx: index("idx_risks_status").on(table.status),
+    severityIdx: index("idx_risks_severity").on(table.severity),
+  })
 );
 
 export const risksRelations = relations(risks, ({ one }) => ({
@@ -318,11 +318,11 @@ export const milestones = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_milestones_project_id").on(table.project_id),
-    index("idx_milestones_date").on(table.date),
-    index("idx_milestones_completed").on(table.completed),
-  ]
+  (table) => ({
+    projectIdIdx: index("idx_milestones_project_id").on(table.project_id),
+    dateIdx: index("idx_milestones_date").on(table.date),
+    completedIdx: index("idx_milestones_completed").on(table.completed),
+  })
 );
 
 export const milestonesRelations = relations(milestones, ({ one }) => ({
@@ -351,10 +351,10 @@ export const import_jobs = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_import_jobs_status").on(table.status),
-    index("idx_import_jobs_created_at").on(table.created_at),
-  ]
+  (table) => ({
+    statusIdx: index("idx_import_jobs_status").on(table.status),
+    createdAtIdx: index("idx_import_jobs_created_at").on(table.created_at),
+  })
 );
 
 // ============================================================
@@ -372,10 +372,10 @@ export const local_events = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [
-    index("idx_local_events_event_type").on(table.event_type),
-    index("idx_local_events_occurred_at").on(table.occurred_at),
-  ]
+  (table) => ({
+    eventTypeIdx: index("idx_local_events_event_type").on(table.event_type),
+    occurredAtIdx: index("idx_local_events_occurred_at").on(table.occurred_at),
+  })
 );
 
 // ============================================================

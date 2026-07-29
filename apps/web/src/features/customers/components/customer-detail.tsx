@@ -12,7 +12,6 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  FolderKanban,
   MessageSquareText,
 } from "lucide-react";
 import { useCustomer } from "../api";

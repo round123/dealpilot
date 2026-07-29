@@ -5,8 +5,6 @@
  * G1 Spike 验证：node-notifier 在 Bun 下的兼容性
  */
 
-import type { NotificationOptions } from "node-notifier";
-
 /**
  * 发送系统通知
  */
@@ -17,17 +15,14 @@ export async function notify(options: {
   wait?: boolean;
 }): Promise<void> {
   // G1 Spike: 验证 node-notifier 在 Bun 下的兼容性
-  try {
-    const notifier = await import("node-notifier");
-    const notifyOptions: NotificationOptions = {
+  const module = await import("node-notifier");
+  const notifier = module.default;
+  await new Promise<void>((resolve, reject) => {
+    notifier.notify({
       title: options.title,
       message: options.message,
       sound: options.sound ?? false,
       wait: options.wait ?? false,
-    };
-    notifier.notify(notifyOptions);
-  } catch (err) {
-    // Fallback: 控制台日志
-    console.log(`[notify] ${options.title}: ${options.message}`);
-  }
+    }, (error) => error ? reject(error) : resolve());
+  });
 }

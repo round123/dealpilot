@@ -14,6 +14,34 @@
 import type { ConversationInfo } from "../../../src/lib/platform-detect";
 import { MessageDirection, FollowUpType } from "@dealpilot/shared";
 
+let lastInteractedMessage: Element | null = null;
+
+function rememberMessageTarget(event: Event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const message = target.closest(
+    ".message-in, .message-out, [class*='message'][class*='bubble']",
+  );
+  if (message) lastInteractedMessage = message;
+}
+
+document.addEventListener("pointerdown", rememberMessageTarget, true);
+document.addEventListener("contextmenu", rememberMessageTarget, true);
+
+function selectedTextMessage(selector: string): Element | null {
+  const selectionNode = window.getSelection()?.anchorNode;
+  const selectionElement = selectionNode instanceof Element
+    ? selectionNode
+    : selectionNode?.parentElement;
+  return selectionElement?.closest(selector) ?? null;
+}
+
+function safeTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+}
+
 /** 平台适配器接口 */
 export interface PlatformAdapter {
   /** 获取会话信息 */
@@ -67,8 +95,9 @@ const whatsappAdapter: PlatformAdapter = {
   getSelectedMessage: () => {
     // WhatsApp Web 选中消息：.message-in / .message-out
     const selectedEl = document.querySelector(
-      '.message-in[style*="background"], .message-out[style*="background"]',
-    ) ?? document.querySelector('.message-in:last-child, .message-out:last-child');
+      '.message-in[aria-selected="true"], .message-out[aria-selected="true"], .message-in.selected, .message-out.selected',
+    ) ?? selectedTextMessage(".message-in, .message-out")
+      ?? lastInteractedMessage?.closest(".message-in, .message-out");
 
     if (!selectedEl) return null;
 
@@ -79,7 +108,7 @@ const whatsappAdapter: PlatformAdapter = {
 
     const isOutbound = selectedEl.classList.contains("message-out");
     const timeEl = selectedEl.querySelector('.chat-timestamp');
-    const timestamp = timeEl?.getAttribute("datetime") ?? null;
+    const timestamp = safeTimestamp(timeEl?.getAttribute("datetime"));
 
     return {
       body,
@@ -128,20 +157,23 @@ const telegramAdapter: PlatformAdapter = {
 
   getSelectedMessage: () => {
     // Telegram Web 消息元素
-    const messageEls = document.querySelectorAll('[class*="message"][class*="bubble"]');
-    if (messageEls.length === 0) return null;
+    const messageSelector = '[class*="message"][class*="bubble"]';
+    const selectedEl = document.querySelector(
+      `${messageSelector}[aria-selected="true"], ${messageSelector}.selected, ${messageSelector}.is-selected`,
+    ) ?? selectedTextMessage(messageSelector)
+      ?? lastInteractedMessage?.closest(messageSelector);
+    if (!selectedEl) return null;
 
-    // 取最后一条消息（最近的消息）
-    const lastEl = messageEls[messageEls.length - 1];
-    const bodyEl = lastEl.querySelector('[class*="text-content"], [class*="message-text"]');
+    const bodyEl = selectedEl.querySelector('[class*="text-content"], [class*="message-text"]');
     const body = bodyEl?.textContent?.trim() ?? "";
     if (!body) return null;
 
     // Telegram: 消息方向通过 class 判断
-    const isOutbound = lastEl.className.includes("out") || lastEl.className.includes("sent");
-    const timeEl = lastEl.querySelector('[class*="time"], [class*="date"]');
+    const className = typeof selectedEl.className === "string" ? selectedEl.className : "";
+    const isOutbound = className.includes("out") || className.includes("sent");
+    const timeEl = selectedEl.querySelector('[class*="time"], [class*="date"]');
     const timeText = timeEl?.textContent?.trim();
-    const timestamp = timeText ? new Date(timeText).toISOString() : null;
+    const timestamp = safeTimestamp(timeText);
 
     return {
       body,

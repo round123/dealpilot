@@ -48,7 +48,7 @@ export async function idempotencyMiddleware(c: Context, next: Next) {
   // 缓存响应
   const response: CachedResponse = {
     status: c.res.status,
-    body: await c.res.json().catch(() => null),
+    body: await c.res.clone().json().catch(() => null),
     headers: {},
   };
 

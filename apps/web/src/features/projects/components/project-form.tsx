@@ -21,7 +21,6 @@ export function ProjectForm({ onSuccess }: { onSuccess?: () => void }) {
     formState: { errors },
     reset,
     setValue,
-    watch,
   } = useForm<FormData>({
     resolver: zodResolver(ProjectCreateSchema),
     defaultValues: {

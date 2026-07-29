@@ -5,8 +5,9 @@
 
 import type { Context, Next } from "hono";
 import { generateUUID } from "@dealpilot/shared";
+import type { AppEnv } from "../types/hono";
 
-export async function requestIdMiddleware(c: Context, next: Next) {
+export async function requestIdMiddleware(c: Context<AppEnv>, next: Next) {
   const existingId = c.req.header("X-Request-Id");
   const requestId = existingId || generateUUID();
   c.set("requestId", requestId);

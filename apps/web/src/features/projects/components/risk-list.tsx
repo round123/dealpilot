@@ -33,7 +33,7 @@ const STATUS_VARIANT: Record<string, "default" | "warning" | "success" | "info">
   ignored: "info",
 };
 
-export function RiskList({ projectId, risks }: { projectId: string; risks: Risk[] }) {
+export function RiskList({ risks }: { risks: Risk[] }) {
   return (
     <div className="rounded-xl border border-border-default bg-bg-card p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">

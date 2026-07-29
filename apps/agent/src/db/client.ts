@@ -35,5 +35,19 @@ export function getDb() {
   return _db;
 }
 
-export const db = getDb();
+export let db = getDb();
+
+export function closeDatabase(): void {
+  if (_rawDb) {
+    _rawDb.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    _rawDb.close();
+  }
+  _rawDb = null;
+  _db = null;
+}
+
+export function reopenDatabase(): void {
+  db = getDb();
+}
+
 export { schema };

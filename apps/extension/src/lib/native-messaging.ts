@@ -28,6 +28,10 @@ export interface GetTokenMessage {
   type: typeof MSG_TYPES.GET_TOKEN;
 }
 
+export interface GetAgentStatusMessage {
+  type: typeof MSG_TYPES.GET_AGENT_STATUS;
+}
+
 /** token 结果消息 */
 export interface TokenResultMessage {
   type: typeof MSG_TYPES.TOKEN_RESULT;
@@ -50,6 +54,7 @@ export interface AgentStatusResultMessage {
 /** 所有消息类型 */
 export type ExtensionMessage =
   | GetTokenMessage
+  | GetAgentStatusMessage
   | TokenResultMessage
   | TokenErrorMessage
   | AgentStatusResultMessage;
@@ -87,7 +92,7 @@ export async function requestToken(): Promise<{ token: string; port: number }> {
  */
 export async function requestAgentStatus(): Promise<boolean> {
   return new Promise((resolve) => {
-    const message = { type: MSG_TYPES.GET_AGENT_STATUS };
+    const message: GetAgentStatusMessage = { type: MSG_TYPES.GET_AGENT_STATUS };
 
     chrome.runtime.sendMessage(message, (response) => {
       if (chrome.runtime.lastError || !response) {

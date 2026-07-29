@@ -3,36 +3,45 @@
  * SQLite 备份 + Argon2id 密码派生 + AES-256-GCM 加密
  */
 
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import { readFileSync, writeFileSync, unlinkSync, copyFileSync } from "node:fs";
-import { join } from "node:path";
-import { config } from "../config/config";
-import { db, getRawDb } from "../db/client";
-import { settings } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { argon2id } from "hash-wasm";
 import {
   BACKUP_MIN_PASSWORD_LENGTH,
   APP_VERSION,
 } from "@dealpilot/shared";
-import { ApiError } from "../middleware/error-handler";
+import { ApiError } from "../errors/api-error";
+import {
+  createDatabaseSnapshot,
+  replaceDatabaseFromBuffer,
+} from "../repositories/backup-repository";
+import { markBackupCreated } from "../repositories/system-repository";
 
 const SALT_LENGTH = 32;
 const IV_LENGTH = 12; // AES-256-GCM 标准 IV 长度
 const KEY_LENGTH = 32; // AES-256
 const BACKUP_MAGIC = "DPBK"; // DealPilot Backup magic
-const BACKUP_VERSION = 1;
+const BACKUP_VERSION = 2;
+const ARGON2_MEMORY_KIB = 19 * 1024;
+const ARGON2_ITERATIONS = 2;
+const ARGON2_PARALLELISM = 1;
+let restoreInProgress = false;
 
-/**
- * 从密码派生加密密钥（使用 scrypt，兼容 Bun）
- * Bun.password.hash 使用 Argon2id，但输出的是验证哈希格式，不适合直接做密钥派生
- * 这里使用 scrypt 做密钥派生，密码验证用 Argon2id（Bun.password.hash/verify）
- */
-function deriveKey(password: string, salt: Buffer): Buffer {
-  return scryptSync(password, salt, KEY_LENGTH, {
-    N: 16384, // CPU/memory cost
-    r: 8,
-    p: 1,
+export function isRestoreInProgress(): boolean {
+  return restoreInProgress;
+}
+
+/** Derive a deterministic AES key with the salt stored in the backup header. */
+async function deriveKey(password: string, salt: Buffer): Promise<Buffer> {
+  const key = await argon2id({
+    password,
+    salt,
+    parallelism: ARGON2_PARALLELISM,
+    iterations: ARGON2_ITERATIONS,
+    memorySize: ARGON2_MEMORY_KIB,
+    hashLength: KEY_LENGTH,
+    outputType: "binary",
   });
+  return Buffer.from(key);
 }
 
 /**
@@ -45,25 +54,29 @@ export async function createBackup(password: string): Promise<Buffer> {
   }
 
   // 使用 bun:sqlite 的 backup API 导出数据库到临时文件
-  const tempDbPath = join(config.dataDir, `backup-temp-${Date.now()}.db`);
-  const rawDb = getRawDb();
-
-  // 使用 SQLite backup API
-  rawDb.exec(`VACUUM INTO '${tempDbPath}';`);
-  const dbData = readFileSync(tempDbPath);
-
-  // 清理临时文件
-  try {
-    unlinkSync(tempDbPath);
-  } catch {
-    // 忽略清理失败
-  }
+  const dbData = createDatabaseSnapshot();
 
   // 加密
   const salt = randomBytes(SALT_LENGTH);
   const iv = randomBytes(IV_LENGTH);
-  const key = deriveKey(password, salt);
+  const metadata = Buffer.from(
+    JSON.stringify({
+      app_version: APP_VERSION,
+      schema_version: "1.0.0",
+      created_at: new Date().toISOString(),
+      db_size: dbData.length,
+      kdf: {
+        algorithm: "argon2id",
+        memory_kib: ARGON2_MEMORY_KIB,
+        iterations: ARGON2_ITERATIONS,
+        parallelism: ARGON2_PARALLELISM,
+      },
+    }),
+    "utf-8",
+  );
+  const key = await deriveKey(password, salt);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(buildAssociatedData(salt, iv, metadata));
 
   const encrypted = Buffer.concat([
     cipher.update(dbData),
@@ -73,15 +86,6 @@ export async function createBackup(password: string): Promise<Buffer> {
 
   // 构建备份文件格式:
   // [magic(4)][version(1)][salt(32)][iv(12)][authTag(16)][metadata_len(4)][metadata(json)][encrypted_data]
-  const metadata = Buffer.from(
-    JSON.stringify({
-      app_version: APP_VERSION,
-      schema_version: "1.0.0",
-      created_at: new Date().toISOString(),
-      db_size: dbData.length,
-    }),
-    "utf-8",
-  );
   const metaLenBuf = Buffer.alloc(4);
   metaLenBuf.writeUInt32BE(metadata.length, 0);
 
@@ -97,10 +101,7 @@ export async function createBackup(password: string): Promise<Buffer> {
   ]);
 
   // 更新最后备份时间
-  await db
-    .update(settings)
-    .set({ last_backup_at: new Date().toISOString() })
-    .where(eq(settings.id, 1));
+  await markBackupCreated(new Date().toISOString());
 
   return backupBuffer;
 }
@@ -108,32 +109,18 @@ export async function createBackup(password: string): Promise<Buffer> {
 /**
  * 校验备份文件完整性和兼容性
  */
-export function validateBackup(
+export async function validateBackup(
   fileBuffer: Buffer,
   password: string,
-): {
+): Promise<{
   valid: boolean;
   schema_version?: number;
   app_version?: string;
   integrity_ok: boolean;
-} {
+}> {
   try {
-    const { salt, iv, authTag, metadata, encrypted } = parseBackupFile(fileBuffer);
-    const key = deriveKey(password, salt);
-
-    // 尝试解密以验证密码和完整性
-    const decipher = createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(authTag);
-
-    try {
-      decipher.update(encrypted);
-      decipher.final();
-    } catch {
-      // 密码错误或数据损坏
-      return { valid: false, integrity_ok: false };
-    }
-
-    const meta = JSON.parse(metadata.toString("utf-8"));
+    const { metadata } = await decryptBackup(fileBuffer, password);
+    const meta = parseMetadata(metadata);
     return {
       valid: true,
       schema_version: BACKUP_VERSION,
@@ -153,60 +140,67 @@ export async function restoreBackup(
   fileBuffer: Buffer,
   password: string,
 ): Promise<{ success: boolean; rows_restored: number }> {
-  // 先校验
-  const validation = validateBackup(fileBuffer, password);
-  if (!validation.valid) {
-    throw ApiError.badRequest("Invalid backup file or wrong password");
-  }
-
-  // 解密
-  const { salt, iv, authTag, encrypted } = parseBackupFile(fileBuffer);
-  const key = deriveKey(password, salt);
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(authTag);
-
-  const decrypted = Buffer.concat([
-    decipher.update(encrypted),
-    decipher.final(),
-  ]);
-
-  // 写入临时文件
-  const tempDbPath = join(config.dataDir, `restore-temp-${Date.now()}.db`);
-  writeFileSync(tempDbPath, decrypted);
-
+  if (restoreInProgress) throw ApiError.conflict("Restore operation in progress");
+  restoreInProgress = true;
   try {
-    // 统计行数
-    const Database = (await import("bun:sqlite")).Database;
-    const restoreDb = new Database(tempDbPath, { readonly: true });
-    let rowsRestored = 0;
-
-    const tables = [
-      "customers", "contacts", "social_accounts", "projects",
-      "follow_ups", "reminders", "risks", "milestones",
-      "import_jobs", "local_events", "settings",
-    ];
-
-    for (const table of tables) {
-      try {
-        const count = restoreDb.query(`SELECT COUNT(*) as c FROM ${table}`).get() as { c: number };
-        rowsRestored += count.c;
-      } catch {
-        // 表可能不存在
-      }
+    let decrypted: Buffer;
+    try {
+      ({ decrypted } = await decryptBackup(fileBuffer, password));
+    } catch {
+      throw ApiError.badRequest("Invalid backup file or wrong password");
     }
-    restoreDb.close();
 
-    // 覆盖当前数据库
-    copyFileSync(tempDbPath, config.dbPath);
-
+    const rowsRestored = await replaceDatabaseFromBuffer(decrypted);
     return { success: true, rows_restored: rowsRestored };
   } finally {
-    try {
-      unlinkSync(tempDbPath);
-    } catch {
-      // 忽略
-    }
+    restoreInProgress = false;
   }
+}
+
+function buildAssociatedData(salt: Buffer, iv: Buffer, metadata: Buffer): Buffer {
+  const metadataLength = Buffer.alloc(4);
+  metadataLength.writeUInt32BE(metadata.length, 0);
+  return Buffer.concat([
+    Buffer.from(BACKUP_MAGIC, "ascii"),
+    Buffer.from([BACKUP_VERSION]),
+    salt,
+    iv,
+    metadataLength,
+    metadata,
+  ]);
+}
+
+function parseMetadata(metadata: Buffer) {
+  const parsed = JSON.parse(metadata.toString("utf-8")) as {
+    app_version?: unknown;
+    kdf?: {
+      algorithm?: unknown;
+      memory_kib?: unknown;
+      iterations?: unknown;
+      parallelism?: unknown;
+    };
+  };
+  if (typeof parsed.app_version !== "string"
+    || parsed.kdf?.algorithm !== "argon2id"
+    || parsed.kdf.memory_kib !== ARGON2_MEMORY_KIB
+    || parsed.kdf.iterations !== ARGON2_ITERATIONS
+    || parsed.kdf.parallelism !== ARGON2_PARALLELISM) {
+    throw new Error("Unsupported backup metadata");
+  }
+  return parsed as typeof parsed & { app_version: string };
+}
+
+async function decryptBackup(fileBuffer: Buffer, password: string) {
+  const { salt, iv, authTag, metadata, encrypted } = parseBackupFile(fileBuffer);
+  parseMetadata(metadata);
+  const key = await deriveKey(password, salt);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAAD(buildAssociatedData(salt, iv, metadata));
+  decipher.setAuthTag(authTag);
+  return {
+    metadata,
+    decrypted: Buffer.concat([decipher.update(encrypted), decipher.final()]),
+  };
 }
 
 /**
@@ -219,6 +213,10 @@ function parseBackupFile(fileBuffer: Buffer): {
   metadata: Buffer;
   encrypted: Buffer;
 } {
+  const minimumLength = 4 + 1 + SALT_LENGTH + IV_LENGTH + 16 + 4 + 1;
+  if (fileBuffer.length < minimumLength) {
+    throw new Error("Backup file is truncated");
+  }
   const magic = fileBuffer.subarray(0, 4).toString("ascii");
   if (magic !== BACKUP_MAGIC) {
     throw new Error("Invalid backup file format");
@@ -238,6 +236,9 @@ function parseBackupFile(fileBuffer: Buffer): {
   offset += 16;
   const metaLen = fileBuffer.readUInt32BE(offset);
   offset += 4;
+  if (metaLen <= 0 || offset + metaLen >= fileBuffer.length) {
+    throw new Error("Invalid backup metadata length");
+  }
   const metadata = fileBuffer.subarray(offset, offset + metaLen);
   offset += metaLen;
   const encrypted = fileBuffer.subarray(offset);

@@ -12,7 +12,6 @@ import {
   GitMerge,
   Trash2,
   Users as UsersIcon,
-  ArrowUpDown,
 } from "lucide-react";
 import { useCustomers, type CustomerListParams } from "../api";
 import type { Customer } from "@dealpilot/shared";
@@ -20,7 +19,7 @@ import { DataTable } from "@/components/data-table";
 import { Pagination } from "@/components/pagination";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge, GradeBadge } from "@/components/ui/badge";
+import { GradeBadge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -54,7 +53,7 @@ export function CustomerTable() {
       {
         id: "select",
         size: 40,
-        header: ({ table }) => null,
+        header: () => null,
         cell: ({ row }) => (
           <input
             type="checkbox"

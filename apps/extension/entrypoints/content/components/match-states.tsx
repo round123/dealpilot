@@ -58,7 +58,7 @@ export const NoMatchState: React.FC<{
 
       {conversation && (
         <div style={{ fontSize: "12px", color: "var(--dp-color-text-secondary)", marginBottom: "var(--dp-space-3)", padding: "var(--dp-space-2)", backgroundColor: "var(--dp-color-gray-50)", borderRadius: "var(--dp-radius-md)" }}>
-          {conversation.name}: {conversation.rawIdentifier}
+          {conversation.conversationName}: {conversation.rawIdentifier}
         </div>
       )}
 

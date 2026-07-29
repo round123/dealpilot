@@ -6,7 +6,7 @@ import type { z } from "zod";
 import { useCreateCustomer } from "../api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label, FormField, FieldGroup } from "@/components/ui/label";
+import { FormField, FieldGroup } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { CustomerGrade } from "@dealpilot/shared";
 

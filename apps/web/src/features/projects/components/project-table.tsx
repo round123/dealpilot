@@ -7,7 +7,7 @@ import type { Project } from "@dealpilot/shared";
 import { DataTable } from "@/components/data-table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge, GradeBadge, StageBadge } from "@/components/ui/badge";
+import { GradeBadge, StageBadge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

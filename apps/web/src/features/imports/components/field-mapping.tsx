@@ -46,7 +46,6 @@ export function FieldMapping({
       <div className="max-h-[400px] overflow-y-auto">
         {sourceHeaders.map((header) => {
           const mapped = mapping[header];
-          const isRequired = mapped === "name";
           const isUnmapped = !mapped && header.toLowerCase().includes("name");
           return (
             <div

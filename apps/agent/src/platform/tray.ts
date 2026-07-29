@@ -63,7 +63,11 @@ export async function startTray(opts?: TrayOptions): Promise<void> {
       { stdout: "pipe", stderr: "pipe" },
     );
 
-    reader = child.stdout.getReader();
+    const stdout = child.stdout;
+    if (!stdout || typeof stdout === "number") {
+      throw new Error("Tray subprocess stdout pipe is unavailable");
+    }
+    reader = stdout.getReader();
     let buf = "";
     const decoder = new TextDecoder();
 

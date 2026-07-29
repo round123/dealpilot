@@ -10,7 +10,13 @@
 
 import { defineBackground } from "wxt/sandbox";
 import { AGENT_DEFAULT_PORT, APP_VERSION } from "@dealpilot/shared";
-import { getStoredToken, setStoredToken, setAgentPort, getAgentPort } from "../src/lib/api-client";
+import {
+  fetchPendingReminderCount,
+  getAgentPort,
+  getStoredToken,
+  setAgentPort,
+  setStoredToken,
+} from "../src/lib/api-client";
 import { MSG_TYPES, type ExtensionMessage } from "../src/lib/native-messaging";
 
 /** Native Messaging 连接名（需与 Agent 注册的 native messaging host name 一致） */
@@ -18,6 +24,7 @@ const NM_HOST_NAME = "com.dealpilot.agent";
 
 /** token 刷新间隔（分钟） */
 const TOKEN_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+const REMINDER_BADGE_ALARM = "dealpilot-reminder-badge";
 
 /** Native Messaging 连接（持久化） */
 let nmPort: chrome.runtime.Port | null = null;
@@ -67,17 +74,13 @@ function handleNativeMessage(msg: unknown): void {
 
   switch (message.type) {
     case "auth": {
-      // 收到 token
-      if (message.token) {
-        setStoredToken(message.token).then(() => {
-          console.log("[DealPilot] API token 已保存");
-        });
-      }
-      if (message.port) {
-        setAgentPort(message.port).then(() => {
-          console.log(`[DealPilot] Agent 端口: ${message.port}`);
-        });
-      }
+      const updates: Promise<void>[] = [];
+      if (message.token) updates.push(setStoredToken(message.token));
+      if (message.port) updates.push(setAgentPort(message.port));
+      Promise.all(updates).then(() => {
+        console.log("[DealPilot] Agent 配对信息已保存");
+        return refreshReminderBadge();
+      }).catch((error) => console.warn("[DealPilot] 角标刷新失败:", error));
       break;
     }
     case "token_refresh": {
@@ -97,6 +100,26 @@ function handleNativeMessage(msg: unknown): void {
       // 忽略未知消息
       break;
   }
+}
+
+async function refreshReminderBadge(): Promise<void> {
+  try {
+    const count = await fetchPendingReminderCount();
+    await chrome.action.setBadgeText({ text: count > 0 ? String(Math.min(count, 99)) : "" });
+  } catch (error) {
+    await chrome.action.setBadgeText({ text: "" });
+    throw error;
+  }
+}
+
+function setupReminderBadge(): void {
+  chrome.alarms.create(REMINDER_BADGE_ALARM, { periodInMinutes: 1 });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === REMINDER_BADGE_ALARM) {
+      void refreshReminderBadge().catch(() => undefined);
+    }
+  });
+  void refreshReminderBadge().catch(() => undefined);
 }
 
 /**
@@ -177,7 +200,7 @@ function setupInstallListener(): void {
       // 首次安装：打开引导页
       console.log("[DealPilot] 插件已安装");
       chrome.tabs.create({
-        url: "https://127.0.0.1:" + AGENT_DEFAULT_PORT + "/welcome",
+        url: "http://127.0.0.1:" + AGENT_DEFAULT_PORT + "/welcome",
       });
     } else if (details.reason === "update") {
       console.log(`[DealPilot] 插件已更新到 ${APP_VERSION}`);
@@ -203,5 +226,8 @@ export default defineBackground({
 
     // 4. 设置安装事件监听
     setupInstallListener();
+
+    // 5. 每分钟刷新待办角标
+    setupReminderBadge();
   },
 });

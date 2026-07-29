@@ -63,7 +63,9 @@ async function main() {
   await startServer();
 
   // 注册 Native Messaging Host + 写 runtime info（供扩展通过 NM 配对）
-  registerNativeMessaging();
+  if (process.env.DEALPILOT_SKIP_NM_REGISTRATION !== "1") {
+    registerNativeMessaging();
+  }
   writeRuntimeInfo();
 
   // 4. 启动调度器
@@ -73,10 +75,14 @@ async function main() {
   console.log("[agent] Schedulers started.");
 
   // 5. 启动托盘（.NET NotifyIcon 子进程；菜单点击经 stdout 通知）
-  await startTray({ onOpen: () => launchBrowser(), onQuit: () => shutdown() });
+  if (process.env.DEALPILOT_SKIP_TRAY !== "1") {
+    await startTray({ onOpen: () => launchBrowser(), onQuit: () => shutdown() });
+  }
 
   // 6. 自动打开浏览器
-  await launchBrowser();
+  if (process.env.DEALPILOT_SKIP_BROWSER !== "1") {
+    await launchBrowser();
+  }
 
   console.log("[agent] DealPilot Agent started successfully.");
   console.log(`[agent] Token: ${config.token}`);

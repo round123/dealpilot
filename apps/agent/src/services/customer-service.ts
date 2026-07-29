@@ -1,182 +1,79 @@
-/**
- * DealPilot 客户领域服务
- * 合并、软删除、恢复（事务）
- */
-
-import { eq, and, isNull, sql } from "drizzle-orm";
-import { db } from "../db/client";
+import type {
+  CustomerCreate,
+  CustomerListQuery,
+  CustomerMerge,
+  CustomerUpdate,
+} from "@dealpilot/shared";
+import { ApiError } from "../errors/api-error";
 import {
-  customers,
-  contacts,
-  social_accounts,
-  projects,
-  follow_ups,
-  reminders,
-} from "../db/schema";
-import { ApiError } from "../middleware/error-handler";
-import type { CustomerMerge } from "@dealpilot/shared";
+  findCustomer,
+  getCustomerDetail,
+  insertCustomer,
+  listCustomers as listCustomerRecords,
+  mergeCustomerRecords,
+  restoreCustomerRecord,
+  softDeleteCustomerRecord,
+  updateCustomerRecord,
+} from "../repositories/crm-repository";
+import { toCursorPage } from "./pagination";
 
-/**
- * 软删除客户
- * 设置 deleted_at，同时取消未完成提醒
- */
+export async function listCustomers(query: CustomerListQuery) {
+  return toCursorPage(await listCustomerRecords(query), query.limit);
+}
+
+export function createCustomer(input: CustomerCreate) {
+  return insertCustomer(input);
+}
+
+export async function getCustomer(customerId: string) {
+  const customer = await getCustomerDetail(customerId);
+  if (!customer) throw ApiError.notFound("Customer not found");
+  return customer;
+}
+
+export async function updateCustomer(customerId: string, input: CustomerUpdate) {
+  const customer = await updateCustomerRecord(customerId, input);
+  if (!customer) throw ApiError.notFound("Customer not found");
+  return customer;
+}
+
 export async function softDeleteCustomer(customerId: string): Promise<void> {
-  await db.transaction(async (tx) => {
-    // 检查客户存在且未删除
-    const [customer] = await tx
-      .select()
-      .from(customers)
-      .where(and(eq(customers.id, customerId), isNull(customers.deleted_at)))
-      .limit(1);
-
-    if (!customer) {
-      throw ApiError.notFound("Customer not found");
-    }
-
-    const now = new Date().toISOString();
-
-    // 软删除客户
-    await tx
-      .update(customers)
-      .set({ deleted_at: now, updated_at: now })
-      .where(eq(customers.id, customerId));
-
-    // 取消未完成提醒
-    await tx
-      .update(reminders)
-      .set({
-        status: "ignored",
-        updated_at: now,
-        resolution: "Customer deleted",
-      })
-      .where(
-        and(
-          eq(reminders.customer_id, customerId),
-          sql`${reminders.status} IN ('pending', 'snoozed', 'overdue')`,
-        ),
-      );
-  });
+  if (!await softDeleteCustomerRecord(customerId)) {
+    throw ApiError.notFound("Customer not found");
+  }
 }
 
-/**
- * 恢复已删除客户
- */
 export async function restoreCustomer(customerId: string) {
-  return db.transaction(async (tx) => {
-    const [customer] = await tx
-      .select()
-      .from(customers)
-      .where(eq(customers.id, customerId))
-      .limit(1);
-
-    if (!customer) {
-      throw ApiError.notFound("Customer not found");
-    }
-    if (!customer.deleted_at) {
-      throw ApiError.conflict("Customer is not deleted");
-    }
-
-    const now = new Date().toISOString();
-    await tx
-      .update(customers)
-      .set({ deleted_at: null, updated_at: now })
-      .where(eq(customers.id, customerId));
-
-    return customer;
-  });
+  const result = await restoreCustomerRecord(customerId);
+  if (result.status === "not_found") throw ApiError.notFound("Customer not found");
+  if (result.status === "not_deleted") throw ApiError.conflict("Customer is not deleted");
+  return result.customer;
 }
 
-/**
- * 合并客户
- * 将 source 的跟进、项目、提醒、社媒迁移到 target
- */
-export async function mergeCustomers(merge: CustomerMerge) {
-  const { source_id, target_id, field_resolutions } = merge;
-
-  if (source_id === target_id) {
+export async function mergeCustomers(input: CustomerMerge) {
+  if (input.source_id === input.target_id) {
     throw ApiError.badRequest("Source and target cannot be the same");
   }
 
-  return db.transaction(async (tx) => {
-    // 检查双方存在
-    const [source] = await tx
-      .select()
-      .from(customers)
-      .where(eq(customers.id, source_id))
-      .limit(1);
-    const [target] = await tx
-      .select()
-      .from(customers)
-      .where(eq(customers.id, target_id))
-      .limit(1);
+  const source = await findCustomer(input.source_id);
+  if (!source) throw ApiError.notFound("Source customer not found");
+  if (!await findCustomer(input.target_id)) {
+    throw ApiError.notFound("Target customer not found");
+  }
 
-    if (!source) throw ApiError.notFound("Source customer not found");
-    if (!target) throw ApiError.notFound("Target customer not found");
+  const updates: Parameters<typeof mergeCustomerRecords>[2] = {};
+  for (const [field, choice] of Object.entries(input.field_resolutions ?? {})) {
+    if (choice !== "source") continue;
+    if (field === "name") updates.name = source.name;
+    if (field === "company") updates.company = source.company;
+    if (field === "country") updates.country = source.country;
+    if (field === "source") updates.source = source.source;
+    if (field === "grade") updates.grade = source.grade;
+    if (field === "status") updates.status = source.status;
+  }
 
-    // 迁移联系人
-    await tx
-      .update(contacts)
-      .set({ customer_id: target_id })
-      .where(eq(contacts.customer_id, source_id));
-
-    // 迁移社媒账号
-    await tx
-      .update(social_accounts)
-      .set({ customer_id: target_id })
-      .where(eq(social_accounts.customer_id, source_id));
-
-    // 迁移项目
-    await tx
-      .update(projects)
-      .set({ customer_id: target_id })
-      .where(eq(projects.customer_id, source_id));
-
-    // 迁移跟进记录
-    await tx
-      .update(follow_ups)
-      .set({ customer_id: target_id })
-      .where(eq(follow_ups.customer_id, source_id));
-
-    // 迁移提醒
-    await tx
-      .update(reminders)
-      .set({ customer_id: target_id })
-      .where(eq(reminders.customer_id, source_id));
-
-    // 如果有字段裁决，更新 target 字段
-    if (field_resolutions) {
-      const updates: Record<string, unknown> = {};
-      for (const [field, choice] of Object.entries(field_resolutions)) {
-        if (choice === "source") {
-          const sourceValue = (source as Record<string, unknown>)[field];
-          if (sourceValue !== undefined) {
-            updates[field] = sourceValue;
-          }
-        }
-      }
-      if (Object.keys(updates).length > 0) {
-        updates.updated_at = new Date().toISOString();
-        await tx.update(customers).set(updates).where(eq(customers.id, target_id));
-      }
-    }
-
-    // 软删除 source（标记为已合并）
-    const now = new Date().toISOString();
-    await tx
-      .update(customers)
-      .set({
-        deleted_at: now,
-        updated_at: now,
-      })
-      .where(eq(customers.id, source_id));
-
-    // 返回合并后的 target
-    const [result] = await tx
-      .select()
-      .from(customers)
-      .where(eq(customers.id, target_id))
-      .limit(1);
-
-    return result;
-  });
+  const result = await mergeCustomerRecords(input.source_id, input.target_id, updates);
+  if (result.status === "source_not_found") throw ApiError.notFound("Source customer not found");
+  if (result.status === "target_not_found") throw ApiError.notFound("Target customer not found");
+  return result.customer;
 }

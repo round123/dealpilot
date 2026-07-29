@@ -7,7 +7,7 @@
     "dev": "wxt",
     "build": "wxt build",
     "zip": "wxt zip",
-    "type-check": "tsc --noEmit",
+    "type-check": "wxt prepare && tsc --noEmit",
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@types/chrome": "^0.0.280",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",

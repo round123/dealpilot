@@ -1,8 +1,6 @@
 import { generateUUID } from "@dealpilot/shared";
 import { API_PATHS } from "@dealpilot/shared";
 
-const BASE_URL = "/api/v1";
-
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -138,8 +136,8 @@ export const api = {
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body }),
 
-  delete: <T>(path: string) =>
-    request<T>(path, { method: "DELETE" }),
+  delete: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: "DELETE", body }),
 
   upload: <T>(path: string, formData: FormData) =>
     request<T>(path, { method: "POST", multipart: formData }),

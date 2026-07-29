@@ -8,10 +8,11 @@
  * 验收标准 AC-12: 保存失败保留内容可重试，重复提交不产生重复记录（Idempotency-Key）
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Bookmark, Plus, Loader2 } from "lucide-react";
-import { createFollowUp } from "../../../src/lib/api-client";
-import { getPlatformAdapter, type SelectedMessage } from "./platform-adapter";
+import type { FollowUpCreate } from "@dealpilot/shared";
+import { createFollowUp, generateIdempotencyKey } from "../../../src/lib/api-client";
+import { getPlatformAdapter } from "./platform-adapter";
 
 interface FollowUpMarkerProps {
   customerId: string;
@@ -64,33 +65,42 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showManual, setShowManual] = useState(false);
   const [note, setNote] = useState("");
+  const messageAttempt = useRef<{ data: FollowUpCreate; key: string } | null>(null);
+  const manualAttempt = useRef<{ data: FollowUpCreate; key: string } | null>(null);
 
   /** 标记当前选中消息为跟进记录 */
   const handleMarkMessage = async () => {
-    const adapter = getPlatformAdapter();
-    if (!adapter) {
-      setError("无法检测当前平台");
-      return;
-    }
+    if (!messageAttempt.current) {
+      const adapter = getPlatformAdapter();
+      if (!adapter) {
+        setError("无法检测当前平台");
+        return;
+      }
 
-    const selectedMsg = adapter.getSelectedMessage();
-    if (!selectedMsg) {
-      setError("未检测到选中的消息，请在会话中选择一条消息");
-      return;
+      const selectedMsg = adapter.getSelectedMessage();
+      if (!selectedMsg) {
+        setError("未检测到选中的消息，请先点击或选择一条消息");
+        return;
+      }
+      messageAttempt.current = {
+        data: {
+          customer_id: customerId,
+          project_id: projectId,
+          type: "message",
+          message_body: selectedMsg.body,
+          message_direction: selectedMsg.direction,
+          occurred_at: selectedMsg.timestamp ?? new Date().toISOString(),
+        },
+        key: generateIdempotencyKey(),
+      };
     }
 
     setLoading(true);
     setError(null);
 
     try {
-      await createFollowUp({
-        customer_id: customerId,
-        project_id: projectId,
-        type: "message",
-        message_body: selectedMsg.body,
-        message_direction: selectedMsg.direction,
-        occurred_at: selectedMsg.timestamp ?? new Date().toISOString(),
-      });
+      await createFollowUp(messageAttempt.current.data, messageAttempt.current.key);
+      messageAttempt.current = null;
       onSaved?.();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "保存失败，可重试";
@@ -107,17 +117,25 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
       return;
     }
 
+    if (!manualAttempt.current) {
+      manualAttempt.current = {
+        data: {
+          customer_id: customerId,
+          project_id: projectId,
+          type: "note",
+          note: note.trim(),
+          occurred_at: new Date().toISOString(),
+        },
+        key: generateIdempotencyKey(),
+      };
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      await createFollowUp({
-        customer_id: customerId,
-        project_id: projectId,
-        type: "note",
-        note: note.trim(),
-        occurred_at: new Date().toISOString(),
-      });
+      await createFollowUp(manualAttempt.current.data, manualAttempt.current.key);
+      manualAttempt.current = null;
       setNote("");
       setShowManual(false);
       onSaved?.();
@@ -134,7 +152,10 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
       <div style={{ padding: "var(--dp-space-3)" }}>
         <textarea
           value={note}
-          onChange={(e) => setNote(e.target.value)}
+          onChange={(e) => {
+            setNote(e.target.value);
+            manualAttempt.current = null;
+          }}
           placeholder="输入跟进备注..."
           style={{
             width: "100%",
@@ -156,7 +177,11 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
         <div style={{ display: "flex", gap: "var(--dp-space-2)" }}>
           <button
             style={BUTTON_STYLE.secondary}
-            onClick={() => { setShowManual(false); setError(null); }}
+            onClick={() => {
+              setShowManual(false);
+              setError(null);
+              manualAttempt.current = null;
+            }}
             disabled={loading}
           >
             取消

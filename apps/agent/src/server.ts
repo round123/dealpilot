@@ -12,9 +12,11 @@ import { Hono } from "hono";
 import { config } from "./config/config";
 import { requestIdMiddleware } from "./middleware/request-id";
 import { originGuardMiddleware } from "./middleware/origin-guard";
-import { errorHandlerMiddleware, ApiError } from "./middleware/error-handler";
+import { handleError } from "./middleware/error-handler";
+import type { AppEnv } from "./types/hono";
 import { authMiddleware } from "./middleware/auth";
 import { idempotencyMiddleware } from "./middleware/idempotency";
+import { restoreGuardMiddleware } from "./middleware/restore-guard";
 
 // 路由
 import healthRoutes from "./routes/health";
@@ -99,11 +101,11 @@ async function serveWebAsset(pathname: string): Promise<Response | null> {
 /**
  * 创建 Hono app
  */
-export function createApp(): Hono {
-  const app = new Hono();
+export function createApp(): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+  app.onError((error, c) => handleError(error, c));
 
-  // 全局中间件（顺序：错误处理 -> 请求ID -> Origin 校验）
-  app.use("*", errorHandlerMiddleware);
+  // 全局中间件（请求 ID -> Origin 校验）
   app.use("*", requestIdMiddleware);
   app.use("*", originGuardMiddleware);
 
@@ -112,6 +114,7 @@ export function createApp(): Hono {
 
   // 认证中间件（除 /health 外全部需要认证）
   app.use("/api/v1/*", authMiddleware);
+  app.use("/api/v1/*", restoreGuardMiddleware);
 
   // 幂等中间件
   app.use("/api/v1/*", idempotencyMiddleware);

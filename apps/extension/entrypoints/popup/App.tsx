@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   AlertOctagon,
   ArrowRight,
-  Loader2,
 } from "lucide-react";
 import { fetchPopupReminders } from "../../src/lib/api-client";
 import { requestAgentStatus } from "../../src/lib/native-messaging";
@@ -24,13 +23,6 @@ import { NewCustomerPage } from "./new-customer";
 import type { Reminder } from "@dealpilot/shared";
 import { isOverdue, formatRelativeTime } from "@dealpilot/shared";
 import { POPUP_REMINDER_LIMIT } from "@dealpilot/shared";
-
-/** 分级颜色 */
-const GRADE_COLORS: Record<string, string> = {
-  A: "var(--color-grade-a)",
-  B: "var(--color-grade-b)",
-  C: "var(--color-grade-c)",
-};
 
 /** 状态颜色 */
 const STATUS_COLORS: Record<string, string> = {

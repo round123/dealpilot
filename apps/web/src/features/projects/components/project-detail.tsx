@@ -1,11 +1,11 @@
 import { useParams } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { Pencil, Plus, ArrowUp, AlertOctagon, AlertTriangle, Info } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useProject, useUpdateProjectStage } from "../api";
 import { RiskList } from "./risk-list";
 import { MilestoneList } from "./milestone-list";
 import { Button } from "@/components/ui/button";
-import { Badge, GradeBadge, StageBadge } from "@/components/ui/badge";
+import { GradeBadge, StageBadge } from "@/components/ui/badge";
 import { formatAmount, formatDate } from "@/lib/format";
 import { SkeletonCard } from "@/components/skeleton";
 import { ProjectStage } from "@dealpilot/shared";
@@ -164,7 +164,7 @@ export function ProjectDetail() {
       </div>
 
       <div className="grid grid-cols-2 gap-6">
-        <RiskList projectId={id} risks={project.risks ?? []} />
+        <RiskList risks={project.risks ?? []} />
         <MilestoneList projectId={id} milestones={project.milestones ?? []} />
       </div>
 

@@ -12,7 +12,6 @@ const STEPS = ["上传文件", "字段映射", "预览与冲突", "导入结果"
 
 export function ImportPage() {
   const [step, setStep] = useState(0);
-  const [file, setFile] = useState<File | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [parseResult, setParseResult] = useState<ImportParseResponse | null>(null);
   const [commitResult, setCommitResult] = useState<ImportCommitResponse | null>(null);
@@ -21,7 +20,6 @@ export function ImportPage() {
   const commitM = useImportCommit();
 
   const handleFile = (f: File) => {
-    setFile(f);
     parseM.mutate(f, {
       onSuccess: (data) => {
         setParseResult(data);

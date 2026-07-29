@@ -1,7 +1,8 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "types": ["chrome"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "paths": {
       "@dealpilot/shared": ["../../packages/shared/src"]

@@ -5,7 +5,7 @@
  * Content Script 不持有 API 令牌，统一通过本模块 + background 中转。
  */
 
-import { API_PATHS, AGENT_DEFAULT_PORT, type Customer, type CustomerCreate, type Reminder, type FollowUp, type FollowUpCreate, type ReminderCreate, type MatchResolve, type MatchResolveResponse, type CustomerDetail } from "@dealpilot/shared";
+import { API_PATHS, AGENT_DEFAULT_PORT, type Customer, type CustomerCreate, type Reminder, type FollowUp, type FollowUpCreate, type ReminderCreate, type MatchResolve, type MatchResolveResponse, type CustomerDetail, type Stats } from "@dealpilot/shared";
 
 /** storage 中 token 的 key */
 const TOKEN_STORAGE_KEY = "dealpilot_api_token";
@@ -65,7 +65,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /** 生成幂等键 */
-function generateIdempotencyKey(): string {
+export function generateIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -76,13 +76,15 @@ function generateIdempotencyKey(): string {
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
-  withIdempotency = false,
+  idempotency: boolean | string = false,
 ): Promise<T> {
   const baseUrl = await getBaseUrl();
   const headers = await getAuthHeaders();
 
-  if (withIdempotency) {
-    headers["Idempotency-Key"] = generateIdempotencyKey();
+  if (idempotency) {
+    headers["Idempotency-Key"] = typeof idempotency === "string"
+      ? idempotency
+      : generateIdempotencyKey();
   }
 
   const response = await fetch(`${baseUrl}${path}`, {
@@ -115,6 +117,11 @@ async function apiFetch<T>(
 /** GET /reminders/popup - 获取 popup 待办列表 */
 export async function fetchPopupReminders(): Promise<Reminder[]> {
   return apiFetch<Reminder[]>(API_PATHS.remindersPopup);
+}
+
+export async function fetchPendingReminderCount(): Promise<number> {
+  const stats = await apiFetch<Stats>(API_PATHS.stats);
+  return stats.pending_reminders + (stats.overdue_reminders ?? 0);
 }
 
 /** POST /customers - 新建客户 */
@@ -155,11 +162,14 @@ export async function bindMatch(
 // ===== 跟进 API =====
 
 /** POST /follow-ups - 新建跟进记录 */
-export async function createFollowUp(data: FollowUpCreate): Promise<FollowUp> {
+export async function createFollowUp(
+  data: FollowUpCreate,
+  idempotencyKey = generateIdempotencyKey(),
+): Promise<FollowUp> {
   return apiFetch<FollowUp>(
     API_PATHS.followUps,
     { method: "POST", body: JSON.stringify(data) },
-    true,
+    idempotencyKey,
   );
 }
 
