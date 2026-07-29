@@ -1,0 +1,142 @@
+/**
+ * DealPilot 插件 Design Tokens
+ * 浅色主题，对标 Linear/Notion 风格
+ * Shadow DOM 内通过 :host 注入，popup 通过 :root 引用
+ */
+
+/* ===== Popup 页面使用 :root ===== */
+:root {
+  /* 主色 - 蓝灰色系 */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-light: #dbeafe;
+
+  /* 文字 */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary: #9ca3af;
+  --color-text-inverse: #ffffff;
+
+  /* 背景 */
+  --color-bg-page: #f9fafb;
+  --color-bg-card: #ffffff;
+  --color-bg-hover: #f3f4f6;
+  --color-bg-sidebar: #ffffff;
+
+  /* 边框 */
+  --color-border-default: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-border-focus: #2563eb;
+
+  /* 状态色 */
+  --color-success: #16a34a;
+  --color-success-light: #dcfce7;
+  --color-warning: #d97706;
+  --color-warning-light: #fef3c7;
+  --color-error: #dc2626;
+  --color-error-light: #fee2e2;
+  --color-info: #0891b2;
+  --color-info-light: #cffafe;
+
+  /* 客户分级 */
+  --color-grade-a: #16a34a;
+  --color-grade-b: #d97706;
+  --color-grade-c: #6b7280;
+
+  /* 灰阶 */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* 字体 */
+  --font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+}
+
+/* ===== Shadow DOM 内使用 :host ===== */
+:host {
+  /* 主色 */
+  --dp-color-primary: #2563eb;
+  --dp-color-primary-hover: #1d4ed8;
+  --dp-color-primary-light: #dbeafe;
+
+  /* 文字 */
+  --dp-color-text-primary: #111827;
+  --dp-color-text-secondary: #4b5563;
+  --dp-color-text-tertiary: #9ca3af;
+  --dp-color-text-inverse: #ffffff;
+
+  /* 背景 */
+  --dp-color-bg-card: #ffffff;
+  --dp-color-bg-hover: #f3f4f6;
+  --dp-color-bg-page: #f9fafb;
+
+  /* 边框 */
+  --dp-color-border-default: #e5e7eb;
+  --dp-color-border-strong: #d1d5db;
+  --dp-color-border-focus: #2563eb;
+
+  /* 状态色 */
+  --dp-color-success: #16a34a;
+  --dp-color-success-light: #dcfce7;
+  --dp-color-warning: #d97706;
+  --dp-color-warning-light: #fef3c7;
+  --dp-color-error: #dc2626;
+  --dp-color-error-light: #fee2e2;
+  --dp-color-info: #0891b2;
+  --dp-color-info-light: #cffafe;
+
+  /* 客户分级 */
+  --dp-color-grade-a: #16a34a;
+  --dp-color-grade-b: #d97706;
+  --dp-color-grade-c: #6b7280;
+
+  /* 灰阶 */
+  --dp-color-gray-50: #f9fafb;
+  --dp-color-gray-100: #f3f4f6;
+  --dp-color-gray-300: #d1d5db;
+  --dp-color-gray-400: #9ca3af;
+
+  /* 圆角 */
+  --dp-radius-sm: 4px;
+  --dp-radius-md: 6px;
+  --dp-radius-lg: 8px;
+  --dp-radius-xl: 12px;
+  --dp-radius-full: 9999px;
+
+  /* 阴影 */
+  --dp-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --dp-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --dp-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* 字体 */
+  --dp-font-sans: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* 间距 */
+  --dp-space-1: 4px;
+  --dp-space-2: 8px;
+  --dp-space-3: 12px;
+  --dp-space-4: 16px;
+  --dp-space-5: 20px;
+  --dp-space-6: 24px;
+}

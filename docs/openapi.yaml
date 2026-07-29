@@ -1,0 +1,1618 @@
+openapi: 3.0.3
+info:
+  title: DealPilot Local API
+  version: 1.0.0
+  description: |
+    DealPilot 本地优先架构的后端 API 契约。
+    所有端点前缀 /api/v1，除 /health 外全部需要 Bearer Token 认证。
+    Agent 只监听 127.0.0.1，禁止 0.0.0.0。
+    列表响应使用游标分页（cursor + next_cursor）。
+    写操作支持 Idempotency-Key 请求头实现幂等重试。
+  contact:
+    name: DealPilot
+servers:
+  - url: http://127.0.0.1:{port}
+    description: 本地 Agent 回环地址
+
+tags:
+  - name: health
+    description: Agent、API 和数据库版本
+  - name: customers
+    description: 客户、联系人、社媒账号和合并
+  - name: matches
+    description: 会话身份匹配、绑定和解绑
+  - name: follow-ups
+    description: 跟进记录
+  - name: reminders
+    description: 提醒、完成、稍后和忽略
+  - name: projects
+    description: 项目、风险和里程碑
+  - name: imports
+    description: 文件预览、冲突处理和导入
+  - name: exports
+    description: Excel 和统计报告导出
+  - name: backups
+    description: 备份、校验和恢复
+  - name: settings
+    description: 本地设置
+  - name: stats
+    description: 本地使用指标
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [health]
+      summary: Agent、API 和数据库版本
+      description: 返回 Agent、API 和数据库 Schema 版本，用于版本协商和健康检查。
+      security: []
+      responses:
+        '200':
+          description: 健康检查通过
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/customers:
+    get:
+      tags: [customers]
+      summary: 客户列表（游标分页、搜索、筛选、排序）
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: search
+          in: query
+          description: 按名称/公司/国家模糊搜索
+          schema: { type: string }
+        - name: grade
+          in: query
+          description: 客户分级筛选 A/B/C
+          schema: { $ref: '#/components/schemas/CustomerGrade' }
+        - name: status
+          in: query
+          description: 客户状态筛选
+          schema: { type: string }
+        - name: sort
+          in: query
+          description: 排序字段（created_at, name, grade 等）
+          schema: { type: string, default: created_at }
+      responses:
+        '200':
+          description: 客户列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [customers]
+      summary: 新建客户
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/customers/{id}:
+    get:
+      tags: [customers]
+      summary: 客户档案详情
+      description: 含联系人、社媒、跟进时间线、项目、未完成提醒。
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: 客户详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [customers]
+      summary: 编辑客户
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerUpdate' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [customers]
+      summary: 软删除客户（30天可恢复）
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      responses:
+        '204':
+          description: 软删除成功
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/customers/{id}/restore:
+    post:
+      tags: [customers]
+      summary: 恢复已删除客户
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      responses:
+        '200':
+          description: 恢复成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/customers/merge:
+    post:
+      tags: [customers]
+      summary: 合并客户（跟进/项目/提醒/社媒迁移）
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerMergeRequest' }
+      responses:
+        '200':
+          description: 合并成功，返回保留客户
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/customers/{id}/contacts:
+    get:
+      tags: [customers]
+      summary: 联系人列表
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: 联系人列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Contact' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [customers]
+      summary: 新建联系人
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Contact' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/contacts/{id}:
+    put:
+      tags: [customers]
+      summary: 编辑联系人
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactUpdate' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Contact' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [customers]
+      summary: 删除联系人
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      responses:
+        '204':
+          description: 删除成功
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/customers/{id}/social-accounts:
+    get:
+      tags: [customers]
+      summary: 社媒账号列表
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: 社媒账号列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SocialAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [customers]
+      summary: 添加社媒账号
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SocialAccountCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SocialAccount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/social-accounts/{id}:
+    delete:
+      tags: [customers]
+      summary: 删除社媒账号
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      responses:
+        '204':
+          description: 删除成功
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/matches/resolve:
+    post:
+      tags: [matches]
+      summary: 会话身份匹配
+      description: 按平台和原始标识符标准化并查询客户，返回唯一/多候选/未命中。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MatchResolveRequest' }
+      responses:
+        '200':
+          description: 匹配结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MatchResolveResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/matches/bind:
+    post:
+      tags: [matches]
+      summary: 人工绑定会话到客户
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MatchBindRequest' }
+      responses:
+        '201':
+          description: 绑定成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Binding' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [matches]
+      summary: 解绑会话
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MatchUnbindRequest' }
+      responses:
+        '204':
+          description: 解绑成功
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/follow-ups:
+    get:
+      tags: [follow-ups]
+      summary: 跟进记录列表（按客户筛选，游标分页）
+      parameters:
+        - name: customer_id
+          in: query
+          schema: { type: string }
+        - name: project_id
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: 跟进列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FollowUpListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [follow-ups]
+      summary: 新建跟进记录
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FollowUpCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FollowUp' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/follow-ups/{id}:
+    put:
+      tags: [follow-ups]
+      summary: 编辑跟进记录
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FollowUpUpdate' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FollowUp' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [follow-ups]
+      summary: 删除跟进记录
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      responses:
+        '204':
+          description: 删除成功
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/reminders:
+    get:
+      tags: [reminders]
+      summary: 提醒列表（待办，按排序规则）
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ReminderStatus' }
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: sort_by
+          in: query
+          description: 排序字段（逾期/高风险/分级/到期时间）
+          schema: { type: string, default: due_at }
+      responses:
+        '200':
+          description: 提醒列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReminderListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [reminders]
+      summary: 新建提醒
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReminderCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reminder' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/reminders/{id}:
+    put:
+      tags: [reminders]
+      summary: 更新提醒状态（完成/稍后/忽略/已收到回复）
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReminderStatusUpdate' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reminder' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/reminders/popup:
+    get:
+      tags: [reminders]
+      summary: popup 前5条待办
+      description: 按逾期/高风险/分级/到期时间排序，返回前5条待办。
+      responses:
+        '200':
+          description: 待办列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Reminder' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/projects:
+    get:
+      tags: [projects]
+      summary: 项目列表
+      parameters:
+        - name: customer_id
+          in: query
+          schema: { type: string }
+        - name: stage
+          in: query
+          schema: { $ref: '#/components/schemas/ProjectStage' }
+        - name: grade
+          in: query
+          schema: { $ref: '#/components/schemas/ProjectGrade' }
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: 项目列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [projects]
+      summary: 新建项目
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/projects/{id}:
+    get:
+      tags: [projects]
+      summary: 项目详情
+      description: 含风险和里程碑。
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: 项目详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [projects]
+      summary: 编辑项目
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [projects]
+      summary: 归档/关闭项目
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: 归档/关闭原因
+              required: [reason]
+      responses:
+        '204':
+          description: 归档/关闭成功
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/projects/{id}/stage:
+    put:
+      tags: [projects]
+      summary: 切换项目阶段
+      description: 用户手动切换，系统不自动推进阶段。
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stage: { $ref: '#/components/schemas/ProjectStage' }
+              required: [stage]
+      responses:
+        '200':
+          description: 切换成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/projects/{id}/risks:
+    post:
+      tags: [projects]
+      summary: 添加风险
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Risk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/risks/{id}:
+    put:
+      tags: [projects]
+      summary: 更新风险状态
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskUpdate' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Risk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/projects/{id}/milestones:
+    post:
+      tags: [projects]
+      summary: 添加里程碑
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MilestoneCreate' }
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Milestone' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/milestones/{id}:
+    put:
+      tags: [projects]
+      summary: 更新里程碑完成状态
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                completed:
+                  type: boolean
+              required: [completed]
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Milestone' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/imports/parse:
+    post:
+      tags: [imports]
+      summary: 解析 Excel/CSV 并预览
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        '200':
+          description: 解析预览结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportParseResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/imports/{job_id}/commit:
+    post:
+      tags: [imports]
+      summary: 确认提交导入
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportCommitRequest' }
+      responses:
+        '200':
+          description: 导入结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportCommitResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/imports/{job_id}/errors:
+    get:
+      tags: [imports]
+      summary: 下载错误报告
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: CSV 错误报告
+          content:
+            text/csv:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/exports/customers:
+    post:
+      tags: [exports]
+      summary: 导出客户 Excel
+      description: 明文 Excel，导出前提示妥善保管。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExportRequest' }
+      responses:
+        '200':
+          description: Excel 文件下载
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/backups/create:
+    post:
+      tags: [backups]
+      summary: 创建加密备份
+      description: Argon2id 派生密钥 + AES-256-GCM 加密。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BackupCreateRequest' }
+      responses:
+        '200':
+          description: 加密备份文件下载
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/backups/validate:
+    post:
+      tags: [backups]
+      summary: 校验备份完整性和兼容性
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                password:
+                  type: string
+                  format: password
+              required: [file, password]
+      responses:
+        '200':
+          description: 校验结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupValidateResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/backups/restore:
+    post:
+      tags: [backups]
+      summary: 恢复备份（全局互斥锁）
+      description: 恢复期间拒绝其他写请求；失败不覆盖当前数据库。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                password:
+                  type: string
+                  format: password
+              required: [file, password]
+      responses:
+        '200':
+          description: 恢复结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackupRestoreResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/settings:
+    get:
+      tags: [settings]
+      summary: 本地设置
+      responses:
+        '200':
+          description: 设置对象
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [settings]
+      summary: 更新设置
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettingsUpdate' }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/v1/stats:
+    get:
+      tags: [stats]
+      summary: 本地使用指标（不上报）
+      responses:
+        '200':
+          description: 指标对象
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stats' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    CursorParam:
+      name: cursor
+      in: query
+      description: 游标分页位置
+      schema: { type: string }
+    LimitParam:
+      name: limit
+      in: query
+      description: 每页数量
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    IdempotencyKeyParam:
+      name: Idempotency-Key
+      in: header
+      description: 幂等键，重复请求返回首次结果
+      schema: { type: string }
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: 短期访问令牌，工作台来自 sessionStorage，插件来自 Native Messaging Bootstrap。
+  responses:
+    BadRequest:
+      description: 请求参数或格式错误
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: 未认证或令牌无效
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Origin 校验失败或权限不足
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: 资源冲突或状态非法
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    InternalError:
+      description: 服务器内部错误
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: 错误码
+        message:
+          type: string
+          description: 错误信息
+        details:
+          type: object
+          description: 附加详情
+        request_id:
+          type: string
+          description: 请求追踪 ID
+      required: [code, message, request_id]
+    HealthResponse:
+      type: object
+      properties:
+        agent_version: { type: string }
+        api_version: { type: string }
+        db_schema_version: { type: string }
+        platform_adapter_version: { type: string }
+      required: [agent_version, api_version, db_schema_version]
+    CustomerGrade:
+      type: string
+      enum: [A, B, C]
+    CustomerStatus:
+      type: string
+      enum: [active, inactive]
+    Customer:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        company: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        grade: { $ref: '#/components/schemas/CustomerGrade' }
+        status: { $ref: '#/components/schemas/CustomerStatus' }
+        deleted_at: { type: string, nullable: true, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, name, grade, status, created_at, updated_at]
+    CustomerCreate:
+      type: object
+      properties:
+        name: { type: string }
+        company: { type: string }
+        country: { type: string }
+        source: { type: string }
+        grade: { $ref: '#/components/schemas/CustomerGrade' }
+        status: { $ref: '#/components/schemas/CustomerStatus' }
+      required: [name, grade]
+    CustomerUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        company: { type: string }
+        country: { type: string }
+        source: { type: string }
+        grade: { $ref: '#/components/schemas/CustomerGrade' }
+        status: { $ref: '#/components/schemas/CustomerStatus' }
+    CustomerDetail:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/Customer'
+        - type: object
+          properties:
+            contacts:
+              type: array
+              items: { $ref: '#/components/schemas/Contact' }
+            social_accounts:
+              type: array
+              items: { $ref: '#/components/schemas/SocialAccount' }
+            follow_ups:
+              type: array
+              items: { $ref: '#/components/schemas/FollowUp' }
+            projects:
+              type: array
+              items: { $ref: '#/components/schemas/Project' }
+            pending_reminders:
+              type: array
+              items: { $ref: '#/components/schemas/Reminder' }
+    CustomerListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Customer' }
+        next_cursor: { type: string, nullable: true }
+      required: [items]
+    CustomerMergeRequest:
+      type: object
+      properties:
+        source_id: { type: string }
+        target_id: { type: string }
+        field_resolutions:
+          type: object
+          description: 冲突字段的手动裁决结果
+      required: [source_id, target_id]
+    Contact:
+      type: object
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        name: { type: string }
+        title: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+      required: [id, customer_id, name, created_at]
+    ContactCreate:
+      type: object
+      properties:
+        name: { type: string }
+        title: { type: string }
+        email: { type: string }
+        phone: { type: string }
+      required: [name]
+    ContactUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        title: { type: string }
+        email: { type: string }
+        phone: { type: string }
+    SocialAccount:
+      type: object
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        contact_id: { type: string, nullable: true }
+        platform: { type: string }
+        raw_identifier: { type: string }
+        normalized_identifier: { type: string }
+        manually_bound: { type: boolean }
+        created_at: { type: string, format: date-time }
+      required: [id, customer_id, platform, raw_identifier, normalized_identifier, manually_bound, created_at]
+    SocialAccountCreate:
+      type: object
+      properties:
+        platform: { type: string }
+        raw_identifier: { type: string }
+        contact_id: { type: string }
+      required: [platform, raw_identifier]
+    Binding:
+      type: object
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        platform: { type: string }
+        raw_identifier: { type: string }
+        normalized_identifier: { type: string }
+        manually_bound: { type: boolean }
+        created_at: { type: string, format: date-time }
+      required: [id, customer_id, platform, raw_identifier, normalized_identifier, manually_bound, created_at]
+    MatchResolveRequest:
+      type: object
+      properties:
+        platform: { type: string }
+        raw_identifier: { type: string }
+      required: [platform, raw_identifier]
+    MatchResolveResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [unique, multiple, none]
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/Customer' }
+        customer: { $ref: '#/components/schemas/Customer' }
+      required: [status]
+    MatchBindRequest:
+      type: object
+      properties:
+        platform: { type: string }
+        raw_identifier: { type: string }
+        customer_id: { type: string }
+      required: [platform, raw_identifier, customer_id]
+    MatchUnbindRequest:
+      type: object
+      properties:
+        platform: { type: string }
+        raw_identifier: { type: string }
+      required: [platform, raw_identifier]
+    FollowUpType:
+      type: string
+      enum: [call, email, chat, visit, note, message]
+    MessageDirection:
+      type: string
+      enum: [inbound, outbound]
+    FollowUp:
+      type: object
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        project_id: { type: string, nullable: true }
+        type: { $ref: '#/components/schemas/FollowUpType' }
+        note: { type: string, nullable: true }
+        message_body: { type: string, nullable: true }
+        message_direction: { $ref: '#/components/schemas/MessageDirection', nullable: true }
+        occurred_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+      required: [id, customer_id, type, occurred_at, created_at]
+    FollowUpCreate:
+      type: object
+      properties:
+        customer_id: { type: string }
+        project_id: { type: string }
+        type: { $ref: '#/components/schemas/FollowUpType' }
+        note: { type: string }
+        message_body: { type: string }
+        message_direction: { $ref: '#/components/schemas/MessageDirection' }
+        occurred_at: { type: string, format: date-time }
+      required: [customer_id, type, occurred_at]
+    FollowUpUpdate:
+      type: object
+      properties:
+        project_id: { type: string }
+        type: { $ref: '#/components/schemas/FollowUpType' }
+        note: { type: string }
+        message_body: { type: string }
+        message_direction: { $ref: '#/components/schemas/MessageDirection' }
+        occurred_at: { type: string, format: date-time }
+    FollowUpListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FollowUp' }
+        next_cursor: { type: string, nullable: true }
+      required: [items]
+    ReminderType:
+      type: string
+      enum: [fixed_time, waiting_reply, paused]
+    ReminderStatus:
+      type: string
+      enum: [pending, completed, snoozed, ignored, overdue, replied]
+    ReminderPriority:
+      type: string
+      enum: [low, normal, high, urgent]
+    Reminder:
+      type: object
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        project_id: { type: string, nullable: true }
+        type: { $ref: '#/components/schemas/ReminderType' }
+        status: { $ref: '#/components/schemas/ReminderStatus' }
+        due_at: { type: string, format: date-time }
+        priority: { $ref: '#/components/schemas/ReminderPriority' }
+        last_notified_at: { type: string, nullable: true, format: date-time }
+        snooze_until: { type: string, nullable: true, format: date-time }
+        resolution: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, customer_id, type, status, due_at, priority, created_at, updated_at]
+    ReminderCreate:
+      type: object
+      properties:
+        customer_id: { type: string }
+        project_id: { type: string }
+        type: { $ref: '#/components/schemas/ReminderType' }
+        due_at: { type: string, format: date-time }
+        priority: { $ref: '#/components/schemas/ReminderPriority' }
+      required: [customer_id, type, due_at]
+    ReminderStatusUpdate:
+      type: object
+      properties:
+        status: { $ref: '#/components/schemas/ReminderStatus' }
+        snooze_until: { type: string, format: date-time }
+        resolution: { type: string }
+      required: [status]
+    ReminderListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Reminder' }
+        next_cursor: { type: string, nullable: true }
+      required: [items]
+    ProjectStage:
+      type: string
+      enum: [lead, qualified, proposal, negotiation, closed_won, closed_lost, archived]
+    ProjectGrade:
+      type: string
+      enum: [S, A, B, C]
+    Project:
+      type: object
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        name: { type: string }
+        currency: { type: string }
+        amount: { type: number, nullable: true }
+        probability: { type: integer, minimum: 0, maximum: 100, nullable: true }
+        expected_close_date: { type: string, nullable: true, format: date }
+        stage: { $ref: '#/components/schemas/ProjectStage' }
+        grade: { $ref: '#/components/schemas/ProjectGrade' }
+        closed_reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, customer_id, name, stage, grade, created_at, updated_at]
+    ProjectCreate:
+      type: object
+      properties:
+        customer_id: { type: string }
+        name: { type: string }
+        currency: { type: string }
+        amount: { type: number }
+        probability: { type: integer }
+        expected_close_date: { type: string, format: date }
+        stage: { $ref: '#/components/schemas/ProjectStage' }
+        grade: { $ref: '#/components/schemas/ProjectGrade' }
+      required: [customer_id, name, stage, grade]
+    ProjectUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        currency: { type: string }
+        amount: { type: number }
+        probability: { type: integer }
+        expected_close_date: { type: string, format: date }
+        stage: { $ref: '#/components/schemas/ProjectStage' }
+        grade: { $ref: '#/components/schemas/ProjectGrade' }
+        closed_reason: { type: string }
+    ProjectDetail:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            risks:
+              type: array
+              items: { $ref: '#/components/schemas/Risk' }
+            milestones:
+              type: array
+              items: { $ref: '#/components/schemas/Milestone' }
+            pending_reminders:
+              type: array
+              items: { $ref: '#/components/schemas/Reminder' }
+    ProjectListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Project' }
+        next_cursor: { type: string, nullable: true }
+      required: [items]
+    RiskSeverity:
+      type: string
+      enum: [low, medium, high, critical]
+    RiskStatus:
+      type: string
+      enum: [open, handling, resolved, ignored]
+    Risk:
+      type: object
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        description: { type: string }
+        severity: { $ref: '#/components/schemas/RiskSeverity' }
+        status: { $ref: '#/components/schemas/RiskStatus' }
+        handled_at: { type: string, nullable: true, format: date-time }
+        created_at: { type: string, format: date-time }
+      required: [id, project_id, description, severity, status, created_at]
+    RiskCreate:
+      type: object
+      properties:
+        description: { type: string }
+        severity: { $ref: '#/components/schemas/RiskSeverity' }
+      required: [description, severity]
+    RiskUpdate:
+      type: object
+      properties:
+        status: { $ref: '#/components/schemas/RiskStatus' }
+        severity: { $ref: '#/components/schemas/RiskSeverity' }
+        handled_at: { type: string, format: date-time }
+    Milestone:
+      type: object
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        name: { type: string }
+        date: { type: string, format: date }
+        completed: { type: boolean }
+        created_at: { type: string, format: date-time }
+      required: [id, project_id, name, date, completed, created_at]
+    MilestoneCreate:
+      type: object
+      properties:
+        name: { type: string }
+        date: { type: string, format: date }
+      required: [name, date]
+    ImportParseResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        total_rows: { type: integer }
+        valid_rows: { type: integer }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              field: { type: string }
+              message: { type: string }
+        duplicate_candidates:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              candidates: { type: array, items: { $ref: '#/components/schemas/Customer' } }
+        preview:
+          type: array
+          items: { $ref: '#/components/schemas/Customer' }
+      required: [job_id, total_rows, valid_rows]
+    ImportCommitRequest:
+      type: object
+      properties:
+        job_id: { type: string }
+        resolutions:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              action:
+                type: string
+                enum: [merge, skip, create]
+              target_id: { type: string }
+          description: 重复候选的处理决策
+      required: [job_id]
+    ImportCommitResponse:
+      type: object
+      properties:
+        success: { type: integer }
+        failed: { type: integer }
+        skipped: { type: integer }
+        duplicates: { type: integer }
+      required: [success, failed, skipped, duplicates]
+    ExportRequest:
+      type: object
+      properties:
+        filters:
+          type: object
+          description: 与客户列表一致的筛选条件
+          properties:
+            search: { type: string }
+            grade: { $ref: '#/components/schemas/CustomerGrade' }
+            status: { type: string }
+    BackupCreateRequest:
+      type: object
+      properties:
+        password: { type: string, format: password }
+      required: [password]
+    BackupValidateResponse:
+      type: object
+      properties:
+        valid: { type: boolean }
+        schema_version: { type: string }
+        app_version: { type: string }
+        integrity_ok: { type: boolean }
+      required: [valid, integrity_ok]
+    BackupRestoreResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        rows_restored: { type: integer }
+      required: [success, rows_restored]
+    Settings:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        last_backup_at: { type: string, nullable: true, format: date-time }
+        auto_start: { type: boolean }
+        minimize_to_tray: { type: boolean }
+        backup_reminder_days: { type: integer, nullable: true }
+        locale: { type: string }
+        theme: { type: string }
+      required: [id]
+    SettingsUpdate:
+      type: object
+      properties:
+        last_backup_at: { type: string, format: date-time }
+        auto_start: { type: boolean }
+        minimize_to_tray: { type: boolean }
+        backup_reminder_days: { type: integer }
+        locale: { type: string }
+        theme: { type: string }
+    Stats:
+      type: object
+      properties:
+        total_customers: { type: integer }
+        total_followups: { type: integer }
+        total_reminders: { type: integer }
+        total_projects: { type: integer }
+        pending_reminders: { type: integer }
+        overdue_reminders: { type: integer }
+        completion_rate: { type: number }
+        last_backup_at: { type: string, nullable: true, format: date-time }
+      required: [total_customers, total_followups, total_reminders, total_projects]
+
+security:
+  - BearerAuth: []

@@ -1,0 +1,10 @@
+﻿{
+  "_comment": "DealPilot Native Messaging Host manifest 模板（参考/S1 载荷）。运行时由 Agent 在 %LOCALAPPDATA%\\DealPilot 下生成真实 manifest（含正确 exe 路径与扩展 ID 白名单）并注册到 HKCU。此处占位符 __EXE_PATH__ / __ALLOWED_ORIGINS__ 仅供参考，不被浏览器直接读取。",
+  "name": "com.dealpilot.agent",
+  "description": "DealPilot Agent",
+  "path": "__EXE_PATH__",
+  "type": "stdio",
+  "allowed_origins": [
+    "__ALLOWED_ORIGINS__"
+  ]
+}

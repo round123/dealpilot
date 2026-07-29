@@ -1,0 +1,27 @@
+{
+  "name": "dealpilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "test": "turbo test",
+    "test:e2e": "cross-env PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright test",
+    "test:e2e:install": "cross-env PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright install chromium",
+    "playwright:cli": "cross-env PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright-cli"
+  },
+  "devDependencies": {
+    "@playwright/cli": "0.1.17",
+    "@playwright/test": "1.62.0",
+    "cross-env": "10.1.0",
+    "turbo": "latest",
+    "typescript": "^5.5.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

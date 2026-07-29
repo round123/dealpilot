@@ -1,0 +1,231 @@
+{
+  "$schema": "https://design-tokens.example.com/schema/v1.0",
+  "meta": {
+    "project": "DealPilot",
+    "version": "1.0.0",
+    "description": "DealPilot 外贸经理个人工作台设计 Token 系统（浅色主题，对标 Linear/Notion B2B 工具风格）",
+    "theme": "light",
+    "fontStack": "Inter, Noto Sans SC",
+    "iconLibrary": "lucide-react",
+    "responsiveFloor": "1366x768",
+    "principles": [
+      "禁止 emoji 作为功能图标，统一使用 Lucide React SVG",
+      "禁止紫色到粉色渐变主视觉",
+      "禁止空洞占位文案",
+      "禁止硬编码颜色值（例外 #fff #000），全部通过 Token 引用",
+      "浅色主题，不使用毛玻璃和发光效果"
+    ]
+  },
+
+  "color": {
+    "primary": {
+      "default": "#2563eb",
+      "hover": "#1d4ed8",
+      "active": "#1e40af",
+      "light": "#dbeafe",
+      "lighter": "#eff6ff",
+      "dark": "#1e3a8a",
+      "foreground": "#ffffff"
+    },
+    "accent": {
+      "default": "#4f46e5",
+      "hover": "#4338ca",
+      "light": "#e0e7ff"
+    },
+    "semantic": {
+      "success": {
+        "default": "#16a34a",
+        "light": "#dcfce7",
+        "dark": "#166534",
+        "foreground": "#ffffff"
+      },
+      "warning": {
+        "default": "#d97706",
+        "light": "#fef3c7",
+        "dark": "#92400e",
+        "foreground": "#ffffff"
+      },
+      "error": {
+        "default": "#dc2626",
+        "light": "#fee2e2",
+        "dark": "#991b1b",
+        "foreground": "#ffffff"
+      },
+      "info": {
+        "default": "#2563eb",
+        "light": "#dbeafe",
+        "dark": "#1e3a8a",
+        "foreground": "#ffffff"
+      }
+    },
+    "neutral": {
+      "gray-50": "#f8fafc",
+      "gray-100": "#f1f5f9",
+      "gray-200": "#e2e8f0",
+      "gray-300": "#cbd5e1",
+      "gray-400": "#94a3b8",
+      "gray-500": "#64748b",
+      "gray-600": "#475569",
+      "gray-700": "#334155",
+      "gray-800": "#1e293b",
+      "gray-900": "#0f172a"
+    },
+    "background": {
+      "page": "#f8fafc",
+      "card": "#ffffff",
+      "hover": "#f1f5f9",
+      "active": "#e2e8f0",
+      "sidebar": "#ffffff",
+      "sidebar-active": "#eff6ff",
+      "overlay": "rgba(15, 23, 42, 0.40)"
+    },
+    "text": {
+      "primary": "#0f172a",
+      "secondary": "#475569",
+      "tertiary": "#64748b",
+      "disabled": "#cbd5e1",
+      "inverse": "#ffffff",
+      "link": "#2563eb",
+      "link-hover": "#1d4ed8"
+    },
+    "border": {
+      "default": "#e2e8f0",
+      "strong": "#cbd5e1",
+      "focus": "#2563eb",
+      "subtle": "#f1f5f9"
+    },
+    "grade": {
+      "a": "#16a34a",
+      "b": "#2563eb",
+      "c": "#64748b",
+      "s": "#4f46e5"
+    },
+    "stage": {
+      "需求确认": "#64748b",
+      "方案/样品": "#2563eb",
+      "报价": "#4f46e5",
+      "谈判": "#d97706",
+      "成交": "#16a34a",
+      "失单": "#dc2626"
+    }
+  },
+
+  "font": {
+    "family": {
+      "sans": "Inter, \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+      "mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace"
+    },
+    "size": {
+      "xs": "12px",
+      "sm": "14px",
+      "base": "16px",
+      "lg": "18px",
+      "xl": "20px",
+      "2xl": "24px",
+      "3xl": "30px",
+      "4xl": "36px"
+    },
+    "weight": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    },
+    "lineHeight": {
+      "tight": 1.25,
+      "normal": 1.5,
+      "relaxed": 1.75
+    },
+    "letterSpacing": {
+      "tight": "-0.01em",
+      "normal": "0",
+      "wide": "0.025em"
+    }
+  },
+
+  "spacing": {
+    "0": "0",
+    "1": "4px",
+    "2": "8px",
+    "3": "12px",
+    "4": "16px",
+    "5": "20px",
+    "6": "24px",
+    "8": "32px",
+    "10": "40px",
+    "12": "48px",
+    "16": "64px"
+  },
+
+  "radius": {
+    "none": "0",
+    "sm": "4px",
+    "md": "6px",
+    "lg": "8px",
+    "xl": "12px",
+    "2xl": "16px",
+    "full": "9999px"
+  },
+
+  "shadow": {
+    "xs": "0 1px 2px 0 rgba(15, 23, 42, 0.05)",
+    "sm": "0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.06)",
+    "md": "0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.05)",
+    "lg": "0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.05)",
+    "xl": "0 20px 25px -5px rgba(15, 23, 42, 0.10), 0 8px 10px -6px rgba(15, 23, 42, 0.05)"
+  },
+
+  "icon": {
+    "library": "lucide-react",
+    "size": {
+      "inline": "16px",
+      "button": "20px",
+      "standalone": "24px"
+    },
+    "strokeWidth": {
+      "default": 1.75,
+      "bold": 2.25
+    }
+  },
+
+  "layout": {
+    "breakpoint": {
+      "floor": "1366x768",
+      "desktop": "1440px",
+      "wide": "1920px"
+    },
+    "shell": {
+      "sidebarWidth": "240px",
+      "sidebarCollapsedWidth": "56px",
+      "headerHeight": "56px",
+      "contentMaxWidth": "1280px",
+      "popupWidth": "360px",
+      "popupHeight": "480px",
+      "floatingWidgetWidth": "320px"
+    },
+    "zIndex": {
+      "base": 0,
+      "dropdown": 100,
+      "sticky": 200,
+      "floating": 300,
+      "overlay": 400,
+      "modal": 500,
+      "toast": 600,
+      "shadowDomHost": 2147483000
+    }
+  },
+
+  "motion": {
+    "duration": {
+      "instant": "0ms",
+      "fast": "120ms",
+      "normal": "200ms",
+      "slow": "320ms"
+    },
+    "easing": {
+      "standard": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "decelerate": "cubic-bezier(0, 0, 0.2, 1)",
+      "accelerate": "cubic-bezier(0.4, 0, 1, 1)"
+    }
+  }
+}
