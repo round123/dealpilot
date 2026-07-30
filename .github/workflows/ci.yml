@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test Edge handler without network access
+        run: >-
+          node --experimental-strip-types --test
+          supabase/functions/purge-expired-customers/handler.test.ts
+      - run: pnpm type-check
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  cloud-demo-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: .playwright-browsers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm test:e2e:install
+      - name: Run Cloud demo end-to-end tests
+        run: pnpm --filter @dealpilot/cloud test:e2e:demo
+
+  database-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: .playwright-browsers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.110.0
+      - run: pnpm install --frozen-lockfile
+      - run: supabase start
+      - run: supabase db reset
+      - name: Verify schema security invariants
+        run: >-
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres
+          -v ON_ERROR_STOP=1
+          -f supabase/tests/schema_security.sql
+      - name: Verify two-user isolation and Customer RPCs
+        run: >-
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres
+          -v ON_ERROR_STOP=1
+          -f supabase/tests/personal_isolation.sql
+      - name: Export local Supabase public settings
+        shell: bash
+        run: |
+          source <(supabase status -o env)
+          echo "SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: pnpm test:e2e:install
+      - name: Start Cloud against local Supabase
+        shell: bash
+        run: |
+          VITE_SUPABASE_URL="$SUPABASE_URL" \
+          VITE_SB_PUBLISHABLE_KEY="$SUPABASE_ANON_KEY" \
+          nohup pnpm --filter @dealpilot/cloud exec vite \
+            --host 127.0.0.1 --port 4188 \
+            > /tmp/dealpilot-cloud.log 2>&1 &
+
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4188/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/dealpilot-cloud.log
+          exit 1
+      - name: Start Customer purge Edge Function with JWT verification
+        shell: bash
+        run: |
+          nohup supabase functions serve purge-expired-customers \
+            > /tmp/dealpilot-edge.log 2>&1 &
+
+          for attempt in {1..60}; do
+            status_code="$(curl --silent --output /dev/null \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "apikey: $SUPABASE_ANON_KEY" \
+              --header "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              "$SUPABASE_URL/functions/v1/purge-expired-customers")"
+            if [ "$status_code" = "403" ]; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/dealpilot-edge.log
+          exit 1
+      - name: Verify browser and API user isolation
+        shell: bash
+        run: |
+          source <(supabase status -o env)
+          SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
+            pnpm --filter @dealpilot/cloud test:e2e:supabase
+      - name: Print local service logs after failure
+        if: failure()
+        shell: bash
+        run: |
+          cat /tmp/dealpilot-cloud.log 2>/dev/null || true
+          cat /tmp/dealpilot-edge.log 2>/dev/null || true

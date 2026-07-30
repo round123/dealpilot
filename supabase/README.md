@@ -1,0 +1,87 @@
+# DealPilot Supabase baseline
+
+This directory derives its CRM vocabulary and local Supabase layout from
+[marmelab/atomic-crm](https://github.com/marmelab/atomic-crm) at commit
+`167a4cdb652b1ab2b4b030831cfa7adcf2099321` (MIT).
+
+DealPilot intentionally does not copy Atomic CRM's organization-wide RLS
+policies. Every business record belongs to `owner_user_id`, all authenticated
+access is checked against `auth.uid()`, and parent/child relationships include
+the owner in their foreign keys.
+
+The private `attachments` bucket follows the same rule. Object names must start
+with the authenticated user ID (`<auth.uid()>/<object path>`); paths without
+that prefix are rejected by Storage RLS.
+
+The first migration is a clean-database baseline. Verify it locally with:
+
+```powershell
+supabase start
+supabase db reset
+psql postgres://postgres:postgres@127.0.0.1:54322/postgres `
+  -v ON_ERROR_STOP=1 `
+  -f supabase/tests/schema_security.sql
+psql postgres://postgres:postgres@127.0.0.1:54322/postgres `
+  -v ON_ERROR_STOP=1 `
+  -f supabase/tests/personal_isolation.sql
+```
+
+Both SQL checks are transactional and leave no fixture data behind.
+`schema_security.sql` inspects PostgreSQL catalogs for schema drift in RLS,
+owner columns and policies, parent/child foreign keys, scoped unique indexes,
+function grants, anonymous access, and Storage policies. The behavioral
+`personal_isolation.sql` check covers two-user RLS isolation, forged ownership,
+cross-owner foreign keys, and the customer soft-delete, restore, and merge
+RPCs. It also verifies that a reminder edited after customer deletion is not
+overwritten during restore.
+
+Customer command and detail RPCs return a single success envelope:
+`{"data": ...}`. `get_customer_detail` includes contacts, social accounts,
+deals, the 10 most recent follow-ups, and open reminders. Missing, deleted, or
+cross-owner customers use SQLSTATE `P0002`; the API client is responsible for
+normalizing PostgREST errors.
+
+Customers remain restorable for 30 days. Expired deletion uses a durable queue:
+
+1. `purge_expired_customers` snapshots every referenced attachment path into
+   `customer_purge_jobs`; despite its compatibility name, this RPC only queues.
+2. The `purge-expired-customers` Edge Function leases jobs and removes Storage
+   objects in replay-safe batches.
+3. `complete_customer_purge_job` locks every path-bearing row and takes a final
+   snapshot. New paths move the job back to `retry`; a stable snapshot allows
+   the Customer delete and relational FK cascades to commit atomically.
+4. Storage or RPC failures keep the Customer and queue row, record the error,
+   and retry with bounded exponential backoff. Completed queue rows remain as
+   operational evidence and are never reclaimed.
+
+The queue deliberately has no Customer foreign key, so its object paths and
+retry state survive the cascade. It has forced RLS, no policies, and no direct
+table grants. The queue RPCs are `SECURITY DEFINER`, use an empty search path,
+and are executable only by `service_role`. Browser roles cannot queue, claim,
+complete, fail, or inspect cleanup jobs.
+
+Run the Edge authorization tests and deploy with:
+
+```powershell
+deno test supabase/functions/purge-expired-customers/auth.test.ts
+node --experimental-strip-types --test `
+  supabase/functions/purge-expired-customers/handler.test.ts
+supabase functions deploy purge-expired-customers
+```
+
+The handler test uses an injected in-memory client and never sends a network
+request. It covers method and role rejection, invalid request input, sanitized
+internal failures, and request ID propagation.
+
+Create an hourly or daily Supabase Cron schedule that sends `POST` to
+`/functions/v1/purge-expired-customers`. Store the service-role token in the
+scheduler's Secret/Vault integration and send it only as the `Authorization:
+Bearer ...` header. Never place it in a migration, request body, response, or
+log. The function must retain `verify_jwt = true`: the Edge gateway verifies
+the signature, then the function rejects any JWT whose role is not
+`service_role` before constructing its service client.
+
+The optional body accepts `cutoff`, `enqueue_limit` (1-500), and `claim_limit`
+(1-100). An empty JSON body uses the 30-day cutoff and bounded defaults. Cron
+overlap is safe because enqueue is unique by Customer and claims use row locks
+with `SKIP LOCKED`; abandoned leases become claimable again after 15 minutes.

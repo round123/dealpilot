@@ -12,6 +12,9 @@ data
 .env
 .env.local
 .playwright-browsers
+.playwright-cli/
+.vitest-attachments/
+__screenshots__/
 playwright-report
 test-results
 blob-report
