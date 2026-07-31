@@ -75,7 +75,7 @@ export const UsageMetricsCard = () => {
           <Metric
             label="客户自动匹配正确率"
             metric={metrics?.match_accuracy}
-            note="代理值：按未被改绑的自动唯一匹配计算，并非人工逐条确认；目标 95%"
+            note="仅统计已明确确认或纠正的自动匹配，未评价样本不进入分母；目标 95%"
           />
           <Metric
             label="提醒处理率"

@@ -104,6 +104,33 @@ test("本地 Customer 完整行为在桌面端和移动端保持一致", async (
     }
   });
 
+  await test.step("客户详情可维护社媒账号并在刷新后保持一致", async () => {
+    const socialAccounts = page.getByRole("region", {
+      name: "社媒账号",
+      exact: true,
+    });
+    await socialAccounts.getByRole("button", { name: "添加账号" }).click();
+    await socialAccounts.getByLabel("平台").selectOption("telegram");
+    await socialAccounts.getByLabel("账号标识").fill(`@buyer_${suffix}`);
+    await socialAccounts.getByRole("button", { name: "保存账号" }).click();
+    await expect(socialAccounts.getByText(`@buyer_${suffix}`)).toBeVisible();
+
+    await page.reload();
+    const refreshedSocialAccounts = page.getByRole("region", {
+      name: "社媒账号",
+      exact: true,
+    });
+    await expect(
+      refreshedSocialAccounts.getByText(`@buyer_${suffix}`),
+    ).toBeVisible();
+    await refreshedSocialAccounts
+      .getByRole("button", { name: `删除账号 @buyer_${suffix}` })
+      .click();
+    await expect(
+      refreshedSocialAccounts.getByText("暂无社媒账号", { exact: true }),
+    ).toBeVisible();
+  });
+
   await test.step("软删除后客户离开活动列表并进入回收站", async () => {
     const actions = page.getByRole("region", {
       name: "客户操作",

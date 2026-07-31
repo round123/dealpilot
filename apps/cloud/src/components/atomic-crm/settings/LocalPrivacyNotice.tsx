@@ -14,8 +14,16 @@ import {
 } from "@/components/ui/dialog";
 
 import { useLocalDataOperations } from "../providers/localDataOperations";
+import { ExtensionInstallGuide } from "./ExtensionInstallGuide";
 
 export const LOCAL_PRIVACY_NOTICE_KEY = "dealpilot.local-privacy-notice.v1";
+
+export const LocalPrivacyGuard = ({ children }: { children: ReactNode }) => (
+  <>
+    <LocalPrivacyNotice firstUse />
+    {children}
+  </>
+);
 
 export const LocalPrivacyNotice = ({ firstUse = false }: { firstUse?: boolean }) => {
   const operations = useLocalDataOperations();
@@ -85,6 +93,7 @@ const PrivacyContent = ({ dataPath }: { dataPath: string }) => (
       nativeMessaging 用于连接本地 Agent，storage 保存本机配对配置，activeTab 与 alarms
       用于当前标签页交互和定时刷新。DealPilot 不批量抓取历史对话，也不自动发送、修改或删除平台消息。
     </NoticeItem>
+    <ExtensionInstallGuide />
     <NoticeItem icon={Database} title="本地保存内容">
       客户、联系人、社媒账号、项目、跟进、提醒以及用户主动标记的单条消息正文保存在本地 SQLite。
       清除浏览器数据或卸载扩展不会删除这些业务数据，但扩展需要重新配对。

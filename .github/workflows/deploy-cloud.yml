@@ -1,0 +1,107 @@
+name: Deploy WebCloud
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-cloud.yml"
+      - "apps/cloud/**"
+      - "packages/api-client/**"
+      - "packages/shared/**"
+      - "supabase/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: webcloud-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    name: Deploy Supabase backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.110.0
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$SUPABASE_DB_PASSWORD"
+          test -n "$SUPABASE_PROJECT_REF"
+      - name: Link production project
+        run: >-
+          supabase link
+          --project-ref "$SUPABASE_PROJECT_REF"
+          --password "$SUPABASE_DB_PASSWORD"
+      - name: Apply database migrations
+        run: >-
+          supabase db push
+          --linked
+          --include-all
+          --password "$SUPABASE_DB_PASSWORD"
+      - name: Deploy Edge Functions
+        run: >-
+          supabase functions deploy purge-expired-customers
+          --project-ref "$SUPABASE_PROJECT_REF"
+          --use-api
+
+  build-web:
+    name: Build Web/PWA
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_IS_DEMO: "false"
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SB_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
+      VITE_ATTACHMENTS_BUCKET: attachments
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/configure-pages@v5
+      - name: Validate public backend configuration
+        shell: bash
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SB_PUBLISHABLE_KEY"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dealpilot/cloud build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/cloud/dist
+
+  deploy-web:
+    name: Deploy GitHub Pages
+    needs: build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -11,6 +11,8 @@ DealPilot V1 已实现 React/Vite Web、Bun/Hono Agent、WXT 扩展和 SQLite �
 
 产品范围同时收敛为个人云 CRM。首版用户需要账号、跨设备访问和云端恢复，不需要 workspace、团队成员、角色、邀请或企业 SSO。公共云仍必须隔离不同账号的数据。
 
+本地开发使用与云端等价的 PostgreSQL/Supabase 实例：通过 Docker Desktop 和 Supabase CLI 启动本地数据库、Auth、Storage 及 Edge Functions，复用同一套 migration、RLS、事务函数和 API 契约。该实例只用于开发、测试和验收，不代表生产云环境，也不把 SQLite 作为云端开发模式的事实源。
+
 Atomic CRM 不能原样上线：其当前业务表没有个人所有权字段，RLS 策略大量允许所有 authenticated 用户访问；联系人合并由前端编排多个请求；Customer 软删除、恢复和提醒联动也不满足 DealPilot 行为。
 
 ## Decision
@@ -23,7 +25,7 @@ Atomic CRM 不能原样上线：其当前业务表没有个人所有权字段，
 6. 新增 `packages/api-client` 作为 Web/PWA/mobile/extension 的唯一云端网络边界，包装 Supabase Auth、PostgREST、RPC 和 Edge Functions，并负责运行时解析、取消和错误归一化。
 7. Atomic React Admin DataProvider 必须依赖该客户端适配器；业务组件不得直接调用 `fetch` 或 Supabase SDK。
 8. Customer 合并、软删除、恢复、提醒状态联动和迁移提交必须在数据库事务内完成。
-9. 现有 Agent 保留 SQLite 迁移、托盘、通知和 Native Messaging；用户确认迁移后不再承担主业务 API 或主数据库职责。
+9. 现有 Agent 在 V2 仅保留 SQLite 到 PostgreSQL 的迁移、迁移前后快照、数据核对、取证导出和失败重试工具；用户确认迁移后不再承担云端业务 API 或主数据库职责。托盘、系统通知和 Native Messaging 属于 V1 本地兼容代码，不再是 V2 当前职责或云端部署依赖；Web/PWA 是 V2 唯一主界面。
 10. PostgreSQL 在用户确认迁移后永久成为唯一事实源，不建设回写 SQLite 的同步链路。
 
 ## Dependency Rules
@@ -54,6 +56,7 @@ PostgreSQL constraints + RLS + transaction functions
 - 保持 React/Vite/TypeScript 技术连续性，避免同时维护自建 NestJS API。
 - PostgreSQL、migration 和标准 SQL 仍掌握在仓库中，可限制 Supabase 平台绑定。
 - 个人所有权模型显著低于团队 workspace/角色系统的复杂度。
+- 本地 PostgreSQL/Supabase 等价实例复现云端认证、RLS、事务和 API 路径，Web/PWA 可以在上云前完成主要验收。
 
 ### Negative
 
@@ -61,7 +64,7 @@ PostgreSQL constraints + RLS + transaction functions
 - Atomic 与 V1 数据模型不同，需要明确映射和行为对照。
 - Supabase/PostgREST 与原计划 OpenAPI 包络不同，需要自有客户端适配层稳定调用语义。
 - 上游升级可能与 DealPilot 的 schema、认证和业务事务改造冲突。
-- 本地开发依赖 Docker Desktop 和 Supabase CLI。
+- 本地云端开发依赖 Docker Desktop 和 Supabase CLI；V2 Web/PWA 不依赖 Agent 的托盘、系统通知或 Native Messaging，Agent 迁移工具也不能替代云端 API 验收。
 
 ## Rejected Alternatives
 
@@ -73,4 +76,13 @@ PostgreSQL constraints + RLS + transaction functions
 
 ## Validation
 
-本决策在 P3 Customer 纵向切片后复核。只有在两用户隔离矩阵、Customer 行为等价、原子合并/删除/恢复、唯一客户端边界、SQLite 迁移预演和应用版本回滚全部通过后，才允许批量迁移其他领域或启动移动端。
+本决策在本地 PostgreSQL/Supabase 等价实例上复核，验证表如下：
+
+| 验证面 | 通过条件 |
+|------|------|
+| 本地云端等价实例 | Docker/Supabase CLI 可启动 PostgreSQL、Auth、Storage 和所需函数；migration、RLS、事务函数与目标云端配置一致 |
+| 主界面 | Web/PWA 在本地实例完成登录、Customer 纵向切片和错误/权限验收；不以 V1 工作台、托盘、系统通知或 Native Messaging 作为 V2 通过条件 |
+| Agent 边界 | Agent 只能执行 SQLite 迁移、快照、核对、取证和重试；确认迁移后 PostgreSQL 是唯一事实源，不提供反向写回 |
+| P3 门槛 | 两用户隔离矩阵、Customer 行为等价、原子合并/删除/恢复、唯一客户端边界、SQLite 迁移预演和应用版本回滚全部通过 |
+
+只有上述 P3 门槛全部通过后，才允许批量迁移其他领域或启动移动端；正式云环境部署、试点和商店审核另行验收。

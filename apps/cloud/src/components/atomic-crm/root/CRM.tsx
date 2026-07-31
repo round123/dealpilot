@@ -73,6 +73,7 @@ import {
   type LocalDataOperations,
 } from "../providers/localDataOperations";
 import { CrmProviderCapabilitiesProvider } from "../providers/capabilities";
+import { LocalPrivacyGuard } from "../settings/LocalPrivacyNotice";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 const defaultQueryClient = createCloudQueryClient();
@@ -235,25 +236,27 @@ export const CRM = ({
 
   return (
     <LocalDataOperationsProvider operations={localDataOperations}>
-      <ImportOperationsProvider operations={importOperations}>
-        <CustomerOperationsProvider operations={resolvedCustomerOperations}>
-          <CrmProviderCapabilitiesProvider
-            capabilities={dataProvider.capabilities}
-          >
-            <ResponsiveAdmin
-              dataProvider={dataProvider}
-              authProvider={wrappedAuthProvider}
-              i18nProvider={i18nProvider}
-              store={store}
-              queryClient={queryClient}
-              loginPage={StartPage}
-              requireAuth
-              disableTelemetry={true}
-              {...rest}
-            />
-          </CrmProviderCapabilitiesProvider>
-        </CustomerOperationsProvider>
-      </ImportOperationsProvider>
+      <LocalPrivacyGuard>
+        <ImportOperationsProvider operations={importOperations}>
+          <CustomerOperationsProvider operations={resolvedCustomerOperations}>
+            <CrmProviderCapabilitiesProvider
+              capabilities={dataProvider.capabilities}
+            >
+              <ResponsiveAdmin
+                dataProvider={dataProvider}
+                authProvider={wrappedAuthProvider}
+                i18nProvider={i18nProvider}
+                store={store}
+                queryClient={queryClient}
+                loginPage={StartPage}
+                requireAuth
+                disableTelemetry={true}
+                {...rest}
+              />
+            </CrmProviderCapabilitiesProvider>
+          </CustomerOperationsProvider>
+        </ImportOperationsProvider>
+      </LocalPrivacyGuard>
     </LocalDataOperationsProvider>
   );
 };
@@ -303,6 +306,7 @@ const DesktopAdmin = (
       <Resource name="reminders" {...reminders} />
       <Resource name="deal_risks" />
       <Resource name="deal_milestones" />
+      <Resource name="social_accounts" />
       <Resource name="contact_notes" />
       <Resource name="deal_notes" />
       <Resource name="tasks" />
@@ -375,6 +379,7 @@ const MobileAdmin = (
         <Resource name="reminders" {...reminders} />
         <Resource name="deal_risks" />
         <Resource name="deal_milestones" />
+        <Resource name="social_accounts" />
         <Resource name="tasks" list={MobileTasksList} />
       </Admin>
     </PersistQueryClientProvider>

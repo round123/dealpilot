@@ -41,6 +41,26 @@ deals, the 10 most recent follow-ups, and open reminders. Missing, deleted, or
 cross-owner customers use SQLSTATE `P0002`; the API client is responsible for
 normalizing PostgREST errors.
 
+## Cloud deployment
+
+`.github/workflows/deploy-cloud.yml` deploys this directory to a linked
+Supabase project before publishing the Web/PWA artifact to GitHub Pages. The
+workflow intentionally fails when any required value is missing; production
+must never fall back to the browser-only demo provider.
+
+Configure these GitHub repository secrets:
+
+- `SUPABASE_ACCESS_TOKEN`: a scoped Supabase personal access token used only by
+  the deployment job.
+- `SUPABASE_DB_PASSWORD`: the production project's database password.
+- `SUPABASE_PROJECT_REF`: the production project reference.
+- `VITE_SUPABASE_URL`: the production project API URL.
+- `VITE_SB_PUBLISHABLE_KEY`: the project's public publishable/anon key.
+
+GitHub Pages hosts only the static Web/PWA files. PostgreSQL, Auth, Storage and
+Edge Functions continue to run in Supabase; GitHub Actions is only the release
+runner and is not treated as an application server.
+
 Customers remain restorable for 30 days. Expired deletion uses a durable queue:
 
 1. `purge_expired_customers` snapshots every referenced attachment path into

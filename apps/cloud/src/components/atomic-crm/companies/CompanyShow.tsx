@@ -66,6 +66,10 @@ const CompanyShowContent = () => {
       detail={detailQuery.data}
       isPending={detailQuery.isPending}
       isError={detailQuery.isError}
+      customerId={record?.id}
+      onDetailChanged={() => {
+        void detailQuery.refetch();
+      }}
     />
   );
 

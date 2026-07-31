@@ -15,9 +15,11 @@ vi.mock("ra-core", async (importOriginal) => {
 
 import {
   LOCAL_PRIVACY_NOTICE_KEY,
+  LocalPrivacyGuard,
   LocalPrivacyNotice,
 } from "./LocalPrivacyNotice";
 import { UsageMetricsCard } from "./UsageMetricsCard";
+import { ExtensionInstallGuide } from "./ExtensionInstallGuide";
 
 describe("local privacy onboarding and usage metrics", () => {
   beforeEach(() => {
@@ -47,6 +49,22 @@ describe("local privacy onboarding and usage metrics", () => {
     expect(localStorage.getItem(LOCAL_PRIVACY_NOTICE_KEY)).toBe("accepted");
   });
 
+  it("guards first entry even when the rendered page is a deep link", async () => {
+    const screen = await render(
+      <LocalDataOperationsProvider operations={operations()}>
+        <LocalPrivacyGuard>
+          <main>客户详情深链</main>
+        </LocalPrivacyGuard>
+      </LocalDataOperationsProvider>,
+    );
+
+    await expect.element(screen.getByText("客户详情深链")).toBeVisible();
+    await expect.element(screen.getByRole("dialog")).toBeVisible();
+    await expect.element(screen.getByRole("button", {
+      name: "我已了解，开始使用",
+    })).toBeVisible();
+  });
+
   it("keeps the notice available in settings and exports aggregate-only metrics", async () => {
     const exportUsageMetrics = vi.fn().mockResolvedValue(
       new Blob(["{}"], { type: "application/json" }),
@@ -67,6 +85,9 @@ describe("local privacy onboarding and usage metrics", () => {
     await expect.element(screen.getByText("90.0%")).toBeVisible();
     await expect.element(screen.getByText("95.0%")).toBeVisible();
     await expect.element(screen.getByText("75.0%")).toBeVisible();
+    await expect.element(screen.getByText(
+      "仅统计已明确确认或纠正的自动匹配，未评价样本不进入分母；目标 95%",
+    )).toBeVisible();
     await screen.getByRole("button", { name: "导出脱敏统计报告" }).click();
 
     expect(exportUsageMetrics).toHaveBeenCalledTimes(1);
@@ -74,6 +95,37 @@ describe("local privacy onboarding and usage metrics", () => {
       "脱敏统计报告已导出，未上传任何数据",
       { type: "success" },
     );
+  });
+
+  it("opens configured browser stores from the extension guide", async () => {
+    const screen = await render(
+      <ExtensionInstallGuide urls={{
+        chrome: "https://chromewebstore.google.com/detail/dealpilot/example",
+        edge: "https://microsoftedge.microsoft.com/addons/detail/dealpilot/example",
+      }} />,
+    );
+
+    await expect.element(screen.getByRole("link", { name: /Chrome Web Store/ }))
+      .toHaveAttribute("href", "https://chromewebstore.google.com/detail/dealpilot/example");
+    await expect.element(screen.getByRole("link", { name: /Edge Add-ons/ }))
+      .toHaveAttribute("href", "https://microsoftedge.microsoft.com/addons/detail/dealpilot/example");
+  });
+
+  it("falls back to unpacked-extension and re-pair instructions", async () => {
+    const screen = await render(
+      <ExtensionInstallGuide urls={{
+        chrome: "http://insecure.example/extension",
+        edge: "https://example.com/not-the-edge-store",
+      }} />,
+    );
+
+    await expect.element(screen.getByText("商店版本尚未配置", { exact: false }))
+      .toBeVisible();
+    await expect.element(screen.getByText(/Programs\\DealPilot\\extension/))
+      .toBeVisible();
+    await expect.element(screen.getByText("安装或重新安装扩展后会自动配对", { exact: false }))
+      .toBeVisible();
+    await expect.element(screen.getByRole("link")).not.toBeInTheDocument();
   });
 });
 

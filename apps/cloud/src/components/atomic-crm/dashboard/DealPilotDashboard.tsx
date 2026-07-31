@@ -15,7 +15,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import type { Company, Deal, FollowUp } from "../types";
 import { LocalBackupStatus } from "../settings/LocalBackupStatus";
-import { LocalPrivacyNotice } from "../settings/LocalPrivacyNotice";
 import { isUnscheduledPausedReminder } from "../reminders/reminderContract";
 
 const PAGE_SIZE = 10_000;
@@ -110,7 +109,6 @@ export const DealPilotDashboard = () => {
       </header>
 
       <LocalBackupStatus />
-      <LocalPrivacyNotice firstUse />
 
       <section
         aria-label="业务概览"

@@ -60,6 +60,7 @@ export const ReminderSchema = z.object({
   due_at: z.string(),
   priority: z.string(),
   last_notified_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
   snooze_until: z.string().nullable(),
   resolution: z.string().nullable(),
   pause_reason: z.string().nullable(),

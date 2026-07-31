@@ -8,11 +8,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useTranslate, type TranslateFunction } from "ra-core";
+import {
+  useTranslate,
+  type Identifier,
+  type TranslateFunction,
+} from "ra-core";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CustomerSocialAccounts } from "./CustomerSocialAccounts";
 
 export type CustomerRelatedSummaryData = Pick<
   CustomerDetail,
@@ -27,12 +32,16 @@ interface CustomerRelatedSummaryProps {
   detail: CustomerRelatedSummaryData | undefined;
   isPending: boolean;
   isError: boolean;
+  customerId?: Identifier;
+  onDetailChanged?: () => void;
 }
 
 export const CustomerRelatedSummary = ({
   detail,
   isPending,
   isError,
+  customerId,
+  onDetailChanged,
 }: CustomerRelatedSummaryProps) => {
   const translate = useTranslate();
   const related = (key: string, fallback: string) =>
@@ -85,20 +94,31 @@ export const CustomerRelatedSummary = ({
               );
             })}
           </SummaryGroup>
-          <SummaryGroup
-            title={related("social_accounts", "Social accounts")}
-            icon={Share2}
-            count={detail.social_accounts.length}
-            emptyLabel={related("empty_social_accounts", "No social accounts")}
-          >
-            {detail.social_accounts.slice(0, 3).map((account) => (
-              <SummaryItem
-                key={account.id}
-                primary={account.platform}
-                secondary={account.raw_identifier}
-              />
-            ))}
-          </SummaryGroup>
+          {customerId === undefined ? (
+            <SummaryGroup
+              title={related("social_accounts", "Social accounts")}
+              icon={Share2}
+              count={detail.social_accounts.length}
+              emptyLabel={related(
+                "empty_social_accounts",
+                "No social accounts",
+              )}
+            >
+              {detail.social_accounts.slice(0, 3).map((account) => (
+                <SummaryItem
+                  key={account.id}
+                  primary={account.platform}
+                  secondary={account.raw_identifier}
+                />
+              ))}
+            </SummaryGroup>
+          ) : (
+            <CustomerSocialAccounts
+              customerId={customerId}
+              accounts={detail.social_accounts}
+              onChanged={onDetailChanged ?? (() => undefined)}
+            />
+          )}
           <SummaryGroup
             title={related("deals", "Deals")}
             icon={Handshake}

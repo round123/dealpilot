@@ -98,3 +98,9 @@ export const MatchStatus = {
   MULTIPLE: "multiple",
   NONE: "none",
 } as const;
+
+export const MatchMethod = {
+  MANUAL: "manual",
+  PHONE: "phone",
+  PLATFORM: "platform",
+} as const;
