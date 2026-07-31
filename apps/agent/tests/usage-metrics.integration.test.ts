@@ -31,9 +31,9 @@ test("computes rolling local metrics and exports only anonymized aggregates", as
       minimum_sample: 20,
     });
     expect(result.beforeCorrection.match_accuracy).toMatchObject({
-      numerator: 1,
-      denominator: 1,
-      rate: 1,
+      numerator: 0,
+      denominator: 0,
+      rate: null,
     });
     expect(result.afterSameTargetBind.match_accuracy).toMatchObject({
       numerator: 1,
@@ -70,13 +70,17 @@ test("computes rolling local metrics and exports only anonymized aggregates", as
     expect(result.exportText).not.toContain(result.customerB);
     expect(result.exportText).not.toContain(result.privateCustomerName);
     expect(result.exportText).not.toContain(result.privateMessage);
-    expect(result.report.methodology.match_accuracy).toContain("代理口径");
-    expect(result.report.methodology.match_accuracy).toContain("不代表用户逐条人工确认");
+    expect(result.report.methodology.match_accuracy).toContain("明确确认");
+    expect(result.report.methodology.match_accuracy).toContain("未评价的自动匹配不进入分母");
     expect(result.report.methodology.reminder_handling).toContain(
       "稍后到期重新进入待处理状态仍保留本次处理计数",
     );
 
     expect(result.events).toHaveLength(2);
+    expect(result.events.map((event: any) => event.event_type)).toEqual([
+      "match.auto_corrected",
+      "match.auto_resolved",
+    ]);
     expect(result.events.every((event: any) =>
       event.entity_type === "conversation_hash" && event.entity_id.length === 64
     )).toBe(true);
