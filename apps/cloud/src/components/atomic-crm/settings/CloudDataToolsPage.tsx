@@ -136,7 +136,10 @@ export const CloudDataToolsPage = () => {
       notify("云端备份已恢复，正在刷新工作台", { type: "success" });
       setRestoreTarget(undefined);
       setRestoreConfirmation("");
-      window.setTimeout(() => window.location.assign("/"), 400);
+      window.setTimeout(() => {
+        window.location.hash = "/";
+        window.location.reload();
+      }, 400);
     } catch (error) {
       notify(error instanceof Error ? error.message : "云端备份恢复失败", {
         type: "error",
