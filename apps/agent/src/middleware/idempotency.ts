@@ -6,25 +6,41 @@
 
 import type { Context, Next } from "hono";
 import { IDEMPOTENCY_KEY_TTL_HOURS } from "@dealpilot/shared";
+import { ApiError } from "../errors/api-error";
 
 interface CachedResponse {
   status: number;
-  body: unknown;
-  headers: Record<string, string>;
+  body: Uint8Array;
+  headers: [string, string][];
 }
 
-const idempotencyStore = new Map<string, { response: CachedResponse; expiresAt: number }>();
+interface StoredResponse {
+  response: CachedResponse;
+  expiresAt: number;
+  fingerprint: string;
+}
+
+interface InFlightResponse {
+  fingerprint: string;
+  promise: Promise<CachedResponse>;
+}
+
+const idempotencyStore = new Map<string, StoredResponse>();
+const inFlightStore = new Map<string, InFlightResponse>();
 const TTL_MS = IDEMPOTENCY_KEY_TTL_HOURS * 60 * 60 * 1000;
 
 // 定期清理过期条目
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of idempotencyStore) {
-    if (entry.expiresAt <= now) {
-      idempotencyStore.delete(key);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, entry] of idempotencyStore) {
+      if (entry.expiresAt <= now) {
+        idempotencyStore.delete(key);
+      }
     }
-  }
-}, 60 * 60 * 1000); // 每小时清理一次
+  },
+  60 * 60 * 1000,
+); // 每小时清理一次
 
 export async function idempotencyMiddleware(c: Context, next: Next) {
   const idempotencyKey = c.req.header("Idempotency-Key");
@@ -33,30 +49,70 @@ export async function idempotencyMiddleware(c: Context, next: Next) {
     return;
   }
 
-  const cached = idempotencyStore.get(idempotencyKey);
+  const url = new URL(c.req.url);
+  const scope = `${c.req.method}:${url.pathname}${url.search}:${idempotencyKey}`;
+  const fingerprint = await requestFingerprint(c);
+  const cached = idempotencyStore.get(scope);
   if (cached && cached.expiresAt > Date.now()) {
-    // 返回缓存的响应
-    for (const [key, value] of Object.entries(cached.response.headers)) {
-      c.header(key, value);
+    ensureSameRequest(cached.fingerprint, fingerprint);
+    return replay(cached.response);
+  }
+
+  const inFlight = inFlightStore.get(scope);
+  if (inFlight) {
+    ensureSameRequest(inFlight.fingerprint, fingerprint);
+    return replay(await inFlight.promise);
+  }
+
+  const promise = (async () => {
+    await next();
+    return capture(c.res);
+  })();
+  inFlightStore.set(scope, { fingerprint, promise });
+
+  try {
+    const response = await promise;
+    // Cache successful and client-error responses. Server errors remain retryable.
+    if (response.status >= 200 && response.status < 500) {
+      idempotencyStore.set(scope, {
+        response,
+        fingerprint,
+        expiresAt: Date.now() + TTL_MS,
+      });
     }
-    return c.json(cached.response.body, cached.response.status as 200);
+  } finally {
+    inFlightStore.delete(scope);
   }
+}
 
-  // 执行请求，捕获响应
-  await next();
+async function requestFingerprint(c: Context): Promise<string> {
+  const body = await c.req.raw.clone().arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", body);
+  return `${c.req.header("content-type") ?? ""}:${Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
 
-  // 缓存响应
-  const response: CachedResponse = {
-    status: c.res.status,
-    body: await c.res.clone().json().catch(() => null),
-    headers: {},
+function ensureSameRequest(expected: string, received: string) {
+  if (expected !== received) {
+    throw ApiError.conflict(
+      "Idempotency key was already used with a different request body",
+    );
+  }
+}
+
+async function capture(response: Response): Promise<CachedResponse> {
+  return {
+    status: response.status,
+    body: new Uint8Array(await response.clone().arrayBuffer()),
+    headers: Array.from(response.headers.entries()),
   };
+}
 
-  // 只缓存 2xx 和 4xx（不缓存 5xx，允许重试）
-  if (response.status >= 200 && response.status < 500) {
-    idempotencyStore.set(idempotencyKey, {
-      response,
-      expiresAt: Date.now() + TTL_MS,
-    });
-  }
+function replay(response: CachedResponse): Response {
+  return new Response(response.body.slice(), {
+    status: response.status,
+    headers: response.headers,
+  });
 }

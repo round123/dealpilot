@@ -1,6 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  assertAgentUsedLoopbackOnly,
+  installAgentLoopbackNetworkGuard,
+} from "./agent-loopback-network";
 
 type BrowserDiagnostic = {
   type: "error" | "warning" | "pageerror";
@@ -13,6 +17,7 @@ type CustomerDraft = {
 };
 
 test.beforeEach(async ({ page }) => {
+  await installAgentLoopbackNetworkGuard(page);
   const agentDataDir = process.env.DEALPILOT_AGENT_E2E_DATA_DIR;
   if (!agentDataDir) return;
 
@@ -38,6 +43,18 @@ test.beforeEach(async ({ page }) => {
     .toBe(true);
 
   await page.goto(`/?token=${encodeURIComponent(token!)}#/`);
+
+  const privacyConfirmation = page.getByRole("button", {
+    name: "我已了解，开始使用",
+    exact: true,
+  });
+  await expect(privacyConfirmation).toBeVisible();
+  await privacyConfirmation.click();
+  await expect(privacyConfirmation).toBeHidden();
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  await assertAgentUsedLoopbackOnly(page, testInfo);
 });
 
 test("本地 Customer 完整行为在桌面端和移动端保持一致", async ({

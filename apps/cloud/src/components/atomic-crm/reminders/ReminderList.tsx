@@ -24,10 +24,12 @@ import { SelectInput } from "@/components/admin/select-input";
 import { TextField } from "@/components/admin/text-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { getErrorMessageKey } from "@/components/admin/error-message";
 
 import { invalidateEngagementQueries } from "../engagements/invalidateEngagementQueries";
 import {
   groupReminder,
+  isUnscheduledPausedReminder,
   isReminderOverdue,
   REMINDER_STATUSES,
 } from "./reminderContract";
@@ -172,8 +174,8 @@ export const ReminderRow = ({
       // for every cached list/detail before invalidating on settlement.
       mutationMode: "optimistic",
       retry: false,
-      onError: () =>
-        notify("resources.reminders.notifications.update_failed", {
+      onError: (error) =>
+        notify(getErrorMessageKey(error, "resources.reminders.notifications.update_failed"), {
           _: "提醒更新失败，请稍后重试",
           type: "error",
         }),
@@ -231,8 +233,9 @@ export const ReminderRow = ({
           {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {translate("resources.reminders.fields.due_at", { _: "到期" })}:{" "}
-          {formatDateTime(reminder.snooze_until ?? reminder.due_at)}
+          {isUnscheduledPausedReminder(reminder)
+            ? "未设置重新评估日期"
+            : `${translate("resources.reminders.fields.due_at", { _: "到期" })}: ${formatDateTime(reminder.snooze_until ?? reminder.due_at)}`}
         </p>
         <p className="mt-1 truncate text-xs text-muted-foreground">
           {translate("resources.reminders.fields.company_id", { _: "客户" })}:{" "}

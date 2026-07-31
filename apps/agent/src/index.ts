@@ -17,14 +17,27 @@
  */
 
 import { config } from "./config/config";
-import { acquireSingleInstanceLock, releaseSingleInstanceLock } from "./platform/single-instance";
-import { runMigrations, ensureSchema } from "./db/migrate";
+import {
+  acquireSingleInstanceLock,
+  releaseSingleInstanceLock,
+} from "./platform/single-instance";
+import { runMigrations } from "./db/migrate";
 import { startServer } from "./server";
-import { startReminderScheduler, stopReminderScheduler } from "./scheduler/reminder-scheduler";
-import { startMilestoneScheduler, stopMilestoneScheduler } from "./scheduler/milestone-scheduler";
-import { startCleanupScheduler, stopCleanupScheduler } from "./scheduler/cleanup-scheduler";
+import {
+  startReminderScheduler,
+  stopReminderScheduler,
+} from "./scheduler/reminder-scheduler";
+import {
+  startMilestoneScheduler,
+  stopMilestoneScheduler,
+} from "./scheduler/milestone-scheduler";
+import {
+  startCleanupScheduler,
+  stopCleanupScheduler,
+} from "./scheduler/cleanup-scheduler";
 import { startTray, stopTray } from "./platform/tray";
 import { launchBrowser } from "./platform/browser-launch";
+import { shouldStartTray } from "./platform/tray-policy";
 import {
   isNativeMessagingInvocation,
   runNativeMessagingHost,
@@ -50,14 +63,12 @@ async function main() {
   console.log("[agent] Single instance lock acquired.");
 
   // 2. 数据库迁移
-  try {
-    runMigrations();
-    ensureSchema();
-    console.log("[agent] Database migrations completed.");
-  } catch (err) {
-    console.error("[agent] Migration failed:", err);
-    // 继续启动，schema 可能已存在
-  }
+  const migration = runMigrations();
+  console.log(
+    migration.migrated
+      ? "[agent] Database migrations completed."
+      : "[agent] Database schema is current.",
+  );
 
   // 3. 启动 HTTP 服务器
   await startServer();
@@ -74,9 +85,12 @@ async function main() {
   startCleanupScheduler();
   console.log("[agent] Schedulers started.");
 
-  // 5. 启动托盘（.NET NotifyIcon 子进程；菜单点击经 stdout 通知）
-  if (process.env.DEALPILOT_SKIP_TRAY !== "1") {
-    await startTray({ onOpen: () => launchBrowser(), onQuit: () => shutdown() });
+  // 5. 启动托盘。浏览器工作台没有其它正常退出入口，因此不受旧设置字段影响。
+  if (shouldStartTray()) {
+    await startTray({
+      onOpen: () => launchBrowser(),
+      onQuit: () => shutdown(),
+    });
   }
 
   // 6. 自动打开浏览器

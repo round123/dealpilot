@@ -8,6 +8,13 @@
       "when": 1785311483902,
       "tag": "0000_young_tyger_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785470400000,
+      "tag": "0001_local_data_lifecycle",
+      "breakpoints": true
     }
   ]
 }

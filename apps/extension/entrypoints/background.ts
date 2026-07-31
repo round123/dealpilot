@@ -3,7 +3,7 @@
  *
  * 职责：
  * 1. Native Messaging Bootstrap：通过 chrome.nativeMessaging.connect 连接 DealPilot Agent，获取 API token
- * 2. Token 管理：收到 token 后存入 chrome.storage.local
+ * 2. Token 管理：收到 token 后仅存入 chrome.storage.session
  * 3. 消息桥：Content Script / Popup 之间的消息中转
  * 4. install/update 事件：首次安装引导
  */
@@ -21,6 +21,11 @@ import {
 } from "../src/lib/api-client";
 import { MSG_TYPES, type ExtensionMessage } from "../src/lib/native-messaging";
 import { buildWorkbenchUrl } from "../src/lib/workbench-links";
+import {
+  handleContentAgentRequest,
+  isAllowedContentSender,
+} from "../src/lib/background-content-rpc";
+import { CONTENT_AGENT_REQUEST } from "../src/lib/content-agent-client";
 
 /** Native Messaging 连接名（需与 Agent 注册的 native messaging host name 一致） */
 const NM_HOST_NAME = "com.dealpilot.agent";
@@ -169,38 +174,21 @@ function startTokenRefreshTimer(): void {
  */
 function setupMessageListener(): void {
   chrome.runtime.onMessage.addListener(
-    (message: ExtensionMessage, _sender, sendResponse) => {
+    (message: unknown, sender, sendResponse) => {
       if (!message || typeof message !== "object" || !("type" in message)) {
         return false;
       }
 
-      switch (message.type) {
-        case MSG_TYPES.GET_TOKEN: {
-          // Content Script / Popup 请求 token
-          getStoredToken().then((token) => {
-            if (token) {
-              Promise.all([getAgentPort(), getWorkbenchOrigin()]).then(
-                ([port, workbenchOrigin]) => {
-                sendResponse({
-                  type: MSG_TYPES.TOKEN_RESULT,
-                  token,
-                  port,
-                  workbenchOrigin,
-                });
-                },
-              );
-            } else {
-              // 无 token，尝试刷新
-              requestTokenRefresh();
-              sendResponse({
-                type: MSG_TYPES.TOKEN_ERROR,
-                error: "尚未获取到 API token，请确认 DealPilot Agent 正在运行",
-              });
-            }
-          });
-          return true; // 异步响应
+      if (message.type === CONTENT_AGENT_REQUEST) {
+        if (!isAllowedContentSender(sender)) {
+          sendResponse({ ok: false, error: { code: "FORBIDDEN", status: 403 } });
+          return false;
         }
+        void handleContentAgentRequest(message, sender).then(sendResponse);
+        return true;
+      }
 
+      switch ((message as ExtensionMessage).type) {
         case MSG_TYPES.GET_AGENT_STATUS: {
           // 查询 Agent 连接状态
           getStoredToken().then((token) => {
@@ -255,9 +243,9 @@ export default defineBackground({
   main() {
     console.log(`[DealPilot] Background Service Worker 启动 (v${APP_VERSION})`);
 
-    // Content Script 仍通过扩展隔离世界访问会话级配对信息。
+    // Session storage is restricted to trusted extension pages/background.
     void chrome.storage.session.setAccessLevel({
-      accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS",
+      accessLevel: "TRUSTED_CONTEXTS",
     });
 
     // 1. 连接 Agent（Native Messaging）

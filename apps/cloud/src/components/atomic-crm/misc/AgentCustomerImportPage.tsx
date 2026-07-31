@@ -1,9 +1,9 @@
-import { ApiError } from "@dealpilot/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
   Check,
+  DatabaseBackup,
   Download,
   FileDown,
   UploadCloud,
@@ -42,6 +42,7 @@ import type {
   ImportFieldMapping,
   ImportParseResult,
 } from "../providers/importOperations";
+import { importErrorMessage } from "./importErrorMessage";
 
 type Step = "upload" | "mapping" | "preview" | "result";
 type DuplicateAction = "merge" | "skip" | "new";
@@ -71,6 +72,12 @@ const defaultFieldMappings = [
   },
   { target: "email", label: "邮箱", aliases: ["email", "邮箱"] },
   { target: "phone", label: "电话", aliases: ["phone", "电话"] },
+  { target: "platform", label: "平台", aliases: ["platform", "平台"] },
+  {
+    target: "platform_account",
+    label: "平台账号",
+    aliases: ["platform_account", "平台账号", "社媒账号"],
+  },
 ] as const;
 type FieldTarget = (typeof defaultFieldMappings)[number]["target"];
 type MappingDraft = Partial<Record<FieldTarget, string>>;
@@ -93,6 +100,9 @@ export function AgentCustomerImportPage({
   const [resolutions, setResolutions] = useState<
     Record<number, DuplicateAction>
   >({});
+  const [targetSelections, setTargetSelections] = useState<
+    Record<number, string>
+  >({});
   const [sourceColumns, setSourceColumns] = useState<string[]>([]);
   const [fieldMapping, setFieldMapping] = useState<MappingDraft>({});
   const [isParsing, setIsParsing] = useState(false);
@@ -110,6 +120,7 @@ export function AgentCustomerImportPage({
     setParseResult(null);
     setCommitResult(null);
     setResolutions({});
+    setTargetSelections({});
     setSourceColumns([]);
     setFieldMapping({});
     setStep("upload");
@@ -139,6 +150,7 @@ export function AgentCustomerImportPage({
       setSourceColumns(columns);
       setFieldMapping(createDefaultMapping(columns));
       setResolutions({});
+      setTargetSelections(defaultCandidateTargets(parsed));
       idempotencyKeyRef.current = createIdempotencyKey();
       setStep("mapping");
     } catch (caught) {
@@ -162,6 +174,7 @@ export function AgentCustomerImportPage({
       });
       setParseResult(parsed);
       setResolutions({});
+      setTargetSelections(defaultCandidateTargets(parsed));
       idempotencyKeyRef.current = createIdempotencyKey();
       setStep("preview");
     } catch (caught) {
@@ -186,7 +199,7 @@ export function AgentCustomerImportPage({
               row_index: candidate.row_index,
               action,
               ...(action === "merge"
-                ? { target_customer_id: candidate.existing_customer_id }
+                ? { target_customer_id: targetSelections[candidate.row_index] }
                 : {}),
             };
           }),
@@ -226,6 +239,7 @@ export function AgentCustomerImportPage({
     setParseResult(null);
     setCommitResult(null);
     setResolutions({});
+    setTargetSelections({});
     setSourceColumns([]);
     setFieldMapping({});
     setError(null);
@@ -290,15 +304,33 @@ export function AgentCustomerImportPage({
             <PreviewStep
               result={parseResult}
               resolutions={resolutions}
+              targetSelections={targetSelections}
               isCommitting={isCommitting}
               isDownloading={isDownloading}
               canCommit={allDuplicatesResolved}
               onResolution={(rowIndex, action) =>
-                setResolutions((current) => ({
-                  ...current,
-                  [rowIndex]: action,
-                }))
+                setResolutions((current) => {
+                  idempotencyKeyRef.current = createIdempotencyKey();
+                  return { ...current, [rowIndex]: action };
+                })
               }
+              onTargetSelection={(rowIndex, customerId) =>
+                setTargetSelections((current) => {
+                  idempotencyKeyRef.current = createIdempotencyKey();
+                  return { ...current, [rowIndex]: customerId };
+                })
+              }
+              onBulkResolution={(action) => {
+                idempotencyKeyRef.current = createIdempotencyKey();
+                setResolutions(
+                  Object.fromEntries(
+                    parseResult.duplicate_candidates.map((candidate) => [
+                      candidate.row_index,
+                      action,
+                    ]),
+                  ),
+                );
+              }}
               onBack={() => setStep("mapping")}
               onCommit={commit}
               onDownloadErrors={downloadErrors}
@@ -611,20 +643,26 @@ function MappingStep({
 function PreviewStep({
   result,
   resolutions,
+  targetSelections,
   isCommitting,
   isDownloading,
   canCommit,
   onResolution,
+  onTargetSelection,
+  onBulkResolution,
   onBack,
   onCommit,
   onDownloadErrors,
 }: {
   result: ImportParseResult;
   resolutions: Record<number, DuplicateAction>;
+  targetSelections: Record<number, string>;
   isCommitting: boolean;
   isDownloading: boolean;
   canCommit: boolean;
   onResolution(row: number, action: DuplicateAction): void;
+  onTargetSelection(row: number, customerId: string): void;
+  onBulkResolution(action: DuplicateAction): void;
   onBack(): void;
   onCommit(): void;
   onDownloadErrors(): void;
@@ -663,8 +701,12 @@ function PreviewStep({
         <TabsContent value="duplicates">
           <DuplicateChoices
             candidates={result.duplicate_candidates}
+            hints={result.name_company_hints}
             resolutions={resolutions}
+            targetSelections={targetSelections}
             onChange={onResolution}
+            onTargetChange={onTargetSelection}
+            onBulkChange={onBulkResolution}
           />
         </TabsContent>
       </Tabs>
@@ -793,14 +835,22 @@ function ErrorsTable({
 
 function DuplicateChoices({
   candidates,
+  hints,
   resolutions,
+  targetSelections,
   onChange,
+  onTargetChange,
+  onBulkChange,
 }: {
   candidates: ImportParseResult["duplicate_candidates"];
+  hints: ImportParseResult["name_company_hints"];
   resolutions: Record<number, DuplicateAction>;
+  targetSelections: Record<number, string>;
   onChange(row: number, action: DuplicateAction): void;
+  onTargetChange(row: number, customerId: string): void;
+  onBulkChange(action: DuplicateAction): void;
 }) {
-  if (candidates.length === 0)
+  if (candidates.length === 0 && hints.length === 0)
     return (
       <p className="mt-3 rounded-md border p-8 text-center text-sm text-muted-foreground">
         没有重复候选
@@ -808,48 +858,164 @@ function DuplicateChoices({
     );
   return (
     <div className="mt-3 space-y-3">
-      {candidates.map((candidate) => (
-        <div key={candidate.row_index} className="rounded-md border p-4">
-          <div className="grid gap-1 text-sm sm:grid-cols-3">
-            <span className="text-muted-foreground">
-              第 {candidate.row_index} 行
-            </span>
-            <span>
-              导入：<strong>{candidate.new_name}</strong>
-            </span>
-            <span>
-              现有：<strong>{candidate.existing_name}</strong>
-            </span>
-          </div>
-          <div
-            className="mt-4 flex flex-wrap gap-2"
-            role="group"
-            aria-label={`第 ${candidate.row_index} 行重复处理`}
-          >
-            {(
-              [
-                ["merge", "合并"],
-                ["skip", "跳过"],
-                ["new", "新建"],
-              ] as const
-            ).map(([action, label]) => (
-              <Button
-                key={action}
-                size="sm"
-                variant={
-                  resolutions[candidate.row_index] === action
-                    ? "default"
-                    : "outline"
-                }
-                aria-pressed={resolutions[candidate.row_index] === action}
-                onClick={() => onChange(candidate.row_index, action)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
+      {candidates.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 p-3">
+          <span className="mr-1 text-sm text-muted-foreground">批量处理：</span>
+          {(
+            [
+              ["merge", "全部合并"],
+              ["skip", "全部跳过"],
+              ["new", "全部新建"],
+            ] as const
+          ).map(([action, label]) => (
+            <Button
+              key={action}
+              size="sm"
+              variant="outline"
+              onClick={() => onBulkChange(action)}
+            >
+              {label}
+            </Button>
+          ))}
         </div>
-      ))}
+      ) : null}
+      {candidates.map((candidate) => {
+        const selectedCustomerId =
+          targetSelections[candidate.row_index] ??
+          candidate.matches[0]!.existing_customer_id;
+        const selectedMatch =
+          candidate.matches.find(
+            (match) => match.existing_customer_id === selectedCustomerId,
+          ) ?? candidate.matches[0]!;
+        return (
+          <div key={candidate.row_index} className="rounded-md border p-4">
+            <div className="grid gap-2 text-sm sm:grid-cols-[8rem_1fr_1fr]">
+              <span className="text-muted-foreground">
+                第 {candidate.row_index} 行
+              </span>
+              <span>
+                导入：<strong>{candidate.incoming.name}</strong>
+              </span>
+              <span>
+                现有：<strong>{selectedMatch.existing.name}</strong>
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              精确命中：
+              {selectedMatch.matched_by.map(matchReasonLabel).join("、")}
+            </p>
+            {candidate.matches.length > 1 ? (
+              <div className="mt-3 max-w-md">
+                <Select
+                  value={selectedCustomerId}
+                  onValueChange={(customerId) =>
+                    onTargetChange(candidate.row_index, customerId)
+                  }
+                >
+                  <SelectTrigger
+                    aria-label={`第 ${candidate.row_index} 行合并目标`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {candidate.matches.map((match) => (
+                      <SelectItem
+                        key={match.existing_customer_id}
+                        value={match.existing_customer_id}
+                      >
+                        {match.existing.name}（
+                        {match.matched_by.map(matchReasonLabel).join("、")}）
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <ConflictPreview match={selectedMatch} />
+            <div
+              className="mt-4 flex flex-wrap gap-2"
+              role="group"
+              aria-label={`第 ${candidate.row_index} 行重复处理`}
+            >
+              {(
+                [
+                  ["merge", "合并"],
+                  ["skip", "跳过"],
+                  ["new", "新建"],
+                ] as const
+              ).map(([action, label]) => (
+                <Button
+                  key={action}
+                  size="sm"
+                  variant={
+                    resolutions[candidate.row_index] === action
+                      ? "default"
+                      : "outline"
+                  }
+                  aria-pressed={resolutions[candidate.row_index] === action}
+                  onClick={() => onChange(candidate.row_index, action)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {hints.length > 0 ? (
+        <div className="rounded-md border border-dashed p-4">
+          <h3 className="text-sm font-semibold">名称或公司相同提示</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            以下记录没有邮箱、E.164
+            手机号或平台账号精确命中，不会被判为重复，也不会阻止新建。
+          </p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {hints.map((hint) => (
+              <li key={`${hint.row_index}-${hint.existing_customer_id}`}>
+                第 {hint.row_index} 行“{hint.incoming_name}”与现有“
+                {hint.existing_name}”的
+                {hint.matched_by.map(hintReasonLabel).join("、")}相同
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ConflictPreview({
+  match,
+}: {
+  match: ImportParseResult["duplicate_candidates"][number]["matches"][number];
+}) {
+  if (match.conflicts.length === 0) {
+    return (
+      <p className="mt-3 text-sm text-emerald-700">
+        没有非空字段冲突；合并只会填补现有空值。
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3 overflow-x-auto rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>冲突字段</TableHead>
+            <TableHead>现有值（保留）</TableHead>
+            <TableHead>导入值（不覆盖）</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {match.conflicts.map((conflict) => (
+            <TableRow key={conflict.field}>
+              <TableCell>{importFieldLabel(conflict.field)}</TableCell>
+              <TableCell>{conflict.existing_value}</TableCell>
+              <TableCell>{conflict.incoming_value}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -883,6 +1049,42 @@ function ResultStep({
           ["重复合并", result.duplicates, "text-blue-700"],
         ]}
       />
+      {result.warnings.length > 0 ? (
+        <Alert className="mt-5 border-amber-300 bg-amber-50 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+          <AlertCircle />
+          <AlertTitle>部分平台账号未复制</AlertTitle>
+          <AlertDescription>
+            <p>
+              新客户和联系人已创建。以下唯一平台账号仍归属原客户，未绑定到新客户：
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {result.warnings.map((warning) => (
+                <li
+                  key={`${warning.row_index}-${warning.existing_customer_id}-${warning.platform_account}`}
+                >
+                  第 {warning.row_index} 行：{platformLabel(warning.platform)} /{" "}
+                  {warning.platform_account}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {result.success > 0 || result.duplicates > 0 ? (
+        <Alert className="mt-6">
+          <DatabaseBackup />
+          <AlertTitle>请为本次导入创建加密备份</AlertTitle>
+          <AlertDescription>
+            客户数据已经写入本机 SQLite。
+            <Link
+              className="ml-1 font-medium text-primary underline underline-offset-4"
+              to="/settings/local-data"
+            >
+              前往备份与恢复
+            </Link>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         {hasErrors ? (
           <Button
@@ -936,7 +1138,58 @@ function optionalMappingFields(mapping: MappingDraft) {
     ...(mapping.contact_name ? { contact_name: mapping.contact_name } : {}),
     ...(mapping.email ? { email: mapping.email } : {}),
     ...(mapping.phone ? { phone: mapping.phone } : {}),
+    ...(mapping.platform ? { platform: mapping.platform } : {}),
+    ...(mapping.platform_account
+      ? { platform_account: mapping.platform_account }
+      : {}),
   };
+}
+
+function defaultCandidateTargets(
+  result: ImportParseResult,
+): Record<number, string> {
+  return Object.fromEntries(
+    result.duplicate_candidates.map((candidate) => [
+      candidate.row_index,
+      candidate.matches[0]!.existing_customer_id,
+    ]),
+  );
+}
+
+const importFieldLabels: Record<
+  ImportParseResult["duplicate_candidates"][number]["matches"][number]["conflicts"][number]["field"],
+  string
+> = {
+  name: "客户名称",
+  company: "公司",
+  country: "国家",
+  source: "来源",
+  grade: "分级",
+  contact_name: "联系人",
+  email: "邮箱",
+  phone: "电话",
+  platform: "平台",
+  platform_account: "平台账号",
+};
+
+function importFieldLabel(field: keyof typeof importFieldLabels): string {
+  return importFieldLabels[field];
+}
+
+function matchReasonLabel(
+  reason: "email" | "phone" | "platform_account",
+): string {
+  return { email: "邮箱", phone: "E.164 手机号", platform_account: "平台账号" }[
+    reason
+  ];
+}
+
+function hintReasonLabel(reason: "name" | "company"): string {
+  return reason === "name" ? "客户名称" : "公司";
+}
+
+function platformLabel(platform: string): string {
+  return { whatsapp: "WhatsApp", telegram: "Telegram" }[platform] ?? platform;
 }
 
 function previewColumns(rows: ImportParseResult["preview"]): string[] {
@@ -957,17 +1210,6 @@ function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
-}
-
-function importErrorMessage(error: unknown): string {
-  if (!(error instanceof ApiError)) return "导入操作失败，请重试。";
-  if (error.code === "ABORTED") return "解析已取消，客户数据未写入。";
-  if (error.code === "NETWORK_ERROR")
-    return "无法连接本地 Agent，请确认 DealPilot 正在运行。";
-  if (error.code === "VALIDATION_ERROR")
-    return "文件格式或导入内容不符合要求，请检查后重试。";
-  if (error.code === "CONFLICT") return "该导入任务已经提交，请重新选择文件。";
-  return "导入操作失败，请稍后重试。";
 }
 
 function createIdempotencyKey(): string {

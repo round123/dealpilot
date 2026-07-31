@@ -102,6 +102,9 @@ describe("i18nProvider", () => {
     expect(i18nProvider.translate("errors.network")).toBe(
       "网络连接失败，请检查网络后重试",
     );
+    expect(i18nProvider.translate("errors.storage")).toBe(
+      "本地存储空间不足，请释放空间，或先备份后重试",
+    );
     expect(i18nProvider.translate("ra-supabase.oauth.authorize")).toBe(
       "授权访问 DealPilot",
     );

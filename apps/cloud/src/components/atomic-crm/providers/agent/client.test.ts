@@ -200,6 +200,33 @@ describe("Agent client", () => {
     });
   });
 
+  it("preserves structured storage errors and classifies bare 507 responses", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: {
+          code: "STORAGE_ERROR",
+          message: "Local storage capacity is exhausted",
+          request_id: "storage-request",
+        },
+      }), { status: 507 }))
+      .mockResolvedValueOnce(new Response("disk full", { status: 507 }));
+    const client = createAgentClient({
+      fetchImpl: fetchImpl as typeof fetch,
+      storage,
+    });
+
+    await expect(client.post("customers", {}, objectParser)).rejects.toMatchObject({
+      code: "STORAGE_ERROR",
+      status: 507,
+      requestId: "storage-request",
+    });
+    await expect(client.post("customers", {}, objectParser)).rejects.toMatchObject({
+      code: "STORAGE_ERROR",
+      status: 507,
+    });
+  });
+
   it("rejects invalid 2xx responses", async () => {
     const client = createAgentClient({
       fetchImpl: vi.fn(async () => new Response("not-json")) as typeof fetch,

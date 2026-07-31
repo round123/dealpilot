@@ -5,6 +5,8 @@ import {
   contacts,
   customers,
   follow_ups,
+  import_jobs,
+  local_events,
   milestones,
   projects,
   reminders,
@@ -16,9 +18,36 @@ import {
 export async function getOrCreateSettings() {
   const [current] = await db.select().from(settings)
     .where(eq(settings.id, 1)).limit(1);
-  if (current) return current;
-  const [created] = await db.insert(settings).values({ id: 1 }).returning();
+  if (current?.backup_reminder_days != null) return current;
+  if (current) {
+    const [updated] = await db.update(settings)
+      .set({ backup_reminder_days: 7 })
+      .where(eq(settings.id, 1))
+      .returning();
+    return updated;
+  }
+  const [created] = await db.insert(settings)
+    .values({ id: 1, backup_reminder_days: 7 })
+    .returning();
   return created;
+}
+
+export async function getLocalDataState() {
+  const currentSettings = await getOrCreateSettings();
+  const [[business], [committedImports]] = await Promise.all([
+    db.select({
+      count: count(),
+      oldestCreatedAt: sql<string | null>`min(${customers.created_at})`,
+    }).from(customers),
+    db.select({ count: count() }).from(import_jobs)
+      .where(eq(import_jobs.status, "committed")),
+  ]);
+  return {
+    settings: currentSettings,
+    businessCount: business.count,
+    oldestCreatedAt: business.oldestCreatedAt,
+    committedImportCount: committedImports.count,
+  };
 }
 
 export async function updateSettingsRecord(input: SettingsUpdate) {

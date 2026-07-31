@@ -1,6 +1,6 @@
 # DealPilot 基于 Atomic CRM 的个人云改造计划
 
-> 状态：实施中；G0A 已完成，P1/P2 已完成代码基线但等待本地 Supabase 数据库门禁，P3 进行中
+> 状态：本地 V1/P4 功能门禁已通过；云端 P1-P3 后置，P3 硬门槛尚未通过
 > 日期：2026-07-31
 > 目标版本：V2
 > V1 基线：`codex/pragmatic-three-layer`
@@ -232,16 +232,17 @@ P3 全部门禁通过前，不删除 V1 Web、不批量迁移其余领域、不�
 | P1 | 代码基线完成，验收阻塞 | 固定并引入 Atomic CRM；保留 MIT 和来源；接入 pnpm/Turbo；Cloud、V1 与 API 客户端可构建和测试；增加可刷新持久化的合成数据 `dev:demo` 和 GitHub Actions 质量/数据库门禁 | 本机缺少 Docker/Podman，尚未启动本地 Supabase、Auth、Storage 和邮件服务做运行验收；新增 CI 尚未在远端 Runner 实际执行 |
 | P2 | 静态实现完成，运行门禁待验 | 个人 profile、团队入口移除、19 张表的 owner 隔离、RLS、复合外键、私有 Storage 和双用户 SQL 测试已入库 | migration 尚未在本地 PostgreSQL 执行；RLS、复合外键、Storage 和 RPC 隔离矩阵尚未产生真实数据库测试结果 |
 | P3 | 进行中 | 单例 `packages/api-client`/React Admin DataProvider、严格 Customer 契约、结构化服务端过滤与稳定多字段排序、Customer 字段/表单/响应式列表、五类关联详情、删除/恢复/回收站/六字段合并 UI，以及合并/软删除/恢复 RPC 和提醒快照/CAS 已建立；Customer 操作已通过端口隔离 Cloud 与本地适配器，`dev:demo` 可持久化并在桌面和移动端完成创建、刷新、关联详情、软删除、恢复和合并成功 E2E；固定 Customer 行为夹具及纯 TypeScript V1/V2 对照基线已入库；本地 Supabase 双用户 browser、REST、RPC、Edge、复合外键和 Storage E2E runner 及 CI 串联代码已就绪；30 天清理的 durable queue、受限 RPC、Edge Function 和授权测试已静态完成 | migration/RLS/Storage/RPC、双用户 browser/REST/RPC/Edge/FK/Storage E2E 与清理队列尚未在运行中的真实本地 Supabase 或远端 CI 执行；真实 Auth/PKCE 邮件流程、V1 与 Supabase 同 seed 差异报告，以及确认后旧 V2 API 继续读取 PostgreSQL 的回滚演练未通过 |
-| P4 | 本地功能门禁完成，发布验收待收口 | 中文 Dashboard、Customer、项目、跟进、提醒、风险、里程碑、导入、全域导出和加密备份恢复已接入同一 Atomic 前端与 Agent/SQLite；桌面和移动端共用 DataProvider/AuthProvider/CustomerOperations；FollowUp 改为悲观提交，提醒 `replied` 契约、列表 cache invalidation、导入 ISO 时间戳及风险/里程碑 ISO 时间已修正；Agent 提醒 AC-13～17 已覆盖 5 分钟窗口、启动补发、通知去重、稍后重入、失败隔离和“已收到回复”状态流转；全仓 type-check、lint、测试、构建及 demo/真实 Agent E2E 已通过 | 功能门禁已通过；发布收口仍需安装 NSIS 后完成安装/升级/卸载实机验证，并人工确认 Windows 系统通知；P4 本地证据不能替代 P3 的 Supabase/PostgreSQL 硬门槛，也不代表云端领域迁移完成 |
+| P4 | 本地自动化功能门禁完成，发布验收待收口 | 中文 Dashboard、Customer、项目、跟进、提醒、风险、里程碑、导入、全域导出和加密备份恢复已接入同一 Atomic 前端与 Agent/SQLite；导入冲突、扩展绑定和提醒处理、本地生命周期、升级恢复点、30 天清理、滚动指标与首次隐私说明已补齐；全仓 type-check、lint、测试、构建及 demo/真实 Agent E2E 已通过 | 发布收口仍需安装 NSIS 后完成安装/升级/卸载实机验证，并人工确认真实社媒 DOM、Windows 通知、托盘、Native Messaging 与浏览器兼容；P4 本地证据不能替代 P3 的 Supabase/PostgreSQL 硬门槛，也不代表云端领域迁移完成 |
 
 2026-07-31 已记录的本地验收证据：
 
 - Cloud demo E2E 为 4/4，通过桌面和移动端的 Customer 及全领域合成数据流程。
 - 真实 Agent/SQLite E2E 为 5/5，通过桌面/移动 Customer 和全领域流程；桌面端另通过非标准 CSV 的 UI 字段映射导入、DPBK 下载后回传恢复校验，以及包含 8 个 sheet 的 Excel 全域导出。
 - Agent 提醒 AC-13～17 的服务、调度器和临时 SQLite 集成测试通过；覆盖精确 5 分钟窗口、启动立即补扫、`last_notified_at` 去重、稍后到期重入、单项失败隔离、3 天逾期排序权重和手动 `replied -> pending`。
-- Extension 的唯一类型化 API 边界已有 12 项测试，覆盖共享 Zod schema、网络/取消、非 JSON 错误、服务端错误包络、不可解析的 2xx、幂等键和 popup 展示契约；界面不直接展示服务端原始错误。
-- 导入 ISO timestamp、列表 cache invalidation、FollowUp 悲观提交、reminder replied contract、risk/milestone ISO timestamp 已完成修订并纳入相应回归。
-- Cloud `type-check`、`lint`、构建和上述 E2E 已通过；Cloud Vitest 为 55 个测试文件、271 项通过、1 项跳过。该结果是本地功能门禁证据，不用于宣告 Supabase/PostgreSQL 阶段完成。
+- Extension 为 38/38 测试、102 项断言；Content Script 只通过 Background 白名单 RPC，生产 bundle/source 的 token、Authorization、storage 和直接 `fetch` 扫描均为 0 命中。popup 与 Content 均可完成、稍后、忽略提醒，等待回复提醒可手动确认已收到回复。
+- Agent 为 54/54 测试、240 项断言；覆盖导入并发/幂等、备份兼容与原子恢复、升级 recovery point、30 天级联清理、popup 暂停边界、本地滚动指标和脱敏导出。
+- Cloud `type-check`、`lint`、构建和上述 E2E 已通过；Cloud Vitest 为 56 个测试文件、280 项通过、1 项跳过；API client 为 96/96，Shared 为 13/13。该结果是本地功能门禁证据，不用于宣告 Supabase/PostgreSQL 阶段完成。
+- 1000 行导入 20 次 P95 为 581.78 ms；编译 Agent 到 HTTP health 为 476.16 ms，并通过 Atomic 中文入口、SQLite、DPBK v2 与 Native Messaging framing 检查。
 
 功能审计口径：本地 Atomic + Agent/SQLite 已从“适配基线”推进到主要业务流程可执行并有桌面/移动 E2E 证据，但仍处于开发验收而非发布完成状态。`dev:demo` 使用合成数据和浏览器 `localStorage`，用于快速 UI 回归；真实本地模式使用 Agent/SQLite，验证范围包括 Customer、全领域、导入、导出和备份恢复。旧 `apps/web` 已冻结功能开发，只保留源码行为基线；默认本地入口和安装包均使用 Atomic 前端，从而避免长期维护两套运行 UI。
 

@@ -29,7 +29,10 @@ export const REMINDER_STATUSES = [
 export type ReminderFormValues = Pick<
   CustomerReminder,
   "company_id" | "deal_id" | "type" | "due_at" | "priority" | "status"
->;
+> & {
+  pause_reason?: string;
+  reevaluate_at?: string | null;
+};
 
 export const createReminderDefaults = (
   defaults: Partial<ReminderFormValues> = {},
@@ -42,6 +45,13 @@ export const createReminderDefaults = (
   type: "fixed_time",
   ...defaults,
 });
+
+export const reminderDueAfterDays = (days: number, now = Date.now()) =>
+  new Date(now + days * 86_400_000).toISOString();
+
+export const isUnscheduledPausedReminder = (
+  reminder: Pick<CustomerReminder, "type" | "due_at">,
+) => reminder.type === "paused" && reminder.due_at.startsWith("9999-12-31");
 
 export const isReminderOverdue = (
   reminder: Pick<CustomerReminder, "status" | "due_at" | "snooze_until">,

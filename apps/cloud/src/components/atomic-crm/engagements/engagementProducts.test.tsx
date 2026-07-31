@@ -1,13 +1,20 @@
-import type { CustomerFollowUp, CustomerReminder } from "@dealpilot/api-client";
+import {
+  ApiError,
+  type CustomerFollowUp,
+  type CustomerReminder,
+} from "@dealpilot/api-client";
 import { CoreAdminContext, type DataProvider } from "ra-core";
 import fakeDataProvider from "ra-data-fakerest";
 import { render } from "vitest-browser-react";
 
 import { FollowUpCreate } from "../followUps/FollowUpCreate";
 import { ReminderRow } from "../reminders/ReminderList";
+import { ReminderCreate } from "../reminders/ReminderCreate";
 import {
   groupReminder,
   isReminderOverdue,
+  isUnscheduledPausedReminder,
+  reminderDueAfterDays,
 } from "../reminders/reminderContract";
 
 const i18nProvider = {
@@ -64,7 +71,36 @@ const buildReminder = (
   }) as CustomerReminder;
 
 describe("Follow-up and Reminder products", () => {
-  it("keeps Follow-up form values while a failed save returns to editable state", async () => {
+  it("offers fixed reminder presets and enforces a pause reason", async () => {
+    expect(reminderDueAfterDays(3, Date.parse("2026-07-31T04:00:00.000Z")))
+      .toBe("2026-08-03T04:00:00.000Z");
+    expect(isUnscheduledPausedReminder(buildReminder({
+      type: "paused",
+      due_at: "9999-12-31T23:59:59.999Z",
+    }))).toBe(true);
+    const create = vi.fn(async (_resource, params) => ({
+      data: { id: "11000000-0000-4000-8000-000000000002", ...params.data },
+    }));
+    const companyId = "13000000-0000-4000-8000-000000000001" as CustomerReminder["company_id"];
+    const screen = await renderProduct(
+      <ReminderCreate defaultValues={{ company_id: companyId, type: "paused" }} />,
+      { create: create as never },
+    );
+
+    await expect.element(screen.getByLabelText("暂不跟进原因")).toBeVisible();
+    await expect.element(screen.getByLabelText("重新评估日期（可选）")).toBeVisible();
+    await screen.getByRole("button", { name: "保存提醒" }).click();
+    expect(create).not.toHaveBeenCalled();
+    await screen.getByLabelText("暂不跟进原因").fill("等待下一年度预算");
+    await screen.getByRole("button", { name: "保存提醒" }).click();
+    await expect.poll(() => create.mock.calls.length).toBe(1);
+    expect(create.mock.calls[0]?.[1].data).toMatchObject({
+      type: "paused",
+      pause_reason: "等待下一年度预算",
+    });
+  });
+
+  it("keeps Follow-up form values editable after a storage capacity failure", async () => {
     let rejectCreate: (reason?: unknown) => void = () => undefined;
     const create = vi.fn(
       () =>
@@ -86,7 +122,11 @@ describe("Follow-up and Reminder products", () => {
     await expect.element(save).toBeDisabled();
     expect(create).toHaveBeenCalledOnce();
 
-    rejectCreate(new Error("offline"));
+    rejectCreate(new ApiError({
+      code: "STORAGE_ERROR",
+      status: 507,
+      message: "Local storage capacity is exhausted",
+    }));
     await expect.element(screen.getByRole("alert")).toBeVisible();
     await expect.element(note).toHaveValue("客户确认下周继续沟通");
     await expect.element(save).toBeEnabled();

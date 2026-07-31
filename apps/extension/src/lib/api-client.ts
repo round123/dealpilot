@@ -1,4 +1,5 @@
-import { API_ERROR_CODES, ApiError } from "@dealpilot/api-client/error";
+import { API_ERROR_CODES } from "@dealpilot/api-client/error";
+import { ApiError, extensionErrorMessage } from "./extension-errors";
 import {
   AGENT_DEFAULT_PORT,
   API_PATHS,
@@ -10,6 +11,7 @@ import {
   MatchResolveResponseSchema,
   PopupReminderSchema,
   ReminderSchema,
+  ReminderStatusUpdateSchema,
   StatsSchema,
   paginatedResponse,
   type Binding,
@@ -19,11 +21,13 @@ import {
   type FollowUp,
   type FollowUpCreate,
   type MatchBind,
+  type MatchUnbind,
   type MatchResolve,
   type MatchResolveResponse,
   type PopupReminder,
   type Reminder,
   type ReminderCreate,
+  type ReminderStatusUpdate,
 } from "@dealpilot/shared";
 import { z } from "zod";
 
@@ -33,27 +37,9 @@ const WORKBENCH_ORIGIN_STORAGE_KEY = "dealpilot_workbench_origin";
 
 const FollowUpPageSchema = paginatedResponse(FollowUpSchema);
 const ReminderPageSchema = paginatedResponse(ReminderSchema);
+const CustomerPageSchema = paginatedResponse(CustomerSchema);
 
-export { ApiError };
-
-/** Safe user-facing copy. Server messages and arbitrary Error.message values are ignored. */
-export function extensionErrorMessage(error: unknown, fallback: string): string {
-  if (!(error instanceof ApiError)) return fallback;
-
-  switch (error.code) {
-    case API_ERROR_CODES.aborted:
-      return "请求已取消";
-    case API_ERROR_CODES.network:
-      return "无法连接本地 Agent，请确认它正在运行";
-    case API_ERROR_CODES.invalidResponse:
-      return "本地 Agent 返回了无法识别的数据";
-    case API_ERROR_CODES.unauthorized:
-    case API_ERROR_CODES.forbidden:
-      return "扩展配对已失效，请重新连接本地 Agent";
-    default:
-      return fallback;
-  }
-}
+export { ApiError, extensionErrorMessage };
 
 export async function getStoredToken(): Promise<string | null> {
   const result = await chrome.storage.session.get(TOKEN_STORAGE_KEY);
@@ -257,6 +243,22 @@ export function bindMatch(data: MatchBind): Promise<Binding> {
   );
 }
 
+export function unbindMatch(data: MatchUnbind): Promise<void> {
+  return apiFetch(
+    API_PATHS.matchUnbind,
+    z.undefined(),
+    { method: "DELETE", body: JSON.stringify(data) },
+  );
+}
+
+export function searchCustomers(
+  search: string,
+  signal?: AbortSignal,
+): Promise<{ items: Customer[]; next_cursor: string | null }> {
+  const query = new URLSearchParams({ search, limit: "10", sort: "name" });
+  return apiFetch(`${API_PATHS.customers}?${query.toString()}`, CustomerPageSchema, { signal });
+}
+
 export function createFollowUp(
   data: FollowUpCreate,
   idempotencyKey = generateIdempotencyKey(),
@@ -293,4 +295,18 @@ export function fetchRemindersByCustomer(
 ): Promise<{ items: Reminder[]; next_cursor: string | null }> {
   const query = new URLSearchParams({ customer_id: customerId, limit: "10" });
   return apiFetch(`${API_PATHS.reminders}?${query.toString()}`, ReminderPageSchema, { signal });
+}
+
+export function updateReminderStatus(
+  reminderId: string,
+  data: ReminderStatusUpdate,
+): Promise<Reminder> {
+  return apiFetch(
+    API_PATHS.reminder(reminderId),
+    ReminderSchema,
+    {
+      method: "PUT",
+      body: JSON.stringify(ReminderStatusUpdateSchema.parse(data)),
+    },
+  );
 }

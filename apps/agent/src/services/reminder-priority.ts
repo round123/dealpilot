@@ -1,12 +1,12 @@
 import { OVERDUE_ESCALATION_DAYS } from "@dealpilot/shared";
 
 type PopupCandidate = {
-  reminder: { id: string; due_at: string; priority: string };
+  reminder: { id: string; due_at: string };
   customerGrade: string;
   projectGrade: string | null;
+  hasHighRisk: number | boolean;
 };
 
-const priorityWeight: Record<string, number> = { urgent: 4, high: 3, normal: 2, low: 1 };
 const projectGradeWeight: Record<string, number> = { S: 4, A: 3, B: 2, C: 1 };
 const customerGradeWeight: Record<string, number> = { A: 3, B: 2, C: 1 };
 
@@ -26,7 +26,7 @@ export function sortPopupReminderCandidates<T extends PopupCandidate>(
 
   return [...candidates].sort((a, b) =>
     overdueWeight(b.reminder.due_at) - overdueWeight(a.reminder.due_at)
-    || (priorityWeight[b.reminder.priority] ?? 2) - (priorityWeight[a.reminder.priority] ?? 2)
+    || Number(b.hasHighRisk) - Number(a.hasHighRisk)
     || gradeWeight(b) - gradeWeight(a)
     || new Date(a.reminder.due_at).getTime() - new Date(b.reminder.due_at).getTime()
     || a.reminder.id.localeCompare(b.reminder.id),

@@ -12,6 +12,12 @@ describe("getErrorMessageKey", () => {
     ).toBe("errors.network");
   });
 
+  it("maps storage capacity failures to the localized recovery guidance", () => {
+    expect(getErrorMessageKey({ code: "STORAGE_ERROR", status: 507 })).toBe(
+      "errors.storage",
+    );
+  });
+
   it("maps expired sessions and unauthorized responses", () => {
     expect(getErrorMessageKey({ status: 401 })).toBe("errors.unauthorized");
     expect(getErrorMessageKey(new Error("Invalid Refresh Token"))).toBe(

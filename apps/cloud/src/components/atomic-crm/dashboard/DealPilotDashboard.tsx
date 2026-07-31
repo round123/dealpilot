@@ -14,6 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import type { Company, Deal, FollowUp } from "../types";
+import { LocalBackupStatus } from "../settings/LocalBackupStatus";
+import { LocalPrivacyNotice } from "../settings/LocalPrivacyNotice";
+import { isUnscheduledPausedReminder } from "../reminders/reminderContract";
 
 const PAGE_SIZE = 10_000;
 const OPEN_REMINDER_STATUSES = new Set<CustomerReminder["status"]>([
@@ -58,7 +61,11 @@ export const DealPilotDashboard = () => {
   const risks = risksQuery.data ?? [];
   const now = new Date();
   const openReminders = reminders
-    .filter((reminder) => OPEN_REMINDER_STATUSES.has(reminder.status))
+    .filter(
+      (reminder) =>
+        OPEN_REMINDER_STATUSES.has(reminder.status) &&
+        !isUnscheduledPausedReminder(reminder),
+    )
     .sort((left, right) => getReminderTime(left) - getReminderTime(right));
   const overdueReminders = openReminders.filter(
     (reminder) => getReminderTime(reminder) < now.getTime(),
@@ -101,6 +108,9 @@ export const DealPilotDashboard = () => {
           </Button>
         </div>
       </header>
+
+      <LocalBackupStatus />
+      <LocalPrivacyNotice firstUse />
 
       <section
         aria-label="业务概览"

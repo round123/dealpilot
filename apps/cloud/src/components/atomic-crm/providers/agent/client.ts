@@ -249,6 +249,7 @@ function errorCodeForStatus(status: number): string {
   if (status === 404) return API_ERROR_CODES.notFound;
   if (status === 409) return API_ERROR_CODES.conflict;
   if (status === 422) return API_ERROR_CODES.validation;
+  if (status === 507) return API_ERROR_CODES.storage;
   if (status >= 500) return API_ERROR_CODES.server;
   return API_ERROR_CODES.unknown;
 }

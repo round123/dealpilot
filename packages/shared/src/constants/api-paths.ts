@@ -29,6 +29,7 @@ export const API_PATHS = {
   // Matches
   matchResolve: `${API_V1}/matches/resolve`,
   matchBind: `${API_V1}/matches/bind`,
+  matchUnbind: `${API_V1}/matches/bind`,
 
   // Follow-ups
   followUps: `${API_V1}/follow-ups`,
@@ -69,6 +70,11 @@ export const API_PATHS = {
   // Settings
   settings: `${API_V1}/settings`,
 
+  // Local data lifecycle
+  localDataInfo: `${API_V1}/system/local-data`,
+  clearLocalData: `${API_V1}/system/local-data/clear`,
+
   // Stats
   stats: `${API_V1}/stats`,
+  statsExport: `${API_V1}/stats/export`,
 } as const;

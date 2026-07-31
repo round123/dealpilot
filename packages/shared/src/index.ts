@@ -19,6 +19,7 @@ export * from "./schemas/import.js";
 export * from "./schemas/settings.js";
 export * from "./schemas/backup.js";
 export * from "./schemas/stats.js";
+export * from "./schemas/system.js";
 
 // Types
 export * from "./types/index.js";

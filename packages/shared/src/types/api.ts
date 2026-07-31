@@ -59,6 +59,7 @@ import {
 import {
   MatchResolveSchema,
   MatchBindSchema,
+  MatchUnbindSchema,
   MatchResolveResponseSchema,
   BindingSchema,
 } from "../schemas/match.js";
@@ -74,6 +75,11 @@ import {
   BackupRestoreResponseSchema,
 } from "../schemas/backup.js";
 import { StatsSchema } from "../schemas/stats.js";
+import {
+  ClearLocalDataResponseSchema,
+  ClearLocalDataSchema,
+  LocalDataInfoSchema,
+} from "../schemas/system.js";
 
 // Customer
 export type Customer = z.infer<typeof CustomerSchema>;
@@ -135,6 +141,7 @@ export type MilestoneListQuery = z.infer<typeof MilestoneListQuerySchema>;
 // Match
 export type MatchResolve = z.infer<typeof MatchResolveSchema>;
 export type MatchBind = z.infer<typeof MatchBindSchema>;
+export type MatchUnbind = z.infer<typeof MatchUnbindSchema>;
 export type MatchResolveResponse = z.infer<typeof MatchResolveResponseSchema>;
 export type Binding = z.infer<typeof BindingSchema>;
 
@@ -156,3 +163,10 @@ export type BackupRestoreResponse = z.infer<typeof BackupRestoreResponseSchema>;
 
 // Stats
 export type Stats = z.infer<typeof StatsSchema>;
+
+// Local data lifecycle
+export type LocalDataInfo = z.infer<typeof LocalDataInfoSchema>;
+export type ClearLocalData = z.infer<typeof ClearLocalDataSchema>;
+export type ClearLocalDataResponse = z.infer<
+  typeof ClearLocalDataResponseSchema
+>;

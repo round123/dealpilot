@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { parseData, parseSuccessEnvelope } from "../src/contracts.js";
-import { ApiError, API_ERROR_CODES } from "../src/error.js";
+import { ApiError, API_ERROR_CODES, errorCodeForStatus } from "../src/error.js";
 
 const CustomerSchema = z.object({
   id: z.string().uuid(),
@@ -73,5 +73,9 @@ describe("response contracts", () => {
 
     expect(error.requestId).toMatch(/\S/);
     expect(error.requestId).toBe(error.requestId);
+  });
+
+  it("classifies HTTP 507 as a storage capacity error", () => {
+    expect(errorCodeForStatus(507)).toBe(API_ERROR_CODES.storage);
   });
 });

@@ -40,7 +40,57 @@ describe("Agent local data operations", () => {
       code: "VALIDATION_ERROR",
       fields: { confirmation: ["请输入 RESTORE 确认恢复"] },
     });
+    await expect(operations.clearData("CLEAR")).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      fields: { confirmation: ["请输入 CLEAR ALL DATA 确认清空"] },
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("parses lifecycle data and sends the exact clear confirmation", async () => {
+    const info = {
+      data_path: "C:\\DealPilot\\data\\dealpilot.db",
+      database_size_bytes: 4096,
+      occupied_size_bytes: 8192,
+      recovery_size_bytes: 16384,
+      last_backup_at: null,
+      backup_reminder_days: 7,
+      backup_recommendation: "first_import",
+      has_business_data: true,
+      auto_start_supported: false,
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(info), {
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            deleted_records: 12,
+            cleared_at: "2026-07-31T04:00:00.000Z",
+            external_backups_preserved: true,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    const operations = createAgentLocalDataOperations(
+      createAgentClient({ fetchImpl: fetchImpl as typeof fetch, storage }),
+    );
+
+    await expect(operations.getInfo()).resolves.toEqual(info);
+    await expect(operations.clearData("CLEAR ALL DATA")).resolves.toMatchObject(
+      {
+        success: true,
+        deleted_records: 12,
+      },
+    );
+    expect(
+      JSON.parse(String((fetchImpl.mock.calls[1]?.[1] as RequestInit).body)),
+    ).toEqual({ confirmation: "CLEAR ALL DATA" });
   });
 
   it("parses backup validation and only restores with explicit confirmation", async () => {
@@ -58,10 +108,9 @@ describe("Agent local data operations", () => {
         ),
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ success: true, rows_restored: 8 }),
-          { headers: { "content-type": "application/json" } },
-        ),
+        new Response(JSON.stringify({ success: true, rows_restored: 8 }), {
+          headers: { "content-type": "application/json" },
+        }),
       );
     const operations = createAgentLocalDataOperations(
       createAgentClient({ fetchImpl: fetchImpl as typeof fetch, storage }),
@@ -104,5 +153,55 @@ describe("Agent local data operations", () => {
     await expect(operations.exportAll()).rejects.toMatchObject({
       code: "INVALID_RESPONSE",
     });
+  });
+
+  it("parses rolling metrics and downloads the anonymized report", async () => {
+    const rolling = {
+      window_days: 30,
+      window_start: "2026-07-01T00:00:00.000Z",
+      window_end: "2026-07-31T00:00:00.000Z",
+      on_time_completion: {
+        numerator: 18,
+        denominator: 20,
+        rate: 0.9,
+        target: 0.9,
+        minimum_sample: 20,
+      },
+      match_accuracy: {
+        numerator: 19,
+        denominator: 20,
+        rate: 0.95,
+        target: 0.95,
+      },
+      reminder_handling: {
+        numerator: 9,
+        denominator: 10,
+        rate: 0.9,
+        target: 0.9,
+      },
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        total_customers: 0,
+        total_followups: 0,
+        total_reminders: 0,
+        pending_reminders: 0,
+        overdue_reminders: 0,
+        total_projects: 0,
+        active_projects: 0,
+        completion_rate: 0,
+        rolling_30_days: rolling,
+      })))
+      .mockResolvedValueOnce(new Response("{}", {
+        headers: { "content-type": "application/json" },
+      }));
+    const operations = createAgentLocalDataOperations(
+      createAgentClient({ fetchImpl: fetchImpl as typeof fetch, storage }),
+    );
+
+    await expect(operations.getUsageMetrics()).resolves.toEqual(rolling);
+    await expect(operations.exportUsageMetrics()).resolves.toBeInstanceOf(Blob);
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toContain("/api/v1/stats/export");
   });
 });

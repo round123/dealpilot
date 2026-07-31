@@ -860,7 +860,7 @@ export const englishCrmMessages = {
     validation: "Some fields are invalid. Check the form and try again.",
     rateLimited: "Too many requests. Wait a moment and try again.",
     function: "The operation could not be completed.",
-    storage: "The file operation failed. Try again.",
+    storage: "Local storage is full. Free some space, or back up your data and try again.",
     server: "The server is temporarily unavailable. Try again later.",
     generic: "The operation failed. Try again later.",
   },

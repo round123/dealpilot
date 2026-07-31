@@ -5,18 +5,39 @@
 import { z } from "zod";
 import { UUIDSchema, DateTimeSchema } from "./common.js";
 import { ReminderType, ReminderStatus, ReminderPriority } from "../types/enums.js";
+import { Platform } from "../types/enums.js";
 
 export const ReminderCreateSchema = z.object({
   customer_id: UUIDSchema,
   project_id: UUIDSchema.optional(),
   type: z.enum([ReminderType.FIXED_TIME, ReminderType.WAITING_REPLY, ReminderType.PAUSED]),
-  due_at: DateTimeSchema,
+  due_at: DateTimeSchema.optional(),
   priority: z.enum([
     ReminderPriority.LOW,
     ReminderPriority.NORMAL,
     ReminderPriority.HIGH,
     ReminderPriority.URGENT,
   ]).optional().default(ReminderPriority.NORMAL),
+  pause_reason: z.string().trim().min(1).max(500).optional(),
+  reevaluate_at: DateTimeSchema.optional(),
+}).superRefine((input, context) => {
+  if (input.type === ReminderType.PAUSED) {
+    if (!input.pause_reason) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pause_reason"],
+        message: "暂不跟进时必须填写原因",
+      });
+    }
+    return;
+  }
+  if (!input.due_at) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["due_at"],
+      message: "请选择提醒时间",
+    });
+  }
 });
 
 export const ReminderStatusUpdateSchema = z.object({
@@ -41,6 +62,8 @@ export const ReminderSchema = z.object({
   last_notified_at: z.string().nullable(),
   snooze_until: z.string().nullable(),
   resolution: z.string().nullable(),
+  pause_reason: z.string().nullable(),
+  reevaluate_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -49,6 +72,11 @@ export const ReminderSchema = z.object({
 export const PopupReminderSchema = ReminderSchema.extend({
   customer_name: z.string().min(1),
   project_name: z.string().nullable(),
+  has_high_risk: z.boolean(),
+  conversation_target: z.object({
+    platform: z.enum([Platform.WHATSAPP, Platform.TELEGRAM]),
+    raw_identifier: z.string().min(1),
+  }).nullable(),
 });
 
 export const ReminderListQuerySchema = z.object({

@@ -34,6 +34,7 @@ import exportRoutes from "./routes/exports";
 import backupRoutes from "./routes/backups";
 import settingsRoutes from "./routes/settings";
 import statsRoutes from "./routes/stats";
+import systemRoutes from "./routes/system";
 
 import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
@@ -134,6 +135,7 @@ export function createApp(): Hono<AppEnv> {
   app.route("/api/v1", backupRoutes);
   app.route("/api/v1", settingsRoutes);
   app.route("/api/v1", statsRoutes);
+  app.route("/api/v1", systemRoutes);
 
   // 404 handler
   app.notFound((c) => {

@@ -13,6 +13,7 @@ import {
 import { DeleteButton } from "@/components/admin/delete-button";
 import { Edit } from "@/components/admin/edit";
 import { SaveButton } from "@/components/admin/form";
+import { getErrorMessageKey } from "@/components/admin/error-message";
 
 import { invalidateEngagementQueries } from "../engagements/invalidateEngagementQueries";
 import { FollowUpInputs } from "./FollowUpInputs";
@@ -36,9 +37,9 @@ export const FollowUpEdit = ({ id }: { id?: Identifier } = {}) => {
       mutationOptions={{
         retry: false,
         onMutate: () => setSaveFailed(false),
-        onError: () => {
+        onError: (error) => {
           setSaveFailed(true);
-          notify("resources.follow_ups.notifications.save_failed", {
+          notify(getErrorMessageKey(error, "resources.follow_ups.notifications.save_failed"), {
             _: "跟进保存失败，请检查内容后重试",
             type: "error",
           });

@@ -130,6 +130,7 @@ export function errorCodeForStatus(status: number): BuiltInApiErrorCode {
   if (status === 409) return API_ERROR_CODES.conflict;
   if (status === 422) return API_ERROR_CODES.validation;
   if (status === 429) return API_ERROR_CODES.rateLimited;
+  if (status === 507) return API_ERROR_CODES.storage;
   if (status >= 500) return API_ERROR_CODES.server;
   return API_ERROR_CODES.unknown;
 }

@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { customers, projects, reminders } from "../db/schema";
 
 type ReminderUpdates = Partial<typeof reminders.$inferInsert>;
+export const NO_REEVALUATION_DUE_AT = "9999-12-31T23:59:59.999Z";
 
 export async function listReminderRecords(query: ReminderListQuery) {
   const conditions = [isNull(customers.deleted_at)];
@@ -38,11 +39,14 @@ export async function findReminder(reminderId: string) {
 }
 
 export async function findDuplicateReminder(input: ReminderCreate) {
+  const effectiveDueAt = input.type === "paused"
+    ? input.reevaluate_at ?? NO_REEVALUATION_DUE_AT
+    : input.due_at!;
   const [existing] = await db.select({ id: reminders.id }).from(reminders)
     .where(and(
       eq(reminders.customer_id, input.customer_id),
       eq(reminders.type, input.type),
-      eq(reminders.due_at, input.due_at),
+      eq(reminders.due_at, effectiveDueAt),
       eq(reminders.status, ReminderStatus.PENDING),
     )).limit(1);
   return existing;
@@ -50,13 +54,18 @@ export async function findDuplicateReminder(input: ReminderCreate) {
 
 export async function insertReminder(input: ReminderCreate) {
   const now = new Date().toISOString();
+  const dueAt = input.type === "paused"
+    ? input.reevaluate_at ?? NO_REEVALUATION_DUE_AT
+    : input.due_at!;
   const [created] = await db.insert(reminders).values({
     customer_id: input.customer_id,
     project_id: input.project_id ?? null,
     type: input.type,
     status: ReminderStatus.PENDING,
-    due_at: input.due_at,
+    due_at: dueAt,
     priority: input.priority,
+    pause_reason: input.pause_reason ?? null,
+    reevaluate_at: input.reevaluate_at ?? null,
     created_at: now,
     updated_at: now,
   }).returning();
@@ -70,19 +79,43 @@ export async function updateReminderRecord(reminderId: string, updates: Reminder
   return updated;
 }
 
-export function getPopupReminderCandidates() {
+export function getPopupReminderCandidates(now: string) {
   return db.select({
     reminder: reminders,
     customerName: customers.name,
     projectName: projects.name,
     customerGrade: customers.grade,
     projectGrade: projects.grade,
+    hasHighRisk: sql<number>`CASE WHEN ${reminders.project_id} IS NOT NULL AND EXISTS (
+      SELECT 1 FROM risks
+      WHERE risks.project_id = ${reminders.project_id}
+        AND risks.severity IN ('high', 'critical')
+        AND risks.status IN ('open', 'handling')
+    ) THEN 1 ELSE 0 END`,
+    conversationPlatform: sql<string | null>`(
+      SELECT social_accounts.platform FROM social_accounts
+      WHERE social_accounts.customer_id = ${reminders.customer_id}
+        AND social_accounts.platform IN ('whatsapp', 'telegram')
+      ORDER BY social_accounts.manually_bound DESC, social_accounts.created_at ASC
+      LIMIT 1
+    )`,
+    conversationIdentifier: sql<string | null>`(
+      SELECT social_accounts.raw_identifier FROM social_accounts
+      WHERE social_accounts.customer_id = ${reminders.customer_id}
+        AND social_accounts.platform IN ('whatsapp', 'telegram')
+      ORDER BY social_accounts.manually_bound DESC, social_accounts.created_at ASC
+      LIMIT 1
+    )`,
   }).from(reminders)
     .innerJoin(customers, eq(reminders.customer_id, customers.id))
     .leftJoin(projects, eq(reminders.project_id, projects.id))
     .where(and(
       isNull(customers.deleted_at),
       sql`${reminders.status} IN ('pending', 'overdue')`,
+      sql`(${reminders.type} <> 'paused' OR (
+        ${reminders.reevaluate_at} IS NOT NULL
+        AND ${reminders.reevaluate_at} <= ${now}
+      ))`,
     ));
 }
 

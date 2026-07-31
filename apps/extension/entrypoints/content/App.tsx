@@ -15,18 +15,32 @@
  * - AC-10: 群组/频道显示"不支持"
  */
 
-import React, { useEffect, useState, useCallback } from "react";
-import { ChevronDown, Compass, AlertCircle, Clock, Bell } from "lucide-react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { ChevronDown, Compass, AlertCircle, Clock, Bell, Link, Unlink } from "lucide-react";
 import { useExtensionStore } from "../../src/stores/extension-store";
-import { bindMatch, extensionErrorMessage, fetchFollowUps, fetchRemindersByCustomer, resolveMatch } from "../../src/lib/api-client";
+import {
+  bindMatch,
+  extensionErrorMessage,
+  fetchFollowUps,
+  fetchRemindersByCustomer,
+  openContentWorkbench,
+  resolveMatch,
+  searchCustomers,
+  unbindMatch,
+  updateContentReminderStatus,
+} from "../../src/lib/content-agent-client";
 import { onConversationChange, type ConversationInfo } from "../../src/lib/platform-detect";
 import { CustomerCard } from "./components/customer-card";
 import { FollowUpMarker } from "./components/follow-up-marker";
 import { ReminderSet } from "./components/reminder-set";
-import { LoadingState, UnsupportedState, NoMatchState, MultipleMatchState } from "./components/match-states";
-import type { FollowUp, Reminder } from "@dealpilot/shared";
+import { CustomerSearchPanel, LoadingState, UnsupportedState, NoMatchState, MultipleMatchState } from "./components/match-states";
+import type { Customer, FollowUp, Reminder } from "@dealpilot/shared";
 import { isOverdue, formatRelativeTime } from "@dealpilot/shared";
-import { openWorkbench } from "../../src/lib/workbench-links";
+import { ReminderActions } from "../../src/components/reminder-actions";
+import {
+  buildReminderStatusUpdate,
+  type ReminderAction,
+} from "../../src/lib/reminder-actions";
 
 /** 提醒类型图标 */
 const REMINDER_ICON = <Clock size={12} />;
@@ -39,7 +53,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 /** 未完成提醒列表 */
-const ReminderList: React.FC<{ reminders: Reminder[] }> = ({ reminders }) => (
+const ReminderList: React.FC<{
+  reminders: Reminder[];
+  busyReminderId: string | null;
+  actionError: { id: string; message: string } | null;
+  onAction: (reminder: Reminder, action: ReminderAction) => void;
+}> = ({ reminders, busyReminderId, actionError, onAction }) => (
   <div style={{ padding: "var(--dp-space-3)", borderTop: "1px solid var(--dp-color-border-default)" }}>
     <div style={{ display: "flex", alignItems: "center", gap: "var(--dp-space-1)", marginBottom: "var(--dp-space-2)" }}>
       <Bell size={14} style={{ color: "var(--dp-color-warning)" }} />
@@ -49,12 +68,21 @@ const ReminderList: React.FC<{ reminders: Reminder[] }> = ({ reminders }) => (
       const overdue = isOverdue(r.due_at);
       const color = overdue ? "var(--dp-color-error)" : STATUS_COLORS[r.status] ?? "var(--dp-color-info)";
       return (
-        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "var(--dp-space-2)", padding: "var(--dp-space-1) 0", fontSize: "12px" }}>
-          {REMINDER_ICON}
-          <span style={{ color: "var(--dp-color-text-secondary)" }}>{formatRelativeTime(r.due_at)}</span>
-          <span style={{ marginLeft: "auto", padding: "2px 6px", borderRadius: "var(--dp-radius-full)", backgroundColor: color, color: "var(--dp-color-text-inverse)", fontSize: "10px" }}>
-            {overdue ? "逾期" : r.status}
-          </span>
+        <div key={r.id} style={{ padding: "var(--dp-space-1) 0", fontSize: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--dp-space-2)" }}>
+            {REMINDER_ICON}
+            <span style={{ color: "var(--dp-color-text-secondary)" }}>{formatRelativeTime(r.due_at)}</span>
+            <span style={{ marginLeft: "auto", padding: "2px 6px", borderRadius: "var(--dp-radius-full)", backgroundColor: color, color: "var(--dp-color-text-inverse)", fontSize: "10px" }}>
+              {overdue ? "逾期" : r.status}
+            </span>
+          </div>
+          <ReminderActions
+            reminderType={r.type}
+            busy={busyReminderId === r.id}
+            colorPrefix="--dp-color"
+            error={actionError?.id === r.id ? actionError.message : null}
+            onAction={(action) => onAction(r, action)}
+          />
         </div>
       );
     })}
@@ -67,7 +95,15 @@ const UniqueMatchContent: React.FC<{
   followUps: FollowUp[];
   reminders: Reminder[];
   onSetReminder: () => void;
-}> = ({ customer, followUps, reminders, onSetReminder }) => {
+  showRebind: boolean;
+  onToggleRebind: () => void;
+  onUnbind: () => void;
+  bindingBusy: boolean;
+  searchPanel: React.ReactNode;
+  busyReminderId: string | null;
+  actionError: { id: string; message: string } | null;
+  onReminderAction: (reminder: Reminder, action: ReminderAction) => void;
+}> = ({ customer, followUps, reminders, onSetReminder, showRebind, onToggleRebind, onUnbind, bindingBusy, searchPanel, busyReminderId, actionError, onReminderAction }) => {
   const lastFu = followUps[0];
   return (
     <div>
@@ -75,9 +111,37 @@ const UniqueMatchContent: React.FC<{
         customer={customer as any}
         lastFollowUpAt={lastFu?.occurred_at ?? null}
         lastFollowUpNote={lastFu?.note ?? lastFu?.message_body ?? null}
-        onOpen={() => void openWorkbench({ customerId: customer.id })}
+        onOpen={() => void openContentWorkbench({ customerId: customer.id })}
       />
-      {reminders.length > 0 && <ReminderList reminders={reminders} />}
+      {reminders.length > 0 && (
+        <ReminderList
+          reminders={reminders}
+          busyReminderId={busyReminderId}
+          actionError={actionError}
+          onAction={onReminderAction}
+        />
+      )}
+      <div style={{ padding: "var(--dp-space-2) var(--dp-space-3)", borderTop: "1px solid var(--dp-color-border-default)" }}>
+        <div style={{ display: "flex", gap: "var(--dp-space-2)" }}>
+          <button
+            type="button"
+            onClick={onToggleRebind}
+            disabled={bindingBusy}
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--dp-space-1)", padding: "var(--dp-space-1) var(--dp-space-2)", border: "1px solid var(--dp-color-border-default)", borderRadius: "var(--dp-radius-md)", background: "var(--dp-color-bg-card)", cursor: "pointer", fontSize: "12px" }}
+          >
+            <Link size={13} />改绑
+          </button>
+          <button
+            type="button"
+            onClick={onUnbind}
+            disabled={bindingBusy}
+            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--dp-space-1)", padding: "var(--dp-space-1) var(--dp-space-2)", border: "1px solid var(--dp-color-border-default)", borderRadius: "var(--dp-radius-md)", background: "var(--dp-color-bg-card)", cursor: "pointer", fontSize: "12px", color: "var(--dp-color-error)" }}
+          >
+            <Unlink size={13} />解绑
+          </button>
+        </div>
+        {showRebind && <div style={{ marginTop: "var(--dp-space-2)" }}>{searchPanel}</div>}
+      </div>
       <div style={{ borderTop: "1px solid var(--dp-color-border-default)" }}>
         <FollowUpMarker customerId={customer.id} />
         <div style={{ padding: "0 var(--dp-space-3) var(--dp-space-3)" }}>
@@ -106,51 +170,175 @@ export const FloatApp: React.FC = () => {
   const [showReminder, setShowReminder] = useState(false);
   const [bindSearch, setBindSearch] = useState("");
   const [bindLoading, setBindLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<Customer[]>([]);
+  const [bindingError, setBindingError] = useState<string | null>(null);
+  const [showRebind, setShowRebind] = useState(false);
+  const [busyReminderId, setBusyReminderId] = useState<string | null>(null);
+  const [reminderActionError, setReminderActionError] = useState<{ id: string; message: string } | null>(null);
+  const matchRequestId = useRef(0);
 
   const doMatch = useCallback(async (conv: ConversationInfo) => {
-    if (!conv.isOneOnOne) { store.setMatchState("unsupported"); return; }
-    store.setMatchLoading();
+    const requestId = ++matchRequestId.current;
+    const actions = useExtensionStore.getState();
+    if (!conv.isOneOnOne) { actions.setMatchState("unsupported"); return; }
+    actions.setMatchLoading();
     try {
       const result = await resolveMatch({ platform: conv.platform, raw_identifier: conv.rawIdentifier });
-      store.setMatchResult(result);
+      if (requestId !== matchRequestId.current) return;
+      actions.setMatchResult(result);
       if (result.status === "unique" && result.customer) {
+        setShowRebind(false);
+        setBindSearch("");
+        setSearchResults([]);
         const [fu, rm] = await Promise.all([
           fetchFollowUps(result.customer.id, 1),
           fetchRemindersByCustomer(result.customer.id),
         ]);
+        if (requestId !== matchRequestId.current) return;
         setFollowUps(fu.items);
         setReminders(rm.items.filter((r) => r.status !== "completed" && r.status !== "ignored"));
       }
     } catch (err) {
-      store.setError(extensionErrorMessage(err, "客户匹配失败，请重试"));
+      if (requestId === matchRequestId.current) {
+        actions.setError(extensionErrorMessage(err, "客户匹配失败，请重试"));
+      }
     }
-  }, [store]);
+  }, []);
+
+  useEffect(() => {
+    const query = bindSearch.trim();
+    if (!query) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      setBindingError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSearchLoading(true);
+      setBindingError(null);
+      void searchCustomers(query, controller.signal)
+        .then((page) => setSearchResults(page.items))
+        .catch((error) => {
+          if (!controller.signal.aborted) {
+            setSearchResults([]);
+            setBindingError(extensionErrorMessage(error, "客户搜索失败，请重试"));
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearchLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [bindSearch]);
 
   useEffect(() => {
     const unsub = onConversationChange((conv) => {
-      store.setConversation(conv);
+      const actions = useExtensionStore.getState();
+      actions.setConversation(conv);
       if (conv) doMatch(conv);
-      else store.setMatchState("unsupported");
+      else {
+        matchRequestId.current++;
+        actions.setMatchState("unsupported");
+      }
     });
     return unsub;
-  }, [doMatch, store]);
+  }, [doMatch]);
 
   const handleBind = async (customerId: string) => {
-    if (!store.conversation) return;
+    const conversation = store.conversation;
+    if (!conversation) return;
     setBindLoading(true);
+    setBindingError(null);
     try {
       await bindMatch({
-        platform: store.conversation.platform,
-        raw_identifier: store.conversation.rawIdentifier,
+        platform: conversation.platform,
+        raw_identifier: conversation.rawIdentifier,
         customer_id: customerId,
       });
-      doMatch(store.conversation);
+      const current = useExtensionStore.getState().conversation;
+      if (current?.platform === conversation.platform
+        && current.normalizedIdentifier === conversation.normalizedIdentifier) {
+        await doMatch(current);
+      }
     } catch (err) {
-      store.setError(extensionErrorMessage(err, "客户绑定失败，请重试"));
+      setBindingError(extensionErrorMessage(err, "客户绑定失败，请重试"));
     } finally {
       setBindLoading(false);
     }
   };
+
+  const handleUnbind = async () => {
+    const conversation = store.conversation;
+    if (!conversation) return;
+    setBindLoading(true);
+    setBindingError(null);
+    try {
+      await unbindMatch({
+        platform: conversation.platform,
+        raw_identifier: conversation.rawIdentifier,
+      });
+      const current = useExtensionStore.getState().conversation;
+      if (current?.platform === conversation.platform
+        && current.normalizedIdentifier === conversation.normalizedIdentifier) {
+        await doMatch(current);
+      }
+    } catch (error) {
+      setBindingError(extensionErrorMessage(error, "客户解绑失败，请重试"));
+    } finally {
+      setBindLoading(false);
+    }
+  };
+
+  const handleReminderAction = async (
+    reminder: Reminder,
+    action: ReminderAction,
+  ) => {
+    if (busyReminderId) return;
+    const update = buildReminderStatusUpdate(action);
+    const snapshot = reminders;
+    setBusyReminderId(reminder.id);
+    setReminderActionError(null);
+    setReminders((current) => current.filter((item) => item.id !== reminder.id));
+
+    try {
+      await updateContentReminderStatus(reminder.id, update);
+    } catch (error) {
+      setReminders(snapshot);
+      setReminderActionError({
+        id: reminder.id,
+        message: extensionErrorMessage(error, "提醒处理失败"),
+      });
+    } finally {
+      const customerId = useExtensionStore.getState().currentCustomer?.id;
+      if (customerId) {
+        try {
+          const page = await fetchRemindersByCustomer(customerId);
+          setReminders(page.items.filter((item) => item.status !== "completed" && item.status !== "ignored"));
+        } catch {
+          // Keep the optimistic result or exact rollback when reconciliation is unavailable.
+        }
+      }
+      setBusyReminderId(null);
+    }
+  };
+
+  const searchPanel = (
+    <CustomerSearchPanel
+      query={bindSearch}
+      setQuery={setBindSearch}
+      results={searchResults}
+      searchLoading={searchLoading}
+      bindLoading={bindLoading}
+      onSelect={handleBind}
+    />
+  );
 
   if (!store.expanded) {
     return (
@@ -179,7 +367,7 @@ export const FloatApp: React.FC = () => {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--dp-space-2) var(--dp-space-3)", borderBottom: "1px solid var(--dp-color-border-default)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--dp-space-2)" }}>
           <button
-            onClick={() => void openWorkbench("home")}
+            onClick={() => void openContentWorkbench("home")}
             title="打开工作台"
             style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", display: "flex" }}
           >
@@ -197,13 +385,40 @@ export const FloatApp: React.FC = () => {
         {store.matchState === "loading" && <LoadingState />}
         {store.matchState === "unsupported" && <UnsupportedState />}
         {store.matchState === "none" && (
-          <NoMatchState conversation={store.conversation} onSearch={handleBind} bindSearch={bindSearch} setBindSearch={setBindSearch} bindLoading={bindLoading} onCreate={() => void openWorkbench("new-customer")} />
+          <NoMatchState
+            conversation={store.conversation}
+            onSelect={handleBind}
+            bindSearch={bindSearch}
+            setBindSearch={setBindSearch}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            bindLoading={bindLoading}
+            onCreate={() => void openContentWorkbench("new-customer")}
+          />
         )}
         {store.matchState === "multiple" && (
           <MultipleMatchState candidates={store.candidates} onSelect={handleBind} bindLoading={bindLoading} />
         )}
         {store.matchState === "unique" && store.currentCustomer && (
-          <UniqueMatchContent customer={store.currentCustomer} followUps={followUps} reminders={reminders} onSetReminder={() => setShowReminder(true)} />
+          <UniqueMatchContent
+            customer={store.currentCustomer}
+            followUps={followUps}
+            reminders={reminders}
+            onSetReminder={() => setShowReminder(true)}
+            showRebind={showRebind}
+            onToggleRebind={() => setShowRebind((value) => !value)}
+            onUnbind={() => void handleUnbind()}
+            bindingBusy={bindLoading}
+            searchPanel={searchPanel}
+            busyReminderId={busyReminderId}
+            actionError={reminderActionError}
+            onReminderAction={(reminder, action) => void handleReminderAction(reminder, action)}
+          />
+        )}
+        {bindingError && (
+          <div style={{ padding: "var(--dp-space-2) var(--dp-space-3)", fontSize: "12px", color: "var(--dp-color-error)" }}>
+            {bindingError}
+          </div>
         )}
         {store.error && (
           <div style={{ padding: "var(--dp-space-3)", fontSize: "12px", color: "var(--dp-color-error)" }}>

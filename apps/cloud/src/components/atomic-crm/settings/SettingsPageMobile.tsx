@@ -45,6 +45,7 @@ import { ChangelogPage } from "../misc/ChangelogPage";
 import { personalAccount } from "../providers/personalAccount";
 import { useLocalDataOperations } from "../providers/localDataOperations";
 import { LocalDataToolsPage } from "./LocalDataToolsPage";
+import { LocalBackupStatus } from "./LocalBackupStatus";
 
 const ChangePasswordButton = () => {
   const translate = useTranslate();
@@ -100,6 +101,7 @@ export const SettingsPageMobile = () => {
       <MobileContent>
         <div className="flex flex-col min-h-[calc(100dvh-3.5rem-4.5rem)]">
           <div className="space-y-6">
+            <LocalBackupStatus />
             <ProfileSection />
             <PreferencesSection />
             <LocalDataSection />

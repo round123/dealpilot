@@ -13,8 +13,60 @@ import {
   UserPlus,
   Link,
   Loader2,
+  Search,
 } from "lucide-react";
 import type { ConversationInfo } from "../../../src/lib/platform-detect";
+import type { Customer } from "@dealpilot/shared";
+
+export const CustomerSearchPanel: React.FC<{
+  query: string;
+  setQuery: (value: string) => void;
+  results: Customer[];
+  searchLoading: boolean;
+  bindLoading: boolean;
+  onSelect: (customerId: string) => void;
+}> = ({ query, setQuery, results, searchLoading, bindLoading, onSelect }) => (
+  <div>
+    <div style={{ position: "relative" }}>
+      <Search size={14} style={{ position: "absolute", left: "8px", top: "9px", color: "var(--dp-color-text-tertiary)" }} />
+      <input
+        aria-label="搜索已有客户"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="输入客户名称或公司搜索..."
+        style={{
+          width: "100%", padding: "var(--dp-space-2) var(--dp-space-2) var(--dp-space-2) 28px",
+          border: "1px solid var(--dp-color-border-default)", boxSizing: "border-box",
+          borderRadius: "var(--dp-radius-md)", fontSize: "13px", marginBottom: "var(--dp-space-2)",
+        }}
+      />
+    </div>
+    {searchLoading ? (
+      <div style={{ fontSize: "12px", color: "var(--dp-color-text-tertiary)" }}>正在搜索...</div>
+    ) : query.trim() && results.length === 0 ? (
+      <div style={{ fontSize: "12px", color: "var(--dp-color-text-tertiary)" }}>未找到匹配客户</div>
+    ) : (
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--dp-space-1)" }}>
+        {results.map((customer) => (
+          <button
+            key={customer.id}
+            type="button"
+            disabled={bindLoading}
+            onClick={() => onSelect(customer.id)}
+            style={{
+              padding: "var(--dp-space-2)", textAlign: "left", cursor: bindLoading ? "wait" : "pointer",
+              border: "1px solid var(--dp-color-border-default)", borderRadius: "var(--dp-radius-md)",
+              backgroundColor: "var(--dp-color-bg-card)", color: "var(--dp-color-text-primary)",
+            }}
+          >
+            <div style={{ fontSize: "13px", fontWeight: 500 }}>{customer.name}</div>
+            {customer.company && <div style={{ fontSize: "11px", color: "var(--dp-color-text-secondary)" }}>{customer.company}</div>}
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+);
 
 /** 加载状态 */
 export const LoadingState: React.FC = () => (
@@ -42,12 +94,14 @@ export const UnsupportedState: React.FC = () => (
 /** 未命中：新建或绑定 */
 export const NoMatchState: React.FC<{
   conversation: ConversationInfo | null;
-  onSearch: (customerId: string) => void;
+  onSelect: (customerId: string) => void;
   bindSearch: string;
   setBindSearch: (v: string) => void;
+  searchResults: Customer[];
+  searchLoading: boolean;
   bindLoading: boolean;
   onCreate: () => void;
-}> = ({ conversation, bindSearch, setBindSearch, bindLoading, onCreate }) => {
+}> = ({ conversation, onSelect, bindSearch, setBindSearch, searchResults, searchLoading, bindLoading, onCreate }) => {
   const [showBind, setShowBind] = useState(false);
 
   return (
@@ -91,21 +145,14 @@ export const NoMatchState: React.FC<{
           </button>
         </div>
       ) : (
-        <div>
-          <input
-            value={bindSearch}
-            onChange={(e) => setBindSearch(e.target.value)}
-            placeholder="输入客户名称或公司搜索..."
-            style={{
-              width: "100%", padding: "var(--dp-space-2)",
-              border: "1px solid var(--dp-color-border-default)",
-              borderRadius: "var(--dp-radius-md)", fontSize: "13px", marginBottom: "var(--dp-space-2)",
-            }}
-          />
-          <div style={{ fontSize: "12px", color: "var(--dp-color-text-tertiary)" }}>
-            {bindLoading ? "绑定中..." : "输入客户 ID 进行绑定（演示）"}
-          </div>
-        </div>
+        <CustomerSearchPanel
+          query={bindSearch}
+          setQuery={setBindSearch}
+          results={searchResults}
+          searchLoading={searchLoading}
+          bindLoading={bindLoading}
+          onSelect={onSelect}
+        />
       )}
     </div>
   );

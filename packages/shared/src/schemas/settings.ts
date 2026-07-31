@@ -8,7 +8,7 @@ export const SettingsSchema = z.object({
   last_backup_at: z.string().nullable(),
   auto_start: z.boolean(),
   minimize_to_tray: z.boolean(),
-  backup_reminder_days: z.number().int().nullable(),
+  backup_reminder_days: z.number().int().min(1).max(365),
   locale: z.string(),
   theme: z.string(),
 });

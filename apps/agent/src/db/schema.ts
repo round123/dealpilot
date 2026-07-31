@@ -238,6 +238,8 @@ export const reminders = sqliteTable(
     last_notified_at: text("last_notified_at"),
     snooze_until: text("snooze_until"),
     resolution: text("resolution"),
+    pause_reason: text("pause_reason"),
+    reevaluate_at: text("reevaluate_at"),
     created_at: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),
@@ -386,7 +388,7 @@ export const settings = sqliteTable("settings", {
   last_backup_at: text("last_backup_at"),
   auto_start: integer("auto_start", { mode: "boolean" }).notNull().default(false),
   minimize_to_tray: integer("minimize_to_tray", { mode: "boolean" }).notNull().default(true),
-  backup_reminder_days: integer("backup_reminder_days"),
+  backup_reminder_days: integer("backup_reminder_days").notNull().default(7),
   locale: text("locale").notNull().default("zh-CN"),
   theme: text("theme").notNull().default("light"),
 });

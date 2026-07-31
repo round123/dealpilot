@@ -36,6 +36,7 @@ import {
 } from "../root/configurationLocalization";
 import { useLocalDataOperations } from "../providers/localDataOperations";
 import { LocalDataToolsPage } from "./LocalDataToolsPage";
+import { LocalBackupStatus } from "./LocalBackupStatus";
 
 const SECTIONS = [
   {
@@ -282,6 +283,7 @@ const SettingsFormFields = () => {
 
       {/* Main content */}
       <div className="flex-1 min-w-0 max-w-2xl space-y-6">
+        <LocalBackupStatus />
         {localDataOperations ? (
           <Card id="local-data">
             <CardContent className="flex items-center justify-between gap-4">

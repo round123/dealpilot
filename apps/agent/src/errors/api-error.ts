@@ -1,4 +1,4 @@
-export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409;
+export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 507;
 
 export class ApiError extends Error {
   constructor(
@@ -37,5 +37,9 @@ export class ApiError extends Error {
 
   static forbidden(message: string = "Forbidden") {
     return new ApiError(403, "FORBIDDEN", message);
+  }
+
+  static storage(message: string = "Local storage capacity is exhausted") {
+    return new ApiError(507, "STORAGE_ERROR", message);
   }
 }

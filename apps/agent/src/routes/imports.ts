@@ -32,13 +32,16 @@ app.post("/imports/parse", async (c) => {
 app.post(
   "/imports/:job_id/commit",
   validateJson(ImportCommitRequestSchema),
-  async (c) =>
-    c.json(
-      await commitImport({
-        ...c.req.valid("json"),
-        job_id: c.req.param("job_id"),
-      }),
-    ),
+  async (c) => {
+    const request = c.req.valid("json");
+    const pathJobId = c.req.param("job_id");
+    if (request.job_id !== pathJobId) {
+      throw ApiError.validation({
+        job_id: ["Request body job_id must match the URL job_id"],
+      });
+    }
+    return c.json(await commitImport(request));
+  },
 );
 
 app.get("/imports/:job_id/errors", async (c) => {

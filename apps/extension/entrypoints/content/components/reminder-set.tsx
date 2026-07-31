@@ -10,7 +10,8 @@
 
 import React, { useState } from "react";
 import { Clock, Loader2, X } from "lucide-react";
-import { createReminder, extensionErrorMessage } from "../../../src/lib/api-client";
+import { createReminder, extensionErrorMessage } from "../../../src/lib/content-agent-client";
+import { buildReminderCreate } from "../../../src/lib/reminder-draft";
 import { ReminderType } from "@dealpilot/shared";
 
 interface ReminderSetProps {
@@ -87,6 +88,8 @@ export const ReminderSet: React.FC<ReminderSetProps> = ({
     return d.toISOString().slice(0, 16);
   });
   const [priority, setPriority] = useState<"low" | "normal" | "high" | "urgent">("normal");
+  const [pauseReason, setPauseReason] = useState("");
+  const [reevaluateAt, setReevaluateAt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,20 +98,24 @@ export const ReminderSet: React.FC<ReminderSetProps> = ({
       setError("请选择到期时间");
       return;
     }
+    if (type === ReminderType.PAUSED && !pauseReason.trim()) {
+      setError("请填写暂不跟进原因");
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const payload = {
-        customer_id: customerId,
-        project_id: projectId,
+      const payload = buildReminderCreate({
+        customerId,
+        projectId,
         type,
         priority,
-        due_at: type === ReminderType.FIXED_TIME
-          ? new Date(dueAt).toISOString()
-          : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 等待回复/暂不跟进默认 24h 后
-      };
+        dueAt,
+        pauseReason,
+        reevaluateAt,
+      });
 
       await createReminder(payload);
       onSaved?.();
@@ -182,8 +189,27 @@ export const ReminderSet: React.FC<ReminderSetProps> = ({
       )}
 
       {type === "paused" && (
-        <div style={{ marginBottom: "var(--dp-space-3)", fontSize: "12px", color: "var(--dp-color-text-secondary)", padding: "var(--dp-space-2)", backgroundColor: "var(--dp-color-gray-50)", borderRadius: "var(--dp-radius-md)" }}>
-          暂不跟进：此客户将暂时从待办列表中移除，您可随时恢复。
+        <div style={{ marginBottom: "var(--dp-space-3)" }}>
+          <label style={{ display: "block", fontSize: "12px", color: "var(--dp-color-text-secondary)", marginBottom: "var(--dp-space-1)" }}>
+            暂不跟进原因
+          </label>
+          <textarea
+            value={pauseReason}
+            onChange={(event) => setPauseReason(event.target.value)}
+            maxLength={500}
+            rows={2}
+            placeholder="例如：等待客户下一年度预算"
+            style={{ ...INPUT_STYLE, resize: "vertical" }}
+          />
+          <label style={{ display: "block", fontSize: "12px", color: "var(--dp-color-text-secondary)", margin: "var(--dp-space-2) 0 var(--dp-space-1)" }}>
+            重新评估时间（可选）
+          </label>
+          <input
+            type="datetime-local"
+            value={reevaluateAt}
+            onChange={(event) => setReevaluateAt(event.target.value)}
+            style={INPUT_STYLE}
+          />
         </div>
       )}
 

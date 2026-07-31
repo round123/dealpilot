@@ -80,7 +80,10 @@ for (let index = 0; index < 30; index++) {
 }
 
 const duplicateForm = new FormData();
-duplicateForm.append("file", new File(["name,grade\nQA Customer 0001,B"], "duplicate.csv"));
+duplicateForm.append(
+  "file",
+  new File(["name,email,grade\nQA Duplicate,qa0001@example.com,B"], "duplicate.csv"),
+);
 const duplicateParseResponse = await app.request("/api/v1/imports/parse", {
   method: "POST",
   headers: { Authorization: authorization },

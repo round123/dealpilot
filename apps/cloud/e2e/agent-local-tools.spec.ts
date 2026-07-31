@@ -2,6 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as XLSX from "xlsx";
+import {
+  assertAgentUsedLoopbackOnly,
+  installAgentLoopbackNetworkGuard,
+} from "./agent-loopback-network";
 
 const expectedSheets = [
   "客户",
@@ -15,6 +19,7 @@ const expectedSheets = [
 ] as const;
 
 test.beforeEach(async ({ page }) => {
+  await installAgentLoopbackNetworkGuard(page);
   const agentDataDir = process.env.DEALPILOT_AGENT_E2E_DATA_DIR;
   if (!agentDataDir) {
     throw new Error("Agent E2E data directory is not configured");
@@ -39,6 +44,10 @@ test.beforeEach(async ({ page }) => {
     .toBe(true);
 
   await page.goto(`/?token=${encodeURIComponent(token!)}#/`);
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  await assertAgentUsedLoopbackOnly(page, testInfo);
 });
 
 test("本地 Agent 支持字段映射导入、加密备份校验和八域 Excel 导出", async ({

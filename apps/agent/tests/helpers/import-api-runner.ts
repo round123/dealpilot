@@ -70,9 +70,8 @@ const [{ count: jobsAfterRollback }] = await db
 
 const commitIdempotencyKey = crypto.randomUUID();
 const commitBody = JSON.stringify({ job_id: parsed.job_id, resolutions: [] });
-const commitResponse = await app.request(
-  `/api/v1/imports/${parsed.job_id}/commit`,
-  {
+const commitRequest = () =>
+  app.request(`/api/v1/imports/${parsed.job_id}/commit`, {
     method: "POST",
     headers: {
       Authorization: authorization,
@@ -80,12 +79,16 @@ const commitResponse = await app.request(
       "Idempotency-Key": commitIdempotencyKey,
     },
     body: commitBody,
-  },
-);
+  });
+const [commitResponse, replayResponse] = await Promise.all([
+  commitRequest(),
+  commitRequest(),
+]);
 const committed = await commitResponse.json();
 if (!commitResponse.ok)
   throw new Error(`commit failed: ${JSON.stringify(committed)}`);
-const replayResponse = await app.request(
+const replayed = await replayResponse.json();
+const changedReplayResponse = await app.request(
   `/api/v1/imports/${parsed.job_id}/commit`,
   {
     method: "POST",
@@ -94,10 +97,12 @@ const replayResponse = await app.request(
       "Content-Type": "application/json",
       "Idempotency-Key": commitIdempotencyKey,
     },
-    body: commitBody,
+    body: JSON.stringify({
+      job_id: parsed.job_id,
+      resolutions: [{ row_index: 1, action: "skip" }],
+    }),
   },
 );
-const replayed = await replayResponse.json();
 const [{ count: jobsAfterReplay }] = await db
   .select({ count: count() })
   .from(import_jobs);
@@ -154,6 +159,23 @@ const [{ count: jobsAfterMappedParse }] = await db
   .select({ count: count() })
   .from(import_jobs);
 
+const mismatchedJobResponse = await app.request(
+  `/api/v1/imports/${mappedParsed.job_id}/commit`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    body: JSON.stringify({
+      job_id: "99999999-9999-4999-8999-999999999999",
+      resolutions: [],
+    }),
+  },
+);
+const mismatchedJobError = await mismatchedJobResponse.json();
+
 const mappedCommitResponse = await app.request(
   `/api/v1/imports/${mappedParsed.job_id}/commit`,
   {
@@ -191,6 +213,47 @@ const duplicateMappingResponse = await app.request("/api/v1/imports/parse", {
 });
 const duplicateMappingError = await duplicateMappingResponse.json();
 
+async function parseConcurrentImport() {
+  const form = new FormData();
+  form.set(
+    "file",
+    new File(
+      ["name,email\nConcurrent Import,race@example.com\n"],
+      "concurrent.csv",
+      { type: "text/csv" },
+    ),
+  );
+  const response = await app.request("/api/v1/imports/parse", {
+    method: "POST",
+    headers: { Authorization: authorization },
+    body: form,
+  });
+  return response.json();
+}
+const [concurrentA, concurrentB] = await Promise.all([
+  parseConcurrentImport(),
+  parseConcurrentImport(),
+]);
+const commitConcurrentImport = (jobId: string) =>
+  app.request(`/api/v1/imports/${jobId}/commit`, {
+    method: "POST",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    body: JSON.stringify({ job_id: jobId, resolutions: [] }),
+  });
+const concurrentCommitResponses = await Promise.all([
+  commitConcurrentImport(concurrentA.job_id),
+  commitConcurrentImport(concurrentB.job_id),
+]);
+const concurrentCustomersResponse = await app.request(
+  "/api/v1/customers?search=Concurrent%20Import&limit=20",
+  { headers: { Authorization: authorization } },
+);
+const concurrentCustomers = await concurrentCustomersResponse.json();
+
 console.log(
   JSON.stringify({
     parse_status: parseResponse.status,
@@ -207,6 +270,7 @@ console.log(
     commit_status: commitResponse.status,
     replay_status: replayResponse.status,
     replay_matches: JSON.stringify(replayed) === JSON.stringify(committed),
+    changed_replay_status: changedReplayResponse.status,
     jobs_after_replay: jobsAfterReplay,
     ...committed,
     persisted_customers: customers.items.length,
@@ -219,12 +283,18 @@ console.log(
     mapped_preview: mappedParsed.preview[0],
     customers_after_mapped_parse: customersAfterMappedParse,
     jobs_after_mapped_parse: jobsAfterMappedParse,
+    mismatched_job_status: mismatchedJobResponse.status,
+    mismatched_job_fields: Object.keys(mismatchedJobError.error.fields),
     mapped_commit_status: mappedCommitResponse.status,
     mapped_commit: mappedCommitted,
     missing_name_status: missingNameResponse.status,
     missing_name_fields: Object.keys(missingNameError.error.fields),
     duplicate_mapping_status: duplicateMappingResponse.status,
     duplicate_mapping_fields: Object.keys(duplicateMappingError.error.fields),
+    concurrent_commit_statuses: concurrentCommitResponses
+      .map(({ status }) => status)
+      .sort(),
+    concurrent_customer_count: concurrentCustomers.items.length,
   }),
 );
 process.exit(0);

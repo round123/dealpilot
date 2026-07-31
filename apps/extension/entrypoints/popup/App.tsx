@@ -19,13 +19,23 @@ import {
   BriefcaseBusiness,
   Users,
 } from "lucide-react";
-import { extensionErrorMessage, fetchPopupReminders } from "../../src/lib/api-client";
+import {
+  extensionErrorMessage,
+  fetchPopupReminders,
+  updateReminderStatus,
+} from "../../src/lib/api-client";
 import { requestAgentStatus } from "../../src/lib/native-messaging";
 import { NewCustomerPage } from "./new-customer";
 import type { PopupReminder } from "@dealpilot/shared";
 import { isOverdue, formatRelativeTime } from "@dealpilot/shared";
 import { POPUP_REMINDER_LIMIT } from "@dealpilot/shared";
 import { openWorkbench } from "../../src/lib/workbench-links";
+import { openReminderConversation, type ConversationLaunchMode } from "../../src/lib/conversation-links";
+import { ReminderActions } from "../../src/components/reminder-actions";
+import {
+  buildReminderStatusUpdate,
+  type ReminderAction,
+} from "../../src/lib/reminder-actions";
 
 /** 状态颜色 */
 const STATUS_COLORS: Record<string, string> = {
@@ -46,17 +56,39 @@ const SkeletonCard: React.FC = () => (
 );
 
 /** 单个待办卡片 */
-const ReminderCard: React.FC<{ reminder: PopupReminder }> = ({ reminder }) => {
+const ReminderCard: React.FC<{
+  reminder: PopupReminder;
+  busy: boolean;
+  actionError?: string | null;
+  onAction: (reminder: PopupReminder, action: ReminderAction) => void;
+}> = ({ reminder, busy, actionError, onAction }) => {
   const overdue = isOverdue(reminder.due_at);
-  const isHighRisk = reminder.priority === "high" || reminder.priority === "urgent";
+  const isHighRisk = reminder.has_high_risk;
+  const [launchStatus, setLaunchStatus] = useState<string | null>(null);
 
-  const handleClick = () => {
-    void openWorkbench("reminders");
+  const handleClick = async () => {
+    setLaunchStatus(null);
+    try {
+      const mode: ConversationLaunchMode = await openReminderConversation(reminder);
+      setLaunchStatus({
+        direct: "已打开对应会话",
+        platform_with_copy: "已打开平台，账号已复制",
+        platform_without_copy: "已打开平台，请手动搜索账号",
+        workbench: "未绑定平台账号，已打开提醒详情",
+      }[mode]);
+    } catch {
+      setLaunchStatus("无法打开会话，请从工作台查看提醒");
+    }
   };
 
   return (
     <div
       onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") void handleClick();
+      }}
       style={{
         padding: "12px",
         cursor: "pointer",
@@ -85,6 +117,12 @@ const ReminderCard: React.FC<{ reminder: PopupReminder }> = ({ reminder }) => {
         </div>
       )}
 
+      {isHighRisk && (
+        <div style={{ fontSize: "11px", color: "var(--color-error)", marginBottom: "4px" }}>
+          关联项目存在高风险
+        </div>
+      )}
+
       {/* 第三行：到期时间 + 状态 */}
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         <span style={{ fontSize: "11px", color: overdue ? "var(--color-error)" : "var(--color-text-secondary)" }}>
@@ -103,6 +141,18 @@ const ReminderCard: React.FC<{ reminder: PopupReminder }> = ({ reminder }) => {
           {overdue ? "逾期" : reminder.status === "pending" ? "待处理" : reminder.status}
         </span>
       </div>
+      {launchStatus && (
+        <div aria-live="polite" style={{ marginTop: "4px", fontSize: "10px", color: "var(--color-text-secondary)" }}>
+          {launchStatus}
+        </div>
+      )}
+      <ReminderActions
+        reminderType={reminder.type}
+        busy={busy}
+        colorPrefix="--color"
+        error={actionError}
+        onAction={(action) => onAction(reminder, action)}
+      />
     </div>
   );
 };
@@ -113,6 +163,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [agentRunning, setAgentRunning] = useState(false);
+  const [busyReminderId, setBusyReminderId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
 
   /** 加载 popup 待办 */
   const loadReminders = async () => {
@@ -132,6 +184,35 @@ export default function App() {
     loadReminders();
     requestAgentStatus().then(setAgentRunning);
   }, []);
+
+  const handleReminderAction = async (
+    reminder: PopupReminder,
+    action: ReminderAction,
+  ) => {
+    if (busyReminderId) return;
+    const update = buildReminderStatusUpdate(action);
+    const snapshot = reminders;
+    setBusyReminderId(reminder.id);
+    setActionError(null);
+    setReminders((current) => current.filter((item) => item.id !== reminder.id));
+
+    try {
+      await updateReminderStatus(reminder.id, update);
+    } catch (error) {
+      setReminders(snapshot);
+      setActionError({
+        id: reminder.id,
+        message: extensionErrorMessage(error, "提醒处理失败"),
+      });
+    } finally {
+      try {
+        setReminders(await fetchPopupReminders());
+      } catch {
+        // Keep the optimistic result or exact rollback when reconciliation is unavailable.
+      }
+      setBusyReminderId(null);
+    }
+  };
 
   // 新建客户页面
   if (showNewCustomer) {
@@ -226,7 +307,15 @@ export default function App() {
             </div>
           </div>
         ) : (
-          reminders.map((r) => <ReminderCard key={r.id} reminder={r} />)
+          reminders.map((r) => (
+            <ReminderCard
+              key={r.id}
+              reminder={r}
+              busy={busyReminderId === r.id}
+              actionError={actionError?.id === r.id ? actionError.message : null}
+              onAction={(reminder, action) => void handleReminderAction(reminder, action)}
+            />
+          ))
         )}
       </div>
 

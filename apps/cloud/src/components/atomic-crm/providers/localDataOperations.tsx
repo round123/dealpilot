@@ -3,6 +3,11 @@ import { createContext, useContext, type ReactNode } from "react";
 import type {
   BackupRestoreResponseSchema,
   BackupValidateResponseSchema,
+  ClearLocalDataResponseSchema,
+  LocalDataInfoSchema,
+  RollingUsageMetricsSchema,
+  Settings,
+  SettingsUpdate,
 } from "@dealpilot/shared";
 
 export type BackupValidationResult = ReturnType<
@@ -10,6 +15,13 @@ export type BackupValidationResult = ReturnType<
 >;
 export type BackupRestoreResult = ReturnType<
   typeof BackupRestoreResponseSchema.parse
+>;
+export type LocalDataInfo = ReturnType<typeof LocalDataInfoSchema.parse>;
+export type ClearLocalDataResult = ReturnType<
+  typeof ClearLocalDataResponseSchema.parse
+>;
+export type RollingUsageMetrics = ReturnType<
+  typeof RollingUsageMetricsSchema.parse
 >;
 
 export interface LocalDataOperations {
@@ -29,6 +41,18 @@ export interface LocalDataOperations {
     options?: { signal?: AbortSignal; idempotencyKey?: string },
   ): Promise<BackupRestoreResult>;
   exportAll(options?: { signal?: AbortSignal }): Promise<Blob>;
+  getUsageMetrics(options?: { signal?: AbortSignal }): Promise<RollingUsageMetrics>;
+  exportUsageMetrics(options?: { signal?: AbortSignal }): Promise<Blob>;
+  getInfo(options?: { signal?: AbortSignal }): Promise<LocalDataInfo>;
+  getSettings(options?: { signal?: AbortSignal }): Promise<Settings>;
+  updateSettings(
+    input: SettingsUpdate,
+    options?: { signal?: AbortSignal },
+  ): Promise<Settings>;
+  clearData(
+    confirmation: string,
+    options?: { signal?: AbortSignal; idempotencyKey?: string },
+  ): Promise<ClearLocalDataResult>;
 }
 
 const LocalDataOperationsContext = createContext<LocalDataOperations | null>(null);

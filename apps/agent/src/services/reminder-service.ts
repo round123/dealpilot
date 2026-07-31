@@ -80,13 +80,27 @@ export async function updateReminderStatus(reminderId: string, update: ReminderS
 }
 
 export async function getPopupReminders(now: Date = new Date()) {
-  const candidates = await getPopupReminderCandidates();
+  const candidates = await getPopupReminderCandidates(now.toISOString());
   return sortPopupReminderCandidates(candidates, now)
     .slice(0, POPUP_REMINDER_LIMIT)
-    .map(({ reminder, customerName, projectName }) => ({
+    .map(({
+      reminder,
+      customerName,
+      projectName,
+      hasHighRisk,
+      conversationPlatform,
+      conversationIdentifier,
+    }) => ({
       ...reminder,
       customer_name: customerName,
       project_name: projectName,
+      has_high_risk: Boolean(hasHighRisk),
+      conversation_target: conversationPlatform && conversationIdentifier
+        ? {
+            platform: conversationPlatform as "whatsapp" | "telegram",
+            raw_identifier: conversationIdentifier,
+          }
+        : null,
     }));
 }
 

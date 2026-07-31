@@ -6,6 +6,9 @@ import {
   apiFetch,
   extensionErrorMessage,
   fetchPopupReminders,
+  searchCustomers,
+  unbindMatch,
+  updateReminderStatus,
 } from "./api-client";
 
 const originalChrome = globalThis.chrome;
@@ -25,11 +28,33 @@ const popupReminder = {
   last_notified_at: null,
   snooze_until: null,
   resolution: null,
+  pause_reason: null,
+  reevaluate_at: null,
   created_at: "2026-07-31T09:00:00.000Z",
   updated_at: "2026-07-31T09:00:00.000Z",
   customer_name: "示例客户",
   project_name: "续约项目",
+  has_high_risk: true,
+  conversation_target: {
+    platform: "whatsapp",
+    raw_identifier: "+86 138 0000 0000",
+  },
 };
+
+const customer = {
+  id: "33333333-3333-4333-8333-333333333333",
+  name: "示例客户",
+  company: "示例公司",
+  country: null,
+  source: null,
+  grade: "A",
+  status: "active",
+  deleted_at: null,
+  created_at: "2026-07-31T09:00:00.000Z",
+  updated_at: "2026-07-31T09:00:00.000Z",
+};
+
+const reminder = popupReminder;
 
 function installChromeStorage(values: Record<string, unknown> = {}) {
   const sessionValues = { ...values };
@@ -115,6 +140,49 @@ describe("Extension API boundary", () => {
     const error = await captureError(() => fetchPopupReminders());
     expect(error.code).toBe(API_ERROR_CODES.invalidResponse);
     expect(error.status).toBe(200);
+  });
+
+  test("searches customers by display text and parses the page", async () => {
+    const fetchMock = mock(async () => response({ items: [customer], next_cursor: null }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(searchCustomers("示例 公司")).resolves.toEqual({
+      items: [customer],
+      next_cursor: null,
+    });
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
+      "http://127.0.0.1:31081/api/v1/customers?search=%E7%A4%BA%E4%BE%8B+%E5%85%AC%E5%8F%B8&limit=10&sort=name",
+    );
+  });
+
+  test("unbinds through the typed 204 boundary", async () => {
+    const fetchMock = mock(async () => new Response(undefined, { status: 204 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(unbindMatch({
+      platform: "telegram",
+      raw_identifier: "@example_customer",
+    })).resolves.toBeUndefined();
+    const [, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(options.method).toBe("DELETE");
+    expect(options.body).toBe(JSON.stringify({
+      platform: "telegram",
+      raw_identifier: "@example_customer",
+    }));
+  });
+
+  test("updates reminder status through the typed PUT boundary", async () => {
+    const fetchMock = mock(async () => response({ data: { ...reminder, status: "completed" } }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(updateReminderStatus(reminder.id, {
+      status: "completed",
+    })).resolves.toMatchObject({ id: reminder.id, status: "completed" });
+
+    const [url, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`http://127.0.0.1:31081/api/v1/reminders/${reminder.id}`);
+    expect(options.method).toBe("PUT");
+    expect(options.body).toBe(JSON.stringify({ status: "completed" }));
   });
 
   test("normalizes an error envelope including fields and request ID", async () => {

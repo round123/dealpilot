@@ -1,4 +1,4 @@
-import { requestToken } from "./native-messaging";
+import { getAgentPort, getStoredToken, getWorkbenchOrigin } from "./api-client";
 
 export type WorkbenchDestination =
   | "home"
@@ -55,6 +55,12 @@ function normalizeLoopbackOrigin(value?: string): string | null {
 export async function openWorkbench(
   destination: WorkbenchDestination = "home",
 ): Promise<void> {
-  const pairing = await requestToken();
+  const [token, port, workbenchOrigin] = await Promise.all([
+    getStoredToken(),
+    getAgentPort(),
+    getWorkbenchOrigin(),
+  ]);
+  if (!token) throw new Error("Agent pairing is unavailable");
+  const pairing = { token, port, workbenchOrigin };
   await chrome.tabs.create({ url: buildWorkbenchUrl(pairing, destination) });
 }

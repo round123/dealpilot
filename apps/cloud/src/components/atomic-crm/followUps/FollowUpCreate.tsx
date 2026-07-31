@@ -6,6 +6,7 @@ import { Form, useNotify, useRedirect, useTranslate } from "ra-core";
 import { Create } from "@/components/admin/create";
 import { SaveButton } from "@/components/admin/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getErrorMessageKey } from "@/components/admin/error-message";
 
 import { invalidateEngagementQueries } from "../engagements/invalidateEngagementQueries";
 import { FollowUpInputs } from "./FollowUpInputs";
@@ -39,9 +40,9 @@ export const FollowUpCreate = ({
       mutationOptions={{
         retry: false,
         onMutate: () => setSaveFailed(false),
-        onError: () => {
+        onError: (error) => {
           setSaveFailed(true);
-          notify("resources.follow_ups.notifications.save_failed", {
+          notify(getErrorMessageKey(error, "resources.follow_ups.notifications.save_failed"), {
             _: "跟进保存失败，请检查内容后重试",
             type: "error",
           });

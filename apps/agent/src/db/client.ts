@@ -38,12 +38,29 @@ export function getDb() {
 export let db = getDb();
 
 export function closeDatabase(): void {
-  if (_rawDb) {
-    _rawDb.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-    _rawDb.close();
+  let closeError: unknown;
+  try {
+    if (_rawDb) {
+      try {
+        _rawDb.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      } catch (error) {
+        closeError = error;
+      }
+      try {
+        _rawDb.close();
+      } catch (error) {
+        closeError ??= error;
+      }
+    }
+  } finally {
+    _rawDb = null;
+    _db = null;
+    // Release the exported Drizzle wrapper as well; it retains the SQLite
+    // handle and can keep the file locked on Windows during atomic swaps.
+    db = null as unknown as ReturnType<typeof getDb>;
+    Bun.gc(true);
   }
-  _rawDb = null;
-  _db = null;
+  if (closeError) throw closeError;
 }
 
 export function reopenDatabase(): void {

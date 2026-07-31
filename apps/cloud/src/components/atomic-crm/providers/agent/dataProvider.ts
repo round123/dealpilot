@@ -452,6 +452,8 @@ async function createRecord(
             type: data.type,
             due_at: data.due_at,
             priority: data.priority,
+            pause_reason: data.pause_reason,
+            reevaluate_at: data.reevaluate_at,
           }),
           ReminderSchema,
         ),

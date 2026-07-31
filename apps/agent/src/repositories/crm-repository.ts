@@ -520,12 +520,43 @@ export async function deleteSocialAccountRecord(accountId: string) {
   await db.delete(social_accounts).where(eq(social_accounts.id, accountId));
 }
 
-export async function findMatchingCustomers(
+export async function findManualBindingCustomers(
   platform: string,
   normalizedIdentifier: string,
 ) {
   return db
-    .select({ customer: customers })
+    .selectDistinct({ customer: customers })
+    .from(social_accounts)
+    .innerJoin(customers, eq(social_accounts.customer_id, customers.id))
+    .where(
+      and(
+        eq(social_accounts.platform, platform),
+        eq(social_accounts.normalized_identifier, normalizedIdentifier),
+        eq(social_accounts.manually_bound, true),
+        isNull(customers.deleted_at),
+      ),
+    );
+}
+
+export async function findPhoneMatchingCustomers(normalizedPhone: string) {
+  return db
+    .selectDistinct({ customer: customers })
+    .from(contacts)
+    .innerJoin(customers, eq(contacts.customer_id, customers.id))
+    .where(
+      and(
+        eq(contacts.phone, normalizedPhone),
+        isNull(customers.deleted_at),
+      ),
+    );
+}
+
+export async function findPlatformMatchingCustomers(
+  platform: string,
+  normalizedIdentifier: string,
+) {
+  return db
+    .selectDistinct({ customer: customers })
     .from(social_accounts)
     .innerJoin(customers, eq(social_accounts.customer_id, customers.id))
     .where(

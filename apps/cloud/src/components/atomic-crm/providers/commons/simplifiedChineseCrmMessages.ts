@@ -992,7 +992,7 @@ export const simplifiedChineseCrmMessages: CrmMessages = {
     validation: "部分内容填写有误，请检查后重试",
     rateLimited: "操作过于频繁，请稍后重试",
     function: "操作未能完成，请稍后重试",
-    storage: "文件操作失败，请稍后重试",
+    storage: "本地存储空间不足，请释放空间，或先备份后重试",
     server: "服务暂不可用，请稍后重试",
     generic: "操作失败，请稍后重试",
   },

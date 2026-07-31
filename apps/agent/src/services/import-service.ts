@@ -1,12 +1,18 @@
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
-import { normalizeEmail, normalizePhone } from "@dealpilot/shared";
+import {
+  normalizeEmail,
+  normalizePhone,
+  normalizePlatformIdentifier,
+} from "@dealpilot/shared";
 import type { ImportCommitRequest } from "@dealpilot/shared";
 import { ApiError } from "../errors/api-error";
 import {
   commitImportRows,
-  findDuplicateCustomer,
+  findImportCandidates,
   findImportJob,
+  ImportMergeTargetUnavailableError,
+  ImportPreviewStaleError,
 } from "../repositories/import-repository";
 import type {
   ImportCustomerRow,
@@ -27,6 +33,7 @@ interface ParsedRow {
 interface CachedImport {
   rows: ParsedRow[];
   duplicateRows: Set<number>;
+  candidateTargets: Map<number, Set<string>>;
   job: ImportJobMetadata;
 }
 
@@ -45,7 +52,10 @@ function value(row: Record<string, unknown>, ...keys: string[]) {
 
 function toCustomerRow(
   row: ParsedRow,
-): Omit<ImportCustomerRow, "action" | "targetCustomerId"> {
+): Omit<
+  ImportCustomerRow,
+  "action" | "targetCustomerId" | "allowDuplicate" | "rowIndex"
+> {
   const grade = value(row.data, "grade", "分级") ?? "B";
   return {
     valid: row.valid,
@@ -57,7 +67,79 @@ function toCustomerRow(
     contactName: value(row.data, "contact_name", "联系人") ?? null,
     email: normalizeEmail(value(row.data, "email", "邮箱")),
     phone: normalizePhone(value(row.data, "phone", "电话")),
+    platform: value(row.data, "platform", "平台")?.toLowerCase() ?? null,
+    platformAccount:
+      value(row.data, "platform_account", "平台账号", "社媒账号") ?? null,
+    normalizedPlatformAccount: null,
   };
+}
+
+function normalizeCustomerRow(
+  row: ReturnType<typeof toCustomerRow>,
+): ReturnType<typeof toCustomerRow> {
+  return {
+    ...row,
+    normalizedPlatformAccount:
+      row.platform && row.platformAccount
+        ? normalizePlatformIdentifier(row.platform, row.platformAccount)
+        : null,
+  };
+}
+
+function toSnapshot(row: ReturnType<typeof toCustomerRow>) {
+  return {
+    name: row.name,
+    company: row.company,
+    country: row.country,
+    source: row.source,
+    grade: row.grade,
+    contact_name: row.contactName,
+    email: row.email,
+    phone: row.phone,
+    platform: row.platform,
+    platform_account: row.platformAccount,
+  };
+}
+
+function fieldConflicts(
+  existing: ReturnType<typeof toSnapshot> & { customer_id?: string },
+  incoming: ReturnType<typeof toSnapshot>,
+) {
+  const fields = [
+    "name",
+    "company",
+    "country",
+    "source",
+    "grade",
+    "contact_name",
+    "email",
+    "phone",
+    "platform",
+    "platform_account",
+  ] as const;
+  return fields.flatMap((field) => {
+    const existingValue = existing[field];
+    const incomingValue = incoming[field];
+    const valuesMatch =
+      field === "email"
+        ? existingValue?.toLowerCase() === incomingValue?.toLowerCase()
+        : field === "platform_account" && existing.platform && incoming.platform
+          ? normalizePlatformIdentifier(
+              existing.platform,
+              existingValue ?? "",
+            ) ===
+            normalizePlatformIdentifier(incoming.platform, incomingValue ?? "")
+          : existingValue === incomingValue;
+    return existingValue && incomingValue && !valuesMatch
+      ? [
+          {
+            field,
+            existing_value: existingValue,
+            incoming_value: incomingValue,
+          },
+        ]
+      : [];
+  });
 }
 
 export async function parseImportFile(
@@ -98,6 +180,13 @@ export async function parseImportFile(
     const rowIndex = index + 1;
     const name = value(data, "name", "名称");
     const grade = value(data, "grade", "分级") ?? "B";
+    const platform = value(data, "platform", "平台");
+    const platformAccount = value(
+      data,
+      "platform_account",
+      "平台账号",
+      "社媒账号",
+    );
     if (!name) {
       errors.push({
         row: rowIndex,
@@ -114,22 +203,57 @@ export async function parseImportFile(
       });
       return { rowIndex, data, valid: false };
     }
+    if (Boolean(platform) !== Boolean(platformAccount)) {
+      errors.push({
+        row: rowIndex,
+        field: platform ? "platform_account" : "platform",
+        message: "平台和平台账号必须同时填写",
+      });
+      return { rowIndex, data, valid: false };
+    }
     return { rowIndex, data, valid: true };
   });
 
   const duplicateCandidates = [];
+  const nameCompanyHints = [];
   const duplicateRows = new Set<number>();
+  const candidateTargets = new Map<number, Set<string>>();
   for (const row of parsedRows) {
     if (!row.valid) continue;
-    const customer = toCustomerRow(row);
-    const existing = await findDuplicateCustomer(customer.name, customer.email);
-    if (!existing) continue;
+    const customer = normalizeCustomerRow(toCustomerRow(row));
+    const candidates = await findImportCandidates({
+      ...customer,
+      rowIndex: row.rowIndex,
+      action: "create",
+      allowDuplicate: false,
+    });
+    for (const hint of candidates.hints) {
+      nameCompanyHints.push({
+        row_index: row.rowIndex,
+        existing_customer_id: hint.customerId,
+        matched_by: hint.matchedBy,
+        existing_name: hint.name,
+        existing_company: hint.company,
+        incoming_name: customer.name,
+        incoming_company: customer.company,
+      });
+    }
+    if (candidates.exact.length === 0) continue;
     duplicateRows.add(row.rowIndex);
+    candidateTargets.set(
+      row.rowIndex,
+      new Set(candidates.exact.map(({ customer }) => customer.customer_id)),
+    );
+    const incoming = toSnapshot(customer);
     duplicateCandidates.push({
       row_index: row.rowIndex,
-      existing_customer_id: existing.id,
-      existing_name: existing.name,
-      new_name: customer.name,
+      incoming,
+      matches: candidates.exact.map((candidate) => ({
+        existing_customer_id: candidate.customer.customer_id,
+        matched_by: candidate.matchedBy,
+        existing: candidate.customer,
+        conflicts: fieldConflicts(candidate.customer, incoming),
+      })),
     });
   }
 
@@ -142,7 +266,12 @@ export async function parseImportFile(
     failedRows: rows.length - validRows,
     duplicateCount: duplicateCandidates.length,
   };
-  parsedResultsCache.set(jobId, { rows: parsedRows, duplicateRows, job });
+  parsedResultsCache.set(jobId, {
+    rows: parsedRows,
+    duplicateRows,
+    candidateTargets,
+    job,
+  });
   errorReportCache.set(jobId, errors);
 
   return {
@@ -151,6 +280,7 @@ export async function parseImportFile(
     valid_rows: validRows,
     errors,
     duplicate_candidates: duplicateCandidates,
+    name_company_hints: nameCompanyHints,
     source_columns: sourceColumns,
     preview: parsedRows.slice(0, 50).map(({ data }) => data),
   };
@@ -170,6 +300,13 @@ export async function commitImport(request: ImportCommitRequest) {
   const resolutions = new Map(
     (request.resolutions ?? []).map((item) => [item.row_index, item]),
   );
+  for (const resolution of request.resolutions ?? []) {
+    if (!cached.duplicateRows.has(resolution.row_index)) {
+      throw ApiError.badRequest(
+        `Resolution row ${resolution.row_index} is not a duplicate candidate`,
+      );
+    }
+  }
   for (const rowIndex of cached.duplicateRows) {
     if (!resolutions.has(rowIndex)) {
       throw ApiError.badRequest(
@@ -185,8 +322,19 @@ export async function commitImport(request: ImportCommitRequest) {
         `Merge row ${row.rowIndex} requires target_customer_id`,
       );
     }
+    if (
+      resolution?.action === "merge" &&
+      !cached.candidateTargets
+        .get(row.rowIndex)
+        ?.has(resolution.target_customer_id!)
+    ) {
+      throw ApiError.badRequest(
+        `Merge target for row ${row.rowIndex} is not one of its duplicate candidates`,
+      );
+    }
     return {
-      ...toCustomerRow(row),
+      ...normalizeCustomerRow(toCustomerRow(row)),
+      rowIndex: row.rowIndex,
       action: !row.valid
         ? "skip"
         : resolution?.action === "merge"
@@ -195,10 +343,24 @@ export async function commitImport(request: ImportCommitRequest) {
             ? "skip"
             : "create",
       targetCustomerId: resolution?.target_customer_id,
+      allowDuplicate: resolution?.action === "new",
     };
   });
 
-  const result = await commitImportRows(request.job_id, rows, cached.job);
+  let result;
+  try {
+    result = await commitImportRows(request.job_id, rows, cached.job);
+  } catch (error) {
+    if (
+      error instanceof ImportMergeTargetUnavailableError ||
+      error instanceof ImportPreviewStaleError
+    ) {
+      throw ApiError.conflict(
+        "The selected merge target changed after preview; parse the file again",
+      );
+    }
+    throw error;
+  }
   parsedResultsCache.delete(request.job_id);
   return result;
 }

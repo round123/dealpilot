@@ -1,84 +1,93 @@
-# Phase 4 QA Report
+# Phase 4 Local QA Report
 
-- Date: 2026-07-29
-- Branch: `codex/pragmatic-three-layer`
-- Public repository: <https://github.com/round123/dealpilot>
-- Result: 20 automated passes, 7 manual gold-standard checks pending, 1 conditional design check
+- Date: 2026-07-31
+- Branch: `codex/atomic-personal-cloud`
+- Baseline commit: `0b438b6`
+- Scope: Atomic workbench + local Agent/SQLite + browser extension
+- Result: local automated functional gates passed; desktop integration, real-site DOM, installer, and release checks remain
 
 ## Build And Test Evidence
 
 | Check | Result |
 |---|---|
-| `pnpm type-check` | PASS, 4/4 packages |
-| `pnpm test` | PASS, 14 tests / 41 assertions |
-| `pnpm lint` | PASS, web and extension |
-| `pnpm build` | PASS, Agent EXE + Web + Chrome MV3 + shared declarations |
-| Architecture boundary tests | PASS, routes -> services -> repositories -> db/platform |
-| Compiled Agent startup | PASS, 217.44 ms to HTTP health |
-| Compiled Agent backup | PASS, HTTP 200, `DPBK` v2 |
-| Native Messaging protocol | PASS, framed `hello` returned `auth` |
+| `pnpm type-check` | PASS, 6/6 workspace packages |
+| `pnpm lint` | PASS, all 3 packages with lint scripts |
+| `pnpm test` | PASS |
+| Agent tests | PASS, 54/54 tests, 240 assertions |
+| Cloud tests | PASS, 280 passed, 1 skipped across 56 files |
+| Extension tests | PASS, 38/38 tests, 102 assertions |
+| API client tests | PASS, 96/96 tests |
+| Shared contract tests | PASS, 13/13 tests |
+| `pnpm build` | PASS, 6/6 packages; Agent EXE, Atomic/PWA, Chrome MV3 and declarations built |
+| Demo browser E2E | PASS, 4/4 desktop/mobile scenarios |
+| Real Agent/SQLite E2E | PASS, 5/5 desktop/mobile scenarios with loopback-only network evidence |
+| `git diff --check` | PASS; line-ending conversion notices only |
+
+The Vite build still reports large-chunk warnings and `ra-core` cross-chunk circular dependency warnings. Both browser E2E suites passed against the resulting application, but bundle splitting remains follow-up work.
 
 ## Performance Evidence
 
 | Scenario | Samples | Result | Threshold |
 |---|---:|---:|---:|
-| 1000-row CSV parse + commit | 20 independent databases | P95 652.25 ms | <= 30 s |
-| Customer search | 30 | P95 1.63 ms | <= 1 s |
-| Social account match | 30 | P95 0.43 ms | <= 1 s |
+| 1000-row CSV parse + commit | 20 independent databases | P95 581.78 ms | <= 30 s |
+| Customer search | 30 | P95 0.87 ms | <= 1 s |
+| Customer match | 30 | P95 0.66 ms | <= 1 s |
+| Compiled Agent startup to HTTP health | 1 local run | 476.16 ms | <= 5 s |
 
-The checked-in Excel fixture produced 6 rows: 4 imported, 2 rejected with row-level errors.
+The compiled-Agent QA also passed Atomic workbench serving, Chinese dashboard bundle detection, sibling migration discovery, SQLite creation, `DPBK` v2 backup creation, and Native Messaging 4-byte framing.
 
 ## EARS Acceptance Matrix
 
 | AC | Status | Evidence / remaining observation |
 |---|---|---|
-| AC-01 | PASS | 20-run 1000-row import P95 652.25 ms; all runs imported 1000 rows. |
-| AC-02 | PASS | `test_customers.xlsx`: 4 valid rows committed and 2 invalid rows skipped with reasons. |
-| AC-03 | PASS | Duplicate candidate returned; unresolved commit rejected with 400; explicit skip committed. |
-| AC-04 | PASS | 30-run customer-search P95 1.63 ms. |
-| AC-05 | PASS | Soft delete cancels open reminders and excludes matching without deleting bindings; restore reinstates reminder status, resolution, and binding. |
-| AC-06 | PASS | Merge integration retained and migrated follow-up, project, reminder, and social binding. |
-| AC-07 | MANUAL | Match API P95 0.43 ms passes. Real WhatsApp and Telegram one-to-one DOM identification remains to be observed in Chrome. |
-| AC-08 | CONDITIONAL | Service and UI stop on `multiple`; the production unique `(platform, normalized_identifier)` index prevents an exact duplicate binding through normal writes. Requires product acceptance of this stronger invariant or a broader matching rule. |
-| AC-09 | PASS | Manual bind API returned 201 and subsequent resolve returned the bound customer. |
-| AC-10 | MANUAL | Explicit unsupported state exists for group/channel/unidentified conversations; real site DOM observation remains. |
-| AC-11 | MANUAL | Adapter now uses selected text, selected state, or the last user-interacted message and never falls back to the newest message. Real WhatsApp/Telegram DOM observation remains. |
-| AC-12 | PASS | Failed form state is retained; a retry reuses the same payload and idempotency key. Duplicate backend submission produced the same ID and one row. |
-| AC-13 | MANUAL | Five-minute delivery sweep and real `node-notifier` callback pass. Human confirmation that the toast is visible in Windows Notification Center remains. |
-| AC-14 | MANUAL | Startup immediately runs the due-reminder sweep and persists overdue state. Human confirmation of the startup toast remains. |
-| AC-15 | PASS | State writes are atomic; a pre-notified reminder is not notified again when it becomes overdue; notification failures stay retryable. |
-| AC-16 | PASS | Three-day overdue escalation affects sort weight only; persisted status/priority are unchanged. |
-| AC-17 | PASS | `replied` is an explicit user action mapped back to `pending`; no incoming-message listener changes reminder state. |
-| AC-18 | PASS | Popup ordering test covers overdue escalation, priority, project/customer grade, due time, and stable ID tie-break. |
-| AC-19 | PASS | Stage update created one `project.stage_changed` local event and did not auto-advance. |
-| AC-20 | PASS | Three-day milestone sweep created exactly one reminder and is idempotent by milestone marker. |
-| AC-21 | PASS | Seven-day open risk gains one sort tier without mutating severity or status. |
-| AC-22 | PASS | Backup v2 uses salted Argon2id (19 MiB, 2 iterations, p=1) and AES-256-GCM; metadata is authenticated as GCM AAD. |
-| AC-23 | PASS | Correct password validates and atomically swaps to the restored database; wrong password and modified ciphertext fail without changing current row count. |
-| AC-24 | PASS | Runtime endpoint audit found only localhost API traffic plus user-initiated WhatsApp/Telegram tab URLs; extension storage contains token and port, not business records. |
-| AC-25 | MANUAL | Compiled EXE reached health in 217.44 ms and served the workbench. Automatic browser opening plus actual tray open/quit clicks remain desktop observations. |
-| AC-26 | MANUAL | Compiled host passed the real 4-byte Native Messaging framing protocol. Loading `.output/chrome-mv3` in Chrome and observing automatic pairing remains. |
-| AC-27 | PASS | Web UI and business API are local, production assets are served by Agent, and no product-server runtime dependency exists. |
-| AC-28 | PASS | Import and delete/restore integration tests cover transactionality; failed backup restore preserved the current database and concurrent writes receive 409 during restore. |
+| AC-01 | PASS | 20-run 1000-row import P95 581.78 ms; every run completed below 30 seconds. |
+| AC-02 | PASS | Invalid rows are skipped with row-level reasons while valid rows continue. |
+| AC-03 | PASS | Duplicate candidates, field conflicts, per-row/batch merge, skip and create-new are covered; commit revalidates candidates and stable identifiers. |
+| AC-04 | PASS | 30-run customer-search P95 0.87 ms. |
+| AC-05 | PASS | Soft delete cancels open reminders and removes matching; restore reinstates relationship and reminder state; exact 30-day cleanup and eight-domain cascade are covered. |
+| AC-06 | PASS | Customer merge migrates follow-ups, projects, reminders and social bindings in one transaction. |
+| AC-07 | MANUAL | Matching service P95 passes; real WhatsApp and Telegram one-to-one DOM identification still requires browser observation. |
+| AC-08 | PASS | Shared-phone matches can return `multiple`; UI stops automatic selection and exposes candidates. |
+| AC-09 | PASS | Search, bind, unbind and rebind are available through the Background RPC boundary. |
+| AC-10 | MANUAL | Explicit unsupported state exists for groups/channels/unidentified conversations; real-site DOM cases remain. |
+| AC-11 | MANUAL | Exact selected/interacted-message extraction is implemented; real WhatsApp/Telegram DOM verification remains. |
+| AC-12 | PASS | Failed forms retain content; retry reuses the same idempotency key; concurrent duplicate submissions execute once. |
+| AC-13 | MANUAL | Five-minute scheduler and notification adapter tests pass; visible Windows Notification Center delivery with browser closed remains. |
+| AC-14 | MANUAL | Startup catch-up sweep and overdue persistence pass; visible startup notification remains. |
+| AC-15 | PASS | Reminder state writes, notification de-duplication and per-item failure isolation pass. |
+| AC-16 | PASS | Three-day escalation changes sorting only, not persisted status or priority. |
+| AC-17 | PASS | Extension provides the explicit received-reply action; backend maps it to pending without message monitoring. |
+| AC-18 | PASS | Popup ordering covers overdue, high risk, project/customer grade and due time. |
+| AC-19 | PASS | Project stage changes emit one local event and never auto-advance. |
+| AC-20 | PASS | Three-day milestone reminder generation is idempotent. |
+| AC-21 | PASS | Seven-day risk escalation affects sorting without mutating severity/status. |
+| AC-22 | PASS | Backup v2 uses Argon2id and AES-256-GCM with authenticated metadata. |
+| AC-23 | PASS | Restore validates signature, compatibility, migrations, integrity and foreign keys before an atomic swap; bad inputs preserve the current database. |
+| AC-24 | PASS | Agent E2E observed only loopback HTTP(S); Content Script production/source scans found no token, Authorization, storage or direct-fetch exposure. |
+| AC-25 | MANUAL | Compiled EXE reached health in 476.16 ms and served Atomic; automatic browser launch and real tray actions remain desktop checks. |
+| AC-26 | MANUAL | Native Messaging framing passes; Chrome/Edge automatic pairing and badge behavior remain real-browser checks. |
+| AC-27 | PASS | Local workbench flows passed with external HTTP(S) blocked; WhatsApp/Telegram pages are the explicit exception. |
+| AC-28 | PASS | Import, merge, reset, migration and restore failure tests verify atomicity and original-database preservation. |
 
-## Spec Section 12
+## Additional PRD Evidence
 
-| Step | Status | Evidence |
-|---|---|---|
-| 1. Start Agent | PARTIAL | EXE health and UI load pass; token is stored before React mounts and removed from URL. Automatic browser/tray click observation is pending. |
-| 2. Import customers | PASS | Real `.xlsx` parse and commit integration test. |
-| 3. Create reminder | PASS | Reminder API/service validation and persistence covered by Phase 4 tests. |
-| 4. Reminder delivery | PARTIAL | Scheduler, system adapter callback, and extension badge refresh implementation pass; visible Windows toast and Chrome badge remain manual. |
-| 5. Security | PASS | Missing token returns 401; evil Origin returns 403. |
-| 6. Backup and restore | PASS | Argon2id/AES-GCM compiled-EXE creation, validation, corruption, wrong-password, and restore checks pass. |
-| 7. Build verification | PASS | lint, type-check, test, and build all pass. |
+- Fixed-time reminders support 3-day, 1-week and custom times. Paused follow-up requires a reason and accepts an optional reevaluation time.
+- Paused reminders remain out of popup/dashboard before reevaluation; no-date paused reminders remain hidden; the exact due boundary is tested.
+- Popup and Content surfaces support complete, snooze one day, ignore and received-reply actions with optimistic rollback and authoritative refresh.
+- Import duplicate detection is case-insensitive for email, E.164 for phone and exact for platform accounts. Merge never overwrites an existing non-empty value.
+- Migration recovery creates a verified pre-upgrade SQLite recovery point only when needed, restores it after failure, and retains only the newest successful point.
+- Local data UI reports DB/WAL/SHM/recovery usage, backup age, data path, autostart support, backup/restore/export and irreversible clear semantics.
+- Rolling 30-day on-time completion, match-accuracy proxy and reminder-handling metrics are computed locally. The exported JSON contains aggregates and methodology only.
+- First Agent-mode use requires acknowledgement of extension permissions, local storage, backup, deletion and device-security boundaries; the same information remains available in settings.
 
-## Manual Gold-Standard Checklist
+## Remaining Manual Gates
 
-1. Start Chrome, load `apps/extension/.output/chrome-mv3`, and confirm extension ID `mblecgcjdmeialnhjbbbbgilklkbpdhn`.
-2. Start Agent normally and confirm Native Messaging pairing plus pending/overdue badge count.
-3. On WhatsApp and Telegram, verify one-to-one, group/channel unsupported state, manual bind, and marking the exact interacted message.
-4. Create a reminder due within five minutes, close browser tabs, and visually confirm the Windows toast; restart Agent with an overdue reminder and confirm catch-up delivery.
-5. Click tray Open and Quit, then restart `explorer.exe` and confirm the icon returns.
+1. Validate WhatsApp Web and Telegram Web one-to-one, group and channel flows, exact message marking and deep links across current DOM variants.
+2. Confirm visible Windows notifications with browser closed and startup catch-up delivery.
+3. Validate tray Open/Quit and tray recovery after `explorer.exe` restart.
+4. Load the production extension in current Chrome and Edge, verify Native Messaging auto-pairing and badge updates.
+5. Run the complete UI regression on current Chrome/Edge at 1366x768 and supported mobile widths.
+6. Build and exercise NSIS install, upgrade and uninstall after `makensis` is available.
+7. Complete pilot-user and legal/compliance checks required by the PRD.
 
-The UI was also checked at 1366 x 768 across dashboard, customers, projects, reminders, and backup routes. After the token bootstrap fix, all first-screen API calls returned 200 with no console errors.
+Cloud Supabase/PostgreSQL, RLS, Auth, migration confirmation and cloud rollback are deliberately outside this local Phase 4 result. Their P3 hard gate remains open.

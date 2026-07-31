@@ -27,9 +27,44 @@ function createClient() {
         duplicate_candidates: [
           {
             row_index: 1,
-            existing_customer_id: customerId,
-            existing_name: "现有客户",
-            new_name: "导入客户",
+            incoming: {
+              name: "导入客户",
+              company: null,
+              country: null,
+              source: null,
+              grade: "B",
+              contact_name: null,
+              email: "buyer@example.com",
+              phone: null,
+              platform: null,
+              platform_account: null,
+            },
+            matches: [
+              {
+                existing_customer_id: customerId,
+                matched_by: ["email"],
+                existing: {
+                  customer_id: customerId,
+                  name: "现有客户",
+                  company: null,
+                  country: null,
+                  source: null,
+                  grade: "B",
+                  contact_name: null,
+                  email: "buyer@example.com",
+                  phone: null,
+                  platform: null,
+                  platform_account: null,
+                },
+                conflicts: [
+                  {
+                    field: "name",
+                    existing_value: "现有客户",
+                    incoming_value: "导入客户",
+                  },
+                ],
+              },
+            ],
           },
         ],
         source_columns: ["客户简称", "采购邮箱"],
@@ -42,7 +77,23 @@ function createClient() {
       _path: string,
       _body: unknown,
       parser: { parse(value: unknown): unknown },
-    ) => parser.parse({ success: 0, failed: 1, skipped: 0, duplicates: 1 }),
+    ) =>
+      parser.parse({
+        success: 1,
+        failed: 0,
+        skipped: 0,
+        duplicates: 0,
+        warnings: [
+          {
+            code: "PLATFORM_ACCOUNT_NOT_COPIED",
+            row_index: 1,
+            field: "platform_account",
+            platform: "telegram",
+            platform_account: "@buyer",
+            existing_customer_id: customerId,
+          },
+        ],
+      }),
   );
   const getBlob = vi.fn(
     async (_path: string, parser: { parse(value: unknown): unknown }) =>
@@ -96,7 +147,10 @@ describe("Agent import operations", () => {
       },
       { idempotencyKey: "commit-1" },
     );
-    expect(committed.duplicates).toBe(1);
+    expect(committed.warnings[0]).toMatchObject({
+      code: "PLATFORM_ACCOUNT_NOT_COPIED",
+      platform_account: "@buyer",
+    });
     expect(post).toHaveBeenCalledWith(
       `imports/${jobId}/commit`,
       expect.objectContaining({ job_id: jobId }),

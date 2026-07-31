@@ -3,6 +3,12 @@ import {
   BackupCreateSchema,
   BackupRestoreResponseSchema,
   BackupValidateResponseSchema,
+  ClearLocalDataResponseSchema,
+  ClearLocalDataSchema,
+  LocalDataInfoSchema,
+  StatsSchema,
+  SettingsSchema,
+  SettingsUpdateSchema,
 } from "@dealpilot/shared";
 
 import type { LocalDataOperations } from "../localDataOperations";
@@ -13,6 +19,7 @@ const excelBlobParser = blobParser(
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "Excel workbook",
 );
+const jsonBlobParser = blobParser("application/json", "anonymized metrics report");
 
 export function createAgentLocalDataOperations(
   client: AgentClient,
@@ -61,6 +68,43 @@ export function createAgentLocalDataOperations(
         ...options,
         responseType: "blob",
       });
+    },
+
+    async getUsageMetrics(options) {
+      const stats = await client.get("stats", StatsSchema, options);
+      return stats.rolling_30_days;
+    },
+
+    async exportUsageMetrics(options) {
+      return await client.getBlob("stats/export", jsonBlobParser, options);
+    },
+
+    async getInfo(options) {
+      return await client.get("system/local-data", LocalDataInfoSchema, options);
+    },
+
+    async getSettings(options) {
+      return await client.get("settings", SettingsSchema, options);
+    },
+
+    async updateSettings(input, options) {
+      const body = SettingsUpdateSchema.parse(input);
+      return await client.put("settings", body, SettingsSchema, options);
+    },
+
+    async clearData(confirmation, options) {
+      const parsed = ClearLocalDataSchema.safeParse({ confirmation });
+      if (!parsed.success) {
+        throw validationError({
+          confirmation: ["请输入 CLEAR ALL DATA 确认清空"],
+        });
+      }
+      return await client.post(
+        "system/local-data/clear",
+        parsed.data,
+        ClearLocalDataResponseSchema,
+        options,
+      );
     },
   };
 }
