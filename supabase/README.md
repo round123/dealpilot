@@ -35,6 +35,13 @@ cross-owner foreign keys, and the customer soft-delete, restore, and merge
 RPCs. It also verifies that a reminder edited after customer deletion is not
 overwritten during restore.
 
+`schema_security.sql` also runs `backup_isolation.sql`. That gate verifies
+owner-only snapshot visibility, denied direct writes, checksum-protected
+transactional restore, automatic safety snapshots, and preservation of
+append-only audit and migration history. Account snapshots contain relational
+CRM data and user settings only; Auth credentials, Storage binaries,
+operational queues, audit events, and migration jobs are deliberately excluded.
+
 Customer command and detail RPCs return a single success envelope:
 `{"data": ...}`. `get_customer_detail` includes contacts, social accounts,
 deals, the 10 most recent follow-ups, and open reminders. Missing, deleted, or

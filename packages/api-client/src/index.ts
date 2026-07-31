@@ -42,6 +42,18 @@ export type {
 } from "./auth.js";
 export { AccountDeletionResultSchema, createAccountApi } from "./account.js";
 export type { AccountApi, AccountDeletionResult } from "./account.js";
+export {
+  BackupCreateInputSchema,
+  BackupRestoreResultSchema,
+  BackupSnapshotSchema,
+  createBackupApi,
+} from "./backup.js";
+export type {
+  BackupApi,
+  BackupCreateInput,
+  BackupRestoreResult,
+  BackupSnapshot,
+} from "./backup.js";
 export type {
   PrivateStorageApi,
   SignedStorageUrl,

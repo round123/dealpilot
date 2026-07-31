@@ -181,7 +181,7 @@ const CloudDataSection = () => {
             <Download className="size-5 text-muted-foreground" />
             <ItemContent>
               <ItemTitle className="font-normal">
-                导出云端业务数据
+                导出、备份和恢复云端数据
               </ItemTitle>
             </ItemContent>
             <ItemActions>

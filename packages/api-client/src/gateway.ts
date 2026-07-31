@@ -4,6 +4,7 @@ import type { ApiClientConfig } from "./config.js";
 import { createSupabaseClient } from "./factory.js";
 import { createAuthApi, type AuthApi } from "./auth.js";
 import { createAccountApi, type AccountApi } from "./account.js";
+import { createBackupApi, type BackupApi } from "./backup.js";
 import { createCustomerApi, type CustomerApi } from "./customer.js";
 import { createPrivateStorageApi, type PrivateStorageApi } from "./storage.js";
 import { API_ERROR_CODES, ApiError } from "./error.js";
@@ -83,6 +84,7 @@ export interface ListResult<T> {
 export interface ApiClient {
   readonly auth: AuthApi;
   readonly account: AccountApi;
+  readonly backups: BackupApi;
   readonly customers: CustomerApi;
   readonly storage: PrivateStorageApi;
   list<T>(
@@ -228,6 +230,7 @@ class SupabaseResourceGateway implements ApiClient {
   private readonly resources: ResourceClientLike;
   readonly auth: AuthApi;
   readonly account: AccountApi;
+  readonly backups: BackupApi;
   readonly customers: CustomerApi;
   readonly storage: PrivateStorageApi;
 
@@ -238,6 +241,7 @@ class SupabaseResourceGateway implements ApiClient {
     this.resources = client as unknown as ResourceClientLike;
     this.auth = createAuthApi(client);
     this.account = createAccountApi(this);
+    this.backups = createBackupApi(this);
     this.customers = createCustomerApi(this);
     this.storage = createPrivateStorageApi(client);
   }

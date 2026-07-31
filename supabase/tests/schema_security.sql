@@ -7,6 +7,7 @@ do $$
 declare
   expected_tables constant text[] := array[
     'audit_events',
+    'backup_snapshots',
     'companies',
     'configuration',
     'contact_notes',
@@ -67,6 +68,10 @@ declare
     'id', 'owner_user_id', 'customer_id', 'cutoff', 'object_paths', 'status',
     'attempt_count', 'next_attempt_at', 'claimed_at', 'last_error',
     'completed_at', 'created_at', 'updated_at'
+  ];
+  backup_snapshot_fields constant text[] := array[
+    'id', 'owner_user_id', 'schema_version', 'label', 'checksum', 'row_counts',
+    'payload', 'created_at'
   ];
   actual_tables text[];
   actual_views text[];
@@ -233,6 +238,21 @@ begin
     raise exception 'customer_purge_jobs is missing durable retry fields: %', failures;
   end if;
 
+  select array_agg(required_field order by required_field)
+  into failures
+  from unnest(backup_snapshot_fields) as required_backup_field(required_field)
+  where not exists (
+    select 1
+    from information_schema.columns as column_info
+    where column_info.table_schema = 'public'
+      and column_info.table_name = 'backup_snapshots'
+      and column_info.column_name = required_field
+  );
+
+  if failures is not null then
+    raise exception 'backup_snapshots is missing contract fields: %', failures;
+  end if;
+
   select array_agg(e.enumlabel order by e.enumsortorder)
   into actual_purge_statuses
   from pg_catalog.pg_enum as e
@@ -376,6 +396,45 @@ begin
     select 1
     from pg_catalog.pg_policies as p
     where p.schemaname = 'public'
+      and p.tablename = 'backup_snapshots'
+      and p.policyname = 'backup_snapshots_owner_select'
+      and 'authenticated' = any(p.roles)
+      and p.cmd = 'SELECT'
+      and coalesce(p.qual, '') ~ 'owner_user_id.*auth\.uid\(\)'
+  ) then
+    raise exception 'backup_snapshots is missing its owner-only SELECT policy';
+  end if;
+
+  if not pg_catalog.has_table_privilege('authenticated', 'public.backup_snapshots', 'SELECT')
+    or pg_catalog.has_table_privilege(
+      'authenticated',
+      'public.backup_snapshots',
+      'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) then
+    raise exception 'backup_snapshots must grant authenticated SELECT only';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint as con
+    join pg_catalog.pg_class as child on child.oid = con.conrelid
+    join pg_catalog.pg_class as parent on parent.oid = con.confrelid
+    join pg_catalog.pg_namespace as child_ns on child_ns.oid = child.relnamespace
+    join pg_catalog.pg_namespace as parent_ns on parent_ns.oid = parent.relnamespace
+    where con.contype = 'f'
+      and child_ns.nspname = 'public'
+      and child.relname = 'backup_snapshots'
+      and parent_ns.nspname = 'public'
+      and parent.relname = 'profiles'
+      and con.confdeltype = 'c'
+  ) then
+    raise exception 'backup_snapshots must cascade when its owning profile is deleted';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_policies as p
+    where p.schemaname = 'public'
       and p.tablename = 'profiles'
       and 'authenticated' = any(p.roles)
       and p.cmd = 'ALL'
@@ -469,8 +528,10 @@ $$;
 do $$
 declare
   expected_rpcs constant text[] := array[
+    'create_backup_snapshot',
     'get_customer_detail',
     'merge_customers',
+    'restore_backup_snapshot',
     'restore_customer',
     'soft_delete_customer'
   ];
@@ -506,6 +567,29 @@ begin
 
   if failures is not null then
     raise exception 'service-only purge RPC security differs from baseline: %', failures;
+  end if;
+
+  select array_agg(expected.signature order by expected.signature)
+  into failures
+  from (
+    values
+      ('public.create_backup_snapshot(text)'),
+      ('public.restore_backup_snapshot(uuid)')
+  ) as expected(signature)
+  where to_regprocedure(expected.signature) is null
+    or not exists (
+      select 1
+      from pg_catalog.pg_proc as p
+      where p.oid = to_regprocedure(expected.signature)
+        and p.prosecdef
+        and p.prorettype = 'jsonb'::regtype
+        and p.proconfig = array['search_path=""']::text[]
+        and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+    );
+
+  if failures is not null then
+    raise exception 'backup RPC security differs from baseline: %', failures;
   end if;
 
   if not exists (
@@ -626,3 +710,6 @@ end;
 $$;
 
 rollback;
+
+-- Keep the backup behavior gate in the existing database-test entrypoint.
+\ir backup_isolation.sql

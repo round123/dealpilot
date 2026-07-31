@@ -216,12 +216,6 @@ describe("Agent customer import page", () => {
     await expect
       .element(screen.getByText("第 1 行：Telegram / @buyer"))
       .toBeVisible();
-    await expect
-      .element(screen.getByText("请为本次导入创建加密备份"))
-      .toBeVisible();
-    await expect
-      .element(screen.getByRole("link", { name: "前往备份与恢复" }))
-      .toHaveAttribute("href", "/settings/local-data");
     expect(commit).toHaveBeenCalledWith(
       {
         job_id: jobId,

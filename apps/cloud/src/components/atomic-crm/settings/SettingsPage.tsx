@@ -290,7 +290,7 @@ const SettingsFormFields = () => {
             <div>
               <h2 className="text-lg font-semibold">云端数据</h2>
               <p className="text-sm text-muted-foreground">
-                导出当前账号的云端业务数据
+                导出、备份和恢复当前账号的云端业务数据
               </p>
             </div>
             <Button asChild type="button" variant="outline" size="icon">
