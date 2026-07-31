@@ -34,6 +34,8 @@ jobs:
           supabase/functions/purge-expired-customers/handler.test.ts
       - run: pnpm type-check
       - run: pnpm lint
+      - name: Install Chromium for browser tests
+        run: pnpm test:e2e:install
       - run: pnpm test
       - run: pnpm build
 

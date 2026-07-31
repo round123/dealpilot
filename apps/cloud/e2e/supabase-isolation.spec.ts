@@ -247,7 +247,7 @@ const login = async (page: Page, email: string, password: string) => {
   await page.goto("/#/login");
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').fill(password);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.getByRole("button", { name: /sign in|登录/i }).click();
   await expect(page).not.toHaveURL(/#\/login(?:$|[/?])/);
 };
 
