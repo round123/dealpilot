@@ -15,6 +15,20 @@
       "when": 1785470400000,
       "tag": "0001_local_data_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785556800000,
+      "tag": "0002_reminder_completed_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785643200000,
+      "tag": "0003_reminder_metric_timestamps",
+      "breakpoints": true
     }
   ]
 }

@@ -30,18 +30,20 @@ test("resolves manual bindings before E.164 phones and platform usernames", asyn
 
     expect(result.manual).toMatchObject({
       status: "unique",
+      match_method: "manual",
       customer: { id: result.ids.manual },
     });
-    expect(result.phone.status).toBe("multiple");
+    expect(result.phone).toMatchObject({ status: "multiple", match_method: "phone" });
     expect(result.phone.candidates.map(({ id }: { id: string }) => id).sort()).toEqual([
       result.ids.phoneA,
       result.ids.phoneB,
     ].sort());
     expect(result.username).toMatchObject({
       status: "unique",
+      match_method: "platform",
       customer: { id: result.ids.username },
     });
-    expect(result.none).toEqual({ status: "none" });
+    expect(result.none).toEqual({ status: "none", match_method: null });
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
