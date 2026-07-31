@@ -28,9 +28,15 @@ import {
   translateContactGenderLabel,
   translatePersonalInfoTypeLabel,
 } from "./contactModel.ts";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactInputs = () => {
   const isMobile = useIsMobile();
+  const capabilities = useCrmProviderCapabilities();
+
+  if (!capabilities.contacts.extendedProfile) {
+    return <AgentContactInputs />;
+  }
 
   return (
     <div className="flex flex-col gap-2 p-1 relative md:static">
@@ -49,6 +55,53 @@ export const ContactInputs = () => {
           <ContactPersonalInformationInputs />
           <ContactMiscInputs />
         </div>
+      </div>
+    </div>
+  );
+};
+
+const AgentContactInputs = () => {
+  const translate = useTranslate();
+  const record = useRecordContext<Contact>();
+  const capabilities = useCrmProviderCapabilities();
+  return (
+    <div className="flex flex-col gap-6 p-1">
+      <div className="flex flex-col gap-4">
+        <h6 className="text-lg font-semibold">
+          {translate("resources.contacts.field_categories.identity")}
+        </h6>
+        <TextInput source="name" validate={required()} helperText={false} />
+        <TextInput source="title" helperText={false} />
+        {!record || capabilities.contacts.reassignCompany ? (
+          <ReferenceInput
+            source="company_id"
+            reference="companies"
+            perPage={10}
+          >
+            <AutocompleteCompanyInput
+              label="resources.contacts.fields.company_id"
+              validate={required()}
+            />
+          </ReferenceInput>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-4">
+        <h6 className="text-lg font-semibold">
+          {translate("resources.contacts.field_categories.personal_info")}
+        </h6>
+        <TextInput
+          source="email_jsonb.0.email"
+          helperText={false}
+          label="resources.contacts.fields.email"
+          placeholder={translate("resources.contacts.fields.email")}
+          validate={email()}
+        />
+        <TextInput
+          source="phone_jsonb.0.number"
+          helperText={false}
+          label="resources.contacts.fields.phone_number"
+          placeholder={translate("resources.contacts.fields.phone_number")}
+        />
       </div>
     </div>
   );

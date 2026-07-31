@@ -69,7 +69,7 @@ export async function updateReminderStatus(reminderId: string, update: ReminderS
   const updates: Parameters<typeof updateReminderRecord>[1] = {
     status,
     ...(update.status === ReminderStatus.SNOOZED
-      ? { snooze_until: update.snooze_until }
+      ? { snooze_until: update.snooze_until, last_notified_at: null }
       : { snooze_until: null }),
   };
   if (update.resolution !== undefined) updates.resolution = update.resolution;
@@ -83,7 +83,11 @@ export async function getPopupReminders(now: Date = new Date()) {
   const candidates = await getPopupReminderCandidates();
   return sortPopupReminderCandidates(candidates, now)
     .slice(0, POPUP_REMINDER_LIMIT)
-    .map(({ reminder }) => reminder);
+    .map(({ reminder, customerName, projectName }) => ({
+      ...reminder,
+      customer_name: customerName,
+      project_name: projectName,
+    }));
 }
 
 export async function runReminderDeliverySweep(
@@ -96,21 +100,20 @@ export async function runReminderDeliverySweep(
   const result = { due: 0, upcoming: 0, failed: 0 };
 
   for (const { reminder, customerName } of await store.findDue(nowIso)) {
-    if (!reminder.last_notified_at) {
-      try {
+    try {
+      if (!reminder.last_notified_at) {
         await sendNotification({
           title: "DealPilot 提醒",
           message: `${customerName} - 提醒已到期`,
           sound: true,
         });
-      } catch (error) {
-        result.failed++;
-        console.error("[reminder-service] Due notification failed:", error);
-        continue;
       }
+      await store.markOverdue(reminder.id, reminder.last_notified_at ? null : nowIso);
+      result.due++;
+    } catch (error) {
+      result.failed++;
+      console.error("[reminder-service] Due reminder delivery failed:", error);
     }
-    await store.markOverdue(reminder.id, reminder.last_notified_at ? null : nowIso);
-    result.due++;
   }
 
   for (const { reminder, customerName } of await store.findUpcoming(nowIso, windowEnd)) {

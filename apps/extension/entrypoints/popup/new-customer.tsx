@@ -14,7 +14,7 @@ import { ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { CustomerCreateSchema, CustomerGrade } from "@dealpilot/shared";
 import type { CustomerCreate } from "@dealpilot/shared";
-import { createCustomer } from "../../src/lib/api-client";
+import { createCustomer, extensionErrorMessage } from "../../src/lib/api-client";
 import { INPUT_STYLE, LABEL_STYLE, ERROR_STYLE, SECONDARY_BUTTON, PRIMARY_BUTTON } from "./form-styles";
 
 const SOURCE_OPTIONS = ["展会", "询盘", "推荐", "主动开发", "其他"];
@@ -58,7 +58,7 @@ export function NewCustomerPage({ onBack }: NewCustomerPageProps) {
       setSubmitSuccess(true);
       setTimeout(() => onBack(), 1000);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "创建失败，可重试");
+      setSubmitError(extensionErrorMessage(err, "创建失败，请检查内容后重试"));
     }
   };
 

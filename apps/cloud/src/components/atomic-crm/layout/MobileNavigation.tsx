@@ -8,20 +8,18 @@ import {
 import { cn } from "@/lib/utils";
 import {
   ArchiveRestore,
+  BellRing,
   Building2,
   Ellipsis,
+  FolderKanban,
   Home,
-  ListTodo,
+  MessageSquareText,
   Plus,
   Settings,
   Users,
 } from "lucide-react";
 import { useTranslate } from "ra-core";
-import { Link, matchPath, useLocation, useMatch } from "react-router";
-import { ContactCreateSheet } from "../contacts/ContactCreateSheet";
-import { useState } from "react";
-import { NoteCreateSheet } from "../notes/NoteCreateSheet";
-import { TaskCreateSheet } from "../tasks/TaskCreateSheet";
+import { Link, matchPath, useLocation } from "react-router";
 
 export const MobileNavigation = () => {
   const location = useLocation();
@@ -36,6 +34,8 @@ export const MobileNavigation = () => {
     currentPath = "/companies";
   } else if (matchPath("/tasks/*", location.pathname)) {
     currentPath = "/tasks";
+  } else if (matchPath("/reminders/*", location.pathname)) {
+    currentPath = "/reminders";
   } else if (matchPath("/deals/*", location.pathname)) {
     currentPath = "/deals";
   } else {
@@ -70,19 +70,19 @@ export const MobileNavigation = () => {
             isActive={currentPath === "/"}
           />
           <NavigationButton
-            href="/contacts"
+            href="/companies"
             Icon={Users}
-            label={translate("resources.contacts.name", {
+            label={translate("resources.companies.name", {
               smart_count: 2,
             })}
-            isActive={currentPath === "/contacts"}
+            isActive={currentPath === "/companies"}
           />
           <CreateButton />
           <NavigationButton
-            href="/tasks"
-            Icon={ListTodo}
-            label={translate("resources.tasks.name", { smart_count: 2 })}
-            isActive={currentPath === "/tasks"}
+            href="/reminders"
+            Icon={BellRing}
+            label={translate("resources.reminders.name", { smart_count: 2 })}
+            isActive={currentPath === "/reminders"}
           />
           <MoreButton />
         </>
@@ -119,66 +119,46 @@ const NavigationButton = ({
 
 const CreateButton = () => {
   const translate = useTranslate();
-  const contact_id = useMatch("/contacts/:id/*")?.params.id;
-  const [contactCreateOpen, setContactCreateOpen] = useState(false);
-  const [noteCreateOpen, setNoteCreateOpen] = useState(false);
-  const [taskCreateOpen, setTaskCreateOpen] = useState(false);
 
   return (
-    <>
-      <ContactCreateSheet
-        open={contactCreateOpen}
-        onOpenChange={setContactCreateOpen}
-      />
-      <NoteCreateSheet
-        open={noteCreateOpen}
-        onOpenChange={setNoteCreateOpen}
-        contact_id={contact_id}
-      />
-      <TaskCreateSheet
-        open={taskCreateOpen}
-        onOpenChange={setTaskCreateOpen}
-        contact_id={contact_id}
-      />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="default"
-            size="icon"
-            className="h-16 w-16 rounded-full -mt-3"
-            aria-label={translate("ra.action.create")}
-          >
-            <Plus className="size-10" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem
-            className="h-12 px-4 text-base"
-            onSelect={() => {
-              setContactCreateOpen(true);
-            }}
-          >
-            {translate("resources.contacts.forcedCaseName")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="h-12 px-4 text-base"
-            onSelect={() => {
-              setNoteCreateOpen(true);
-            }}
-          >
-            {translate("resources.notes.forcedCaseName")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="h-12 px-4 text-base"
-            onSelect={() => {
-              setTaskCreateOpen(true);
-            }}
-          >
-            {translate("resources.tasks.forcedCaseName")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="default"
+          size="icon"
+          className="h-16 w-16 rounded-full -mt-3"
+          aria-label={translate("ra.action.create")}
+        >
+          <Plus className="size-10" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem asChild className="h-12 px-4 text-base">
+          <Link to="/companies/create">
+            <Building2 />
+            {translate("resources.companies.action.new")}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="h-12 px-4 text-base">
+          <Link to="/deals/create">
+            <FolderKanban />
+            {translate("resources.deals.action.new")}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="h-12 px-4 text-base">
+          <Link to="/follow_ups/create">
+            <MessageSquareText />
+            {translate("resources.follow_ups.action.create")}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="h-12 px-4 text-base">
+          <Link to="/reminders/create">
+            <BellRing />
+            {translate("resources.reminders.action.create")}
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 
@@ -187,7 +167,9 @@ export const MoreButton = () => {
   const translate = useTranslate();
   const isActive =
     !!matchPath("/settings", location.pathname) ||
-    !!matchPath("/companies/*", location.pathname);
+    !!matchPath("/contacts/*", location.pathname) ||
+    !!matchPath("/deals/*", location.pathname) ||
+    !!matchPath("/follow_ups/*", location.pathname);
 
   return (
     <DropdownMenu>
@@ -207,9 +189,21 @@ export const MoreButton = () => {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link to="/companies">
-            <Building2 />
-            {translate("resources.companies.name", { smart_count: 2 })}
+          <Link to="/contacts">
+            <Users />
+            {translate("resources.contacts.name", { smart_count: 2 })}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/deals">
+            <FolderKanban />
+            {translate("resources.deals.name", { smart_count: 2 })}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/follow_ups">
+            <MessageSquareText />
+            {translate("resources.follow_ups.name", { smart_count: 2 })}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

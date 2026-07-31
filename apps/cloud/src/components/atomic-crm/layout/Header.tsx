@@ -25,6 +25,10 @@ const Header = () => {
     currentPath = "/companies";
   } else if (matchPath("/deals/*", location.pathname)) {
     currentPath = "/deals";
+  } else if (matchPath("/follow_ups/*", location.pathname)) {
+    currentPath = "/follow_ups";
+  } else if (matchPath("/reminders/*", location.pathname)) {
+    currentPath = "/reminders";
   } else {
     currentPath = false;
   }
@@ -78,6 +82,20 @@ const Header = () => {
                     })}
                     to="/deals"
                     isActive={currentPath === "/deals"}
+                  />
+                  <NavigationTab
+                    label={translate("resources.follow_ups.name", {
+                      smart_count: 2,
+                    })}
+                    to="/follow_ups"
+                    isActive={currentPath === "/follow_ups"}
+                  />
+                  <NavigationTab
+                    label={translate("resources.reminders.name", {
+                      smart_count: 2,
+                    })}
+                    to="/reminders"
+                    isActive={currentPath === "/reminders"}
                   />
                 </nav>
               </div>

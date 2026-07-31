@@ -30,6 +30,7 @@ export const ErrorResponseSchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
+    fields: z.record(z.array(z.string())).optional(),
     details: z.any().optional(),
     request_id: z.string().optional(),
   }),

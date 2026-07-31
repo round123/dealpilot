@@ -1,5 +1,10 @@
 import type { InputProps } from "ra-core";
-import { useInput, useResourceContext, FieldTitle } from "ra-core";
+import {
+  FieldTitle,
+  sanitizeInputRestProps,
+  useInput,
+  useResourceContext,
+} from "ra-core";
 import {
   FormControl,
   FormError,
@@ -66,9 +71,17 @@ export const TextInput = (props: TextInputProps) => {
       )}
       <FormControl>
         {multiline ? (
-          <Textarea {...rest} {...field} className={inputClassName} />
+          <Textarea
+            {...sanitizeInputRestProps(rest)}
+            {...field}
+            className={inputClassName}
+          />
         ) : (
-          <Input {...rest} {...field} className={inputClassName} />
+          <Input
+            {...sanitizeInputRestProps(rest)}
+            {...field}
+            className={inputClassName}
+          />
         )}
       </FormControl>
       <InputHelperText helperText={helperText} />

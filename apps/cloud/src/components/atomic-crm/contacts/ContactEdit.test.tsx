@@ -8,6 +8,7 @@ import {
   ContactEditWithEmailsAndPhones as ContactEditMobileWithEmailsAndPhones,
 } from "./ContactEdit.mobile.stories";
 import { page } from "vitest/browser";
+import { AGENT_CRM_CAPABILITIES } from "../providers/capabilities";
 
 describe("ContactEdit", () => {
   describe("desktop", () => {
@@ -27,6 +28,30 @@ describe("ContactEdit", () => {
       await expect
         .element(screen.getByPlaceholder("Phone number"))
         .toBeInTheDocument();
+    });
+
+    it("shows the mapped name and prevents company reassignment in Agent mode", async () => {
+      const screen = await render(
+        <ContactEditBasic
+          silent
+          dataProvider={{ capabilities: AGENT_CRM_CAPABILITIES }}
+        />,
+      );
+
+      await expect
+        .poll(
+          () =>
+            screen.container.querySelector<HTMLInputElement>(
+              'input[name="name"]',
+            )?.value,
+        )
+        .toBe("Ada Lovelace");
+      expect(
+        screen.container.querySelector('input[name="first_name"]'),
+      ).toBeNull();
+      expect(
+        screen.container.querySelector('input[name="company_id"]'),
+      ).toBeNull();
     });
 
     it("does not submit empty email and phone entries", async () => {

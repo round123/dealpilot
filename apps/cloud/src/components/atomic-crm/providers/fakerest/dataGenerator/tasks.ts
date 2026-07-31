@@ -1,4 +1,4 @@
-import { datatype, lorem, random } from "faker/locale/en_US";
+import { datatype, random } from "faker/locale/zh_CN";
 
 import { defaultTaskTypes } from "../../../root/defaultConfiguration";
 import type { Task } from "../../../types";
@@ -41,7 +41,13 @@ export const generateTasks = (db: Db) => {
       id,
       contact_id: contact.id,
       type: random.arrayElement(defaultTaskTypes).value,
-      text: lorem.sentence(),
+      text: random.arrayElement([
+        "发送最新报价",
+        "确认样品反馈",
+        "核对交期和库存",
+        "跟进合同审批",
+        "补充认证资料",
+      ]),
       due_date: randomDate(
         datatype.boolean() ? new Date() : new Date(contact.first_seen),
         new Date(Date.now() + 100 * 24 * 60 * 60 * 1000),

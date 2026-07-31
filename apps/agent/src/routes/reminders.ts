@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import {
   ReminderCreateSchema,
   ReminderListQuerySchema,
@@ -11,6 +10,7 @@ import {
   listReminders,
   updateReminderStatus,
 } from "../services/reminder-service";
+import { validateJson } from "../middleware/validation";
 
 const app = new Hono();
 
@@ -26,11 +26,11 @@ app.get("/reminders", async (c) => {
   return c.json(await listReminders(query));
 });
 
-app.post("/reminders", zValidator("json", ReminderCreateSchema), async (c) => {
+app.post("/reminders", validateJson(ReminderCreateSchema), async (c) => {
   return c.json(await createReminder(c.req.valid("json")), 201);
 });
 
-app.put("/reminders/:id", zValidator("json", ReminderStatusUpdateSchema), async (c) => {
+app.put("/reminders/:id", validateJson(ReminderStatusUpdateSchema), async (c) => {
   return c.json(await updateReminderStatus(c.req.param("id"), c.req.valid("json")));
 });
 

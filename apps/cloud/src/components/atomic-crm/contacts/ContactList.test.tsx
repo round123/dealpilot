@@ -7,6 +7,10 @@ import {
   DesktopError,
   BulkTagButton,
 } from "./ContactList.stories";
+import { ResourceContextProvider } from "ra-core";
+import { buildContact, StoryWrapper } from "@/test/StoryWrapper";
+import { ContactList } from "./ContactList";
+import { AGENT_CRM_CAPABILITIES } from "../providers/capabilities";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -70,6 +74,29 @@ describe("ContactList", () => {
     await expect
       .element(screen.getByRole("button", { name: /^tag$/i }))
       .toBeVisible();
+  });
+
+  it("does not expose tag and task actions in Agent mode", async () => {
+    const screen = await render(
+      <StoryWrapper
+        data={{ contacts: [buildContact({ id: 10 })] }}
+        dataProvider={{ capabilities: AGENT_CRM_CAPABILITIES }}
+      >
+        <ResourceContextProvider value="contacts">
+          <ContactList />
+        </ResourceContextProvider>
+      </StoryWrapper>,
+    );
+
+    await expect
+      .poll(() => getSelectionCheckboxes(screen.container).length)
+      .toBe(1);
+    await getSelectionCheckboxes(screen.container)[0].click();
+    await expect
+      .element(screen.getByRole("button", { name: /^tag$/i }))
+      .not.toBeInTheDocument();
+    await expect.element(screen.getByText(/^tags$/i)).not.toBeInTheDocument();
+    await expect.element(screen.getByText(/^tasks$/i)).not.toBeInTheDocument();
   });
 
   it("adds an existing tag to selected contacts without duplicating it", async () => {

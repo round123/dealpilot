@@ -29,7 +29,7 @@ vi.mock("../providers/apiClient", () => ({
 import { MergeCustomerButton } from "./MergeCustomerButton";
 
 const source = {
-  id: "8de45578-6661-4003-bccf-07ee67d9ee57",
+  id: 7,
   name: "Source name",
   company: "Source company",
   country: "France",
@@ -152,7 +152,7 @@ describe("MergeCustomerButton", () => {
     expect(mocks.mergeCustomers).toHaveBeenCalledTimes(1);
     expect(mocks.mergeCustomers).toHaveBeenCalledWith(
       expect.objectContaining({
-        sourceId: source.id,
+        sourceId: "7",
         targetId: target.id,
         fieldResolutions: expect.objectContaining({
           name: "Source name",

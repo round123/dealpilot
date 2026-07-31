@@ -8,6 +8,8 @@ import { render } from "vitest-browser-react";
 import { buildContact, StoryWrapper } from "@/test/StoryWrapper";
 import { ContactAside } from "./ContactAside";
 import { MobileSuccess } from "./ContactShow.mobile.stories";
+import { ContactShow } from "./ContactShow";
+import { AGENT_CRM_CAPABILITIES } from "../providers/capabilities";
 
 const mockIsMobile = vi.hoisted(() => vi.fn(() => true));
 vi.mock("@/hooks/use-mobile", () => ({
@@ -33,6 +35,30 @@ describe("ContactShow", () => {
     await expect
       .poll(() => screen.container.textContent?.includes("||||") ?? false)
       .toBe(false);
+  });
+
+  it("hides unsupported Agent features on mobile", async () => {
+    const contact = buildContact({ id: 7, name: "Ada Lovelace" } as any);
+    const screen = await render(
+      <StoryWrapper
+        data={{ contacts: [contact] }}
+        dataProvider={{ capabilities: AGENT_CRM_CAPABILITIES }}
+      >
+        <ContactShow resource="contacts" id={contact.id} />
+      </StoryWrapper>,
+    );
+
+    await expect
+      .element(screen.getByRole("tab", { name: /details/i }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("tab", { name: /notes/i }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("tab", { name: /tasks/i }))
+      .not.toBeInTheDocument();
+    await expect.element(screen.getByRole("combobox")).not.toBeInTheDocument();
+    await expect.element(screen.getByText(/^tags$/i)).not.toBeInTheDocument();
   });
 
   it("updates the contact status from the aside", async () => {

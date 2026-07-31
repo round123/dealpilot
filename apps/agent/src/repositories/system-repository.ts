@@ -2,11 +2,15 @@ import { and, count, eq, isNotNull, isNull, like, lte, or, sql } from "drizzle-o
 import type { SettingsUpdate } from "@dealpilot/shared";
 import { db } from "../db/client";
 import {
+  contacts,
   customers,
   follow_ups,
+  milestones,
   projects,
   reminders,
+  risks,
   settings,
+  social_accounts,
 } from "../db/schema";
 
 export async function getOrCreateSettings() {
@@ -79,6 +83,39 @@ export function listCustomersForExport(filters?: {
   if (filters?.grade) conditions.push(eq(customers.grade, filters.grade));
   if (filters?.status) conditions.push(eq(customers.status, filters.status));
   return db.select().from(customers).where(and(...conditions));
+}
+
+export async function getAllBusinessDataForExport() {
+  const [
+    customerRows,
+    contactRows,
+    socialAccountRows,
+    projectRows,
+    followUpRows,
+    reminderRows,
+    riskRows,
+    milestoneRows,
+  ] = await Promise.all([
+    db.select().from(customers),
+    db.select().from(contacts),
+    db.select().from(social_accounts),
+    db.select().from(projects),
+    db.select().from(follow_ups),
+    db.select().from(reminders),
+    db.select().from(risks),
+    db.select().from(milestones),
+  ]);
+
+  return {
+    customers: customerRows,
+    contacts: contactRows,
+    socialAccounts: socialAccountRows,
+    projects: projectRows,
+    followUps: followUpRows,
+    reminders: reminderRows,
+    risks: riskRows,
+    milestones: milestoneRows,
+  };
 }
 
 export async function deleteExpiredCustomers(cutoffDate: string) {

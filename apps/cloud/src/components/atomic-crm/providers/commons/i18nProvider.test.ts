@@ -85,12 +85,12 @@ describe("i18nProvider", () => {
     ).toBe("联系人");
     expect(
       i18nProvider.translate("resources.deals.name", { smart_count: 2 }),
-    ).toBe("商机");
+    ).toBe("项目");
     expect(
       i18nProvider.translate("resources.tasks.name", { smart_count: 2 }),
     ).toBe("待办");
     expect(i18nProvider.translate("crm.dashboard.deals_pipeline")).toBe(
-      "商机管道",
+      "项目管道",
     );
     expect(i18nProvider.translate("crm.settings.title")).toBe("设置");
     expect(i18nProvider.translate("resources.companies.merge.action")).toBe(

@@ -9,24 +9,34 @@ import {
   cleanupContactForEdit,
   defaultEmailJsonb,
   defaultPhoneJsonb,
+  applyContactCapabilities,
 } from "./contactModel";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactEdit = ({
   mutationMode,
 }: {
   mutationMode?: MutationMode;
-}) => (
-  <EditBase
-    redirect="show"
-    transform={cleanupContactForEdit}
-    mutationMode={mutationMode}
-  >
-    <ContactEditContent />
-  </EditBase>
-);
+}) => {
+  const capabilities = useCrmProviderCapabilities();
+  return (
+    <EditBase
+      redirect="show"
+      transform={(data) =>
+        applyContactCapabilities(cleanupContactForEdit(data), capabilities)
+      }
+      mutationMode={mutationMode}
+    >
+      <ContactEditContent />
+    </EditBase>
+  );
+};
 
 const normalizeContactArrayFields = (record: Contact) => ({
   ...record,
+  name:
+    (record as Contact & { name?: string }).name ??
+    [record.first_name, record.last_name].filter(Boolean).join(" "),
   email_jsonb:
     record.email_jsonb && record.email_jsonb.length > 0
       ? record.email_jsonb

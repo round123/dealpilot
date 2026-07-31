@@ -15,16 +15,22 @@ import { useLocalizedConfigurationContext } from "../root/ConfigurationContext";
 import { ResponsiveFilters } from "../misc/ResponsiveFilters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ActiveFilterButton } from "../misc/ActiveFilterButton";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactListFilter = () => {
   const { noteStatuses } = useLocalizedConfigurationContext();
   const isMobile = useIsMobile();
   const { identity } = useGetIdentity();
   const translate = useTranslate();
-  const { data } = useGetList("tags", {
-    pagination: { page: 1, perPage: 10 },
-    sort: { field: "name", order: "ASC" },
-  });
+  const capabilities = useCrmProviderCapabilities();
+  const { data } = useGetList(
+    "tags",
+    {
+      pagination: { page: 1, perPage: 10 },
+      sort: { field: "name", order: "ASC" },
+    },
+    { enabled: capabilities.contacts.tags },
+  );
 
   return (
     <ResponsiveFilters
@@ -86,59 +92,65 @@ export const ContactListFilter = () => {
         />
       </FilterCategory>
 
-      <FilterCategory
-        label="resources.notes.fields.status"
-        icon={<TrendingUp />}
-      >
-        {noteStatuses.map((status) => (
-          <ToggleFilterButton
-            key={status.value}
-            className="w-auto md:w-full justify-between h-10 md:h-8"
-            label={
-              <span>
-                {status.label} <Status status={status.value} />
-              </span>
-            }
-            value={{ status: status.value }}
-            size={isMobile ? "lg" : undefined}
-          />
-        ))}
-      </FilterCategory>
-
-      <FilterCategory label="resources.contacts.filters.tags" icon={<Tag />}>
-        {data &&
-          data.map((record) => (
+      {capabilities.contacts.status ? (
+        <FilterCategory
+          label="resources.notes.fields.status"
+          icon={<TrendingUp />}
+        >
+          {noteStatuses.map((status) => (
             <ToggleFilterButton
+              key={status.value}
               className="w-auto md:w-full justify-between h-10 md:h-8"
-              key={record.id}
               label={
-                <Badge
-                  variant="secondary"
-                  className="text-black text-sm md:text-xs font-normal cursor-pointer"
-                  style={{
-                    backgroundColor: record?.color,
-                  }}
-                >
-                  {record?.name}
-                </Badge>
+                <span>
+                  {status.label} <Status status={status.value} />
+                </span>
               }
-              value={{ "tags@cs": `{${record.id}}` }}
+              value={{ status: status.value }}
               size={isMobile ? "lg" : undefined}
             />
           ))}
-      </FilterCategory>
+        </FilterCategory>
+      ) : null}
 
-      <FilterCategory
-        icon={<CheckSquare />}
-        label="resources.contacts.filters.tasks"
-      >
-        <ToggleFilterButton
-          className="w-full justify-between h-10 md:h-8"
-          label="resources.tasks.filters.with_pending"
-          value={{ "nb_tasks@gt": 0 }}
-          size={isMobile ? "lg" : undefined}
-        />
-      </FilterCategory>
+      {capabilities.contacts.tags ? (
+        <FilterCategory label="resources.contacts.filters.tags" icon={<Tag />}>
+          {data &&
+            data.map((record) => (
+              <ToggleFilterButton
+                className="w-auto md:w-full justify-between h-10 md:h-8"
+                key={record.id}
+                label={
+                  <Badge
+                    variant="secondary"
+                    className="text-black text-sm md:text-xs font-normal cursor-pointer"
+                    style={{
+                      backgroundColor: record?.color,
+                    }}
+                  >
+                    {record?.name}
+                  </Badge>
+                }
+                value={{ "tags@cs": `{${record.id}}` }}
+                size={isMobile ? "lg" : undefined}
+              />
+            ))}
+        </FilterCategory>
+      ) : null}
+
+      {capabilities.contacts.tasks ? (
+        <FilterCategory
+          icon={<CheckSquare />}
+          label="resources.contacts.filters.tasks"
+        >
+          <ToggleFilterButton
+            className="w-full justify-between h-10 md:h-8"
+            label="resources.tasks.filters.with_pending"
+            value={{ "nb_tasks@gt": 0 }}
+            size={isMobile ? "lg" : undefined}
+          />
+        </FilterCategory>
+      ) : null}
 
       <FilterCategory
         icon={<Users />}
@@ -158,10 +170,15 @@ export const ContactListFilter = () => {
 export const ContactListFilterSummary = () => {
   const { noteStatuses } = useLocalizedConfigurationContext();
   const { identity } = useGetIdentity();
-  const { data } = useGetList("tags", {
-    pagination: { page: 1, perPage: 10 },
-    sort: { field: "name", order: "ASC" },
-  });
+  const capabilities = useCrmProviderCapabilities();
+  const { data } = useGetList(
+    "tags",
+    {
+      pagination: { page: 1, perPage: 10 },
+      sort: { field: "name", order: "ASC" },
+    },
+    { enabled: capabilities.contacts.tags },
+  );
   const { filterValues } = useListContext();
   const hasFilters = !!Object.entries(filterValues || {}).filter(
     ([key]) => key !== "q",
@@ -214,20 +231,23 @@ export const ContactListFilterSummary = () => {
         }}
       />
 
-      {noteStatuses.map((status) => (
-        <ActiveFilterButton
-          key={status.value}
-          className="w-auto justify-between h-8"
-          label={
-            <span>
-              {status.label} <Status status={status.value} />
-            </span>
-          }
-          value={{ status: status.value }}
-        />
-      ))}
+      {capabilities.contacts.status
+        ? noteStatuses.map((status) => (
+            <ActiveFilterButton
+              key={status.value}
+              className="w-auto justify-between h-8"
+              label={
+                <span>
+                  {status.label} <Status status={status.value} />
+                </span>
+              }
+              value={{ status: status.value }}
+            />
+          ))
+        : null}
 
-      {data &&
+      {capabilities.contacts.tags &&
+        data &&
         data.map((record) => (
           <ActiveFilterButton
             className="w-auto justify-between h-8"
@@ -247,11 +267,13 @@ export const ContactListFilterSummary = () => {
           />
         ))}
 
-      <ActiveFilterButton
-        className="w-auto justify-between h-8"
-        label="resources.tasks.filters.with_pending"
-        value={{ "nb_tasks@gt": 0 }}
-      />
+      {capabilities.contacts.tasks ? (
+        <ActiveFilterButton
+          className="w-auto justify-between h-8"
+          label="resources.tasks.filters.with_pending"
+          value={{ "nb_tasks@gt": 0 }}
+        />
+      ) : null}
 
       <ActiveFilterButton
         className="w-auto justify-between h-8"

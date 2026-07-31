@@ -5,8 +5,10 @@
     "types": ["chrome"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "paths": {
+      "@dealpilot/api-client/error": ["../../packages/api-client/src/error.ts"],
       "@dealpilot/shared": ["../../packages/shared/src"]
     }
   },
-  "include": ["entrypoints/**/*", "src/**/*"]
+  "include": ["entrypoints/**/*", "src/**/*"],
+  "exclude": ["src/**/*.test.ts"]
 }

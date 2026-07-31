@@ -1,5 +1,5 @@
 import { add } from "date-fns";
-import { datatype, lorem, random } from "faker/locale/en_US";
+import { datatype, random } from "faker/locale/zh_CN";
 
 import {
   defaultDealCategories,
@@ -10,6 +10,20 @@ import type { Db } from "./types";
 import { randomDate } from "./utils";
 
 export const generateDeals = (db: Db): Deal[] => {
+  const projectNames = [
+    "年度采购框架",
+    "新品样品确认",
+    "海外经销合作",
+    "设备升级采购",
+    "季度补货计划",
+    "定制包装项目",
+  ];
+  const descriptions = [
+    "客户已确认初步需求，等待规格与交期核对。",
+    "样品方案已沟通，下一步安排报价和寄送。",
+    "采购预算正在审批，需要持续跟进关键决策人。",
+    "重点核实认证、付款条件和售后支持范围。",
+  ];
   const deals = Array.from(Array(50).keys()).map((id) => {
     const company = random.arrayElement(db.companies);
     company.nb_deals = (company.nb_deals ?? 0) + 1;
@@ -17,7 +31,6 @@ export const generateDeals = (db: Db): Deal[] => {
       db.contacts.filter((contact) => contact.company_id === company.id),
       datatype.number({ min: 1, max: 3 }),
     );
-    const lowercaseName = lorem.words();
     const created_at = randomDate(new Date(company.created_at)).toISOString();
 
     const expected_closing_date = randomDate(
@@ -29,12 +42,12 @@ export const generateDeals = (db: Db): Deal[] => {
 
     return {
       id,
-      name: lowercaseName[0].toUpperCase() + lowercaseName.slice(1),
+      name: `${random.arrayElement(projectNames)}-${id + 1}`,
       company_id: company.id,
       contact_ids: contacts.map((contact) => contact.id),
       category: random.arrayElement(defaultDealCategories).value,
       stage: random.arrayElement(defaultDealStages).value,
-      description: lorem.paragraphs(datatype.number({ min: 1, max: 4 })),
+      description: random.arrayElement(descriptions),
       amount: datatype.number(1000) * 100,
       created_at,
       updated_at: randomDate(new Date(created_at)).toISOString(),

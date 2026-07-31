@@ -16,13 +16,16 @@ import {
   CheckCircle2,
   AlertOctagon,
   ArrowRight,
+  BriefcaseBusiness,
+  Users,
 } from "lucide-react";
-import { fetchPopupReminders } from "../../src/lib/api-client";
+import { extensionErrorMessage, fetchPopupReminders } from "../../src/lib/api-client";
 import { requestAgentStatus } from "../../src/lib/native-messaging";
 import { NewCustomerPage } from "./new-customer";
-import type { Reminder } from "@dealpilot/shared";
+import type { PopupReminder } from "@dealpilot/shared";
 import { isOverdue, formatRelativeTime } from "@dealpilot/shared";
 import { POPUP_REMINDER_LIMIT } from "@dealpilot/shared";
+import { openWorkbench } from "../../src/lib/workbench-links";
 
 /** 状态颜色 */
 const STATUS_COLORS: Record<string, string> = {
@@ -43,18 +46,12 @@ const SkeletonCard: React.FC = () => (
 );
 
 /** 单个待办卡片 */
-const ReminderCard: React.FC<{ reminder: Reminder }> = ({ reminder }) => {
+const ReminderCard: React.FC<{ reminder: PopupReminder }> = ({ reminder }) => {
   const overdue = isOverdue(reminder.due_at);
   const isHighRisk = reminder.priority === "high" || reminder.priority === "urgent";
 
   const handleClick = () => {
-    // 根据平台打开对应会话（这里简化为打开 WhatsApp/Telegram Web）
-    // 实际应使用深链跳转
-    const platform = "whatsapp"; // 实际应从 reminder 关联的社媒账号获取
-    const url = platform === "whatsapp"
-      ? "https://web.whatsapp.com/"
-      : "https://web.telegram.org/";
-    chrome.tabs.create({ url });
+    void openWorkbench("reminders");
   };
 
   return (
@@ -74,7 +71,7 @@ const ReminderCard: React.FC<{ reminder: Reminder }> = ({ reminder }) => {
       {/* 第一行：客户名 + 分级 */}
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
         <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-          {reminder.customer_id.slice(0, 8)}
+          {reminder.customer_name}
         </span>
         {isHighRisk && (
           <AlertOctagon size={12} style={{ color: "var(--color-error)", marginLeft: "auto" }} />
@@ -82,9 +79,9 @@ const ReminderCard: React.FC<{ reminder: Reminder }> = ({ reminder }) => {
       </div>
 
       {/* 第二行：项目名 */}
-      {reminder.project_id && (
+      {reminder.project_name && (
         <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "4px" }}>
-          项目: {reminder.project_id.slice(0, 8)}
+          项目: {reminder.project_name}
         </div>
       )}
 
@@ -111,7 +108,7 @@ const ReminderCard: React.FC<{ reminder: Reminder }> = ({ reminder }) => {
 };
 
 export default function App() {
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [reminders, setReminders] = useState<PopupReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -125,8 +122,7 @@ export default function App() {
       const data = await fetchPopupReminders();
       setReminders(data);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "加载失败";
-      setError(msg);
+      setError(extensionErrorMessage(err, "待办加载失败，请稍后重试"));
     } finally {
       setLoading(false);
     }
@@ -167,7 +163,13 @@ export default function App() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Compass size={18} style={{ color: "var(--color-primary)" }} />
+          <button
+            onClick={() => void openWorkbench("home")}
+            title="打开工作台"
+            style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", display: "flex" }}
+          >
+            <Compass size={18} style={{ color: "var(--color-primary)" }} />
+          </button>
           <span style={{ fontSize: "14px", fontWeight: 600 }}>待办</span>
         </div>
         <button
@@ -241,7 +243,7 @@ export default function App() {
         }}
       >
         <button
-          onClick={() => chrome.tabs.create({ url: "http://127.0.0.1:31081/reminders" })}
+          onClick={() => void openWorkbench("reminders")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -255,6 +257,21 @@ export default function App() {
         >
           查看全部
           <ArrowRight size={14} />
+        </button>
+
+        <button
+          onClick={() => void openWorkbench("customers")}
+          title="客户"
+          style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--color-text-secondary)", display: "flex", padding: "4px" }}
+        >
+          <Users size={15} />
+        </button>
+        <button
+          onClick={() => void openWorkbench("projects")}
+          title="项目"
+          style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--color-text-secondary)", display: "flex", padding: "4px" }}
+        >
+          <BriefcaseBusiness size={15} />
         </button>
 
         {/* Agent 状态指示 */}

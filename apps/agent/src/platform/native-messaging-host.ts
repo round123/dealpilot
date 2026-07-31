@@ -63,6 +63,7 @@ function extractExtensionId(argv: string[]): string | null {
 export interface RuntimeInfo {
   port: number;
   token: string;
+  workbenchOrigin?: string;
   pid: number;
   startedAt: string;
 }
@@ -72,6 +73,7 @@ export function writeRuntimeInfo(): void {
   const info: RuntimeInfo = {
     port: config.port,
     token: config.token,
+    workbenchOrigin: config.workbenchOrigin,
     pid: process.pid,
     startedAt: new Date().toISOString(),
   };
@@ -186,12 +188,22 @@ export async function runNativeMessagingHost(argv: string[]): Promise<void> {
   for await (const msg of readMessages()) {
     switch (msg.type) {
       case "hello":
-        writeMessage({ type: "auth", token: info.token, port: info.port });
+        writeMessage({
+          type: "auth",
+          token: info.token,
+          port: info.port,
+          workbench_origin: info.workbenchOrigin,
+        });
         break;
       case "refresh_token": {
         // 重新读 runtime info（token 可能随 Agent 重启变化）
         const fresh = readRuntimeInfo() ?? info;
-        writeMessage({ type: "token_refresh", token: fresh.token });
+        writeMessage({
+          type: "token_refresh",
+          token: fresh.token,
+          port: fresh.port,
+          workbench_origin: fresh.workbenchOrigin,
+        });
         break;
       }
       default:

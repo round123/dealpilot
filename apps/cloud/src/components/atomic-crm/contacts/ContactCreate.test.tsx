@@ -2,6 +2,11 @@ import { render } from "vitest-browser-react";
 
 import { ContactCreateBasic } from "./ContactCreate.stories";
 import { page } from "vitest/browser";
+import { AGENT_CRM_CAPABILITIES } from "../providers/capabilities";
+import {
+  applyContactCapabilities,
+  cleanupContactForCreate,
+} from "./contactModel";
 
 describe("ContactCreate", () => {
   beforeAll(() => {
@@ -14,6 +19,63 @@ describe("ContactCreate", () => {
     await expect
       .element(screen.getByPlaceholder("Phone number"))
       .toBeInTheDocument();
+  });
+
+  it("shows only Agent-supported fields with one email and phone", async () => {
+    const screen = await render(
+      <ContactCreateBasic
+        dataProvider={{ capabilities: AGENT_CRM_CAPABILITIES }}
+      />,
+    );
+
+    await expect
+      .poll(() => screen.container.querySelector('input[name="name"]'))
+      .not.toBeNull();
+    expect(
+      screen.container.querySelector('input[name="first_name"]'),
+    ).toBeNull();
+    expect(
+      screen.container.querySelector('input[name="last_name"]'),
+    ).toBeNull();
+    await expect
+      .poll(() => screen.getByPlaceholder("Email").all().length)
+      .toBe(1);
+    await expect
+      .poll(() => screen.getByPlaceholder("Phone number").all().length)
+      .toBe(1);
+    expect(
+      screen.container.querySelector('input[name="linkedin_url"]'),
+    ).toBeNull();
+  });
+
+  it("strips unsupported fields and extra email or phone values", () => {
+    const result = applyContactCapabilities(
+      cleanupContactForCreate({
+        first_name: "Ada",
+        last_name: "Lovelace",
+        title: "CTO",
+        company_id: 1,
+        email_jsonb: [
+          { email: "ada@example.com", type: "Work" },
+          { email: "other@example.com", type: "Other" },
+        ],
+        phone_jsonb: [
+          { number: "123", type: "Work" },
+          { number: "456", type: "Other" },
+        ],
+        background: "unsupported",
+        tags: [1],
+      } as any),
+      AGENT_CRM_CAPABILITIES,
+    );
+
+    expect(result).toEqual({
+      name: "Ada Lovelace",
+      title: "CTO",
+      company_id: 1,
+      email_jsonb: [{ email: "ada@example.com", type: "Work" }],
+      phone_jsonb: [{ number: "123", type: "Work" }],
+    });
   });
 
   it("does not submit empty email and phone entries", async () => {

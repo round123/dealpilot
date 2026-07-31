@@ -15,7 +15,7 @@ export const DealColumn = ({
   const totalAmount = deals.reduce((sum, deal) => sum + deal.amount, 0);
   const { dealStages, currency } = useLocalizedConfigurationContext();
   return (
-    <div className="flex-1 pb-8">
+    <div className="min-w-56 flex-1 pb-8">
       <div className="flex flex-col items-center">
         <h3 className="text-base font-medium">
           {findDealLabel(dealStages, stage)}

@@ -23,7 +23,7 @@ vi.mock("../providers/apiClient", () => ({
 import { SoftDeleteCustomerButton } from "./SoftDeleteCustomerButton";
 
 const company = {
-  id: "8de45578-6661-4003-bccf-07ee67d9ee57",
+  id: 42,
   name: "Northwind",
 } as unknown as Company;
 
@@ -77,7 +77,7 @@ describe("SoftDeleteCustomerButton", () => {
     await expect
       .element(screen.getByText("Customers destination"))
       .toBeVisible();
-    expect(mocks.softDeleteCustomer).toHaveBeenCalledWith(company.id, {
+    expect(mocks.softDeleteCustomer).toHaveBeenCalledWith("42", {
       signal: undefined,
     });
     expect(

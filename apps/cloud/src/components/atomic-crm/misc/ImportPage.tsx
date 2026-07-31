@@ -23,8 +23,20 @@ import {
   useImportFromJson,
 } from "./useImportFromJson";
 import sampleFile from "./import-sample.json?url";
+import { useImportOperations } from "../providers/importOperations";
+import { AgentCustomerImportPage } from "./AgentCustomerImportPage";
 
 export const ImportPage = () => {
+  const importOperations = useImportOperations();
+
+  if (importOperations) {
+    return <AgentCustomerImportPage operations={importOperations} />;
+  }
+
+  return <JsonImportPage />;
+};
+
+const JsonImportPage = () => {
   const translate = useTranslate();
   const [importState, importFile, reset] = useImportFromJson();
 

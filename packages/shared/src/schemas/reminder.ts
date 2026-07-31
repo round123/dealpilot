@@ -45,6 +45,12 @@ export const ReminderSchema = z.object({
   updated_at: z.string(),
 });
 
+/** Popup reminders include display labels so clients never need to expose IDs. */
+export const PopupReminderSchema = ReminderSchema.extend({
+  customer_name: z.string().min(1),
+  project_name: z.string().nullable(),
+});
+
 export const ReminderListQuerySchema = z.object({
   status: z.enum([
     ReminderStatus.PENDING,

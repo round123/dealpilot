@@ -15,12 +15,15 @@ export const API_PATHS = {
   customerRestore: (id: string) => `${API_V1}/customers/${id}/restore`,
   customerMerge: `${API_V1}/customers/merge`,
   customerContacts: (id: string) => `${API_V1}/customers/${id}/contacts`,
-  customerSocialAccounts: (id: string) => `${API_V1}/customers/${id}/social-accounts`,
+  customerSocialAccounts: (id: string) =>
+    `${API_V1}/customers/${id}/social-accounts`,
 
   // Contacts
+  contacts: `${API_V1}/contacts`,
   contact: (id: string) => `${API_V1}/contacts/${id}`,
 
   // Social Accounts
+  socialAccounts: `${API_V1}/social-accounts`,
   socialAccount: (id: string) => `${API_V1}/social-accounts/${id}`,
 
   // Matches
@@ -44,7 +47,9 @@ export const API_PATHS = {
   projectMilestones: (id: string) => `${API_V1}/projects/${id}/milestones`,
 
   // Risks & Milestones
+  risks: `${API_V1}/risks`,
   risk: (id: string) => `${API_V1}/risks/${id}`,
+  milestones: `${API_V1}/milestones`,
   milestone: (id: string) => `${API_V1}/milestones/${id}`,
 
   // Imports
@@ -54,6 +59,7 @@ export const API_PATHS = {
 
   // Exports
   exportsCustomers: `${API_V1}/exports/customers`,
+  exportsAll: `${API_V1}/exports/all`,
 
   // Backups
   backupsCreate: `${API_V1}/backups/create`,

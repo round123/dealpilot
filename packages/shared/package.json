@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "bun test",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

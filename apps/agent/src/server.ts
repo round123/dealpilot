@@ -179,7 +179,7 @@ export async function startServer(): Promise<void> {
   });
 
   console.log(`[server] DealPilot Agent running at http://${config.host}:${config.port}`);
-  console.log(`[server] Workbench URL: ${config.workbenchUrl}`);
+  console.log(`[server] Workbench origin: ${config.workbenchOrigin}`);
   if (existsSync(INDEX_HTML)) {
     console.log(`[server] Web UI served from: ${WEB_DIR}`);
   } else {

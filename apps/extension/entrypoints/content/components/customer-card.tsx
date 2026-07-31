@@ -22,6 +22,7 @@ interface CustomerCardProps {
   lastFollowUpAt?: string | null;
   /** 最近跟进备注 */
   lastFollowUpNote?: string | null;
+  onOpen?: () => void;
 }
 
 /** 格式化相对时间 */
@@ -41,6 +42,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   customer,
   lastFollowUpAt,
   lastFollowUpNote,
+  onOpen,
 }) => {
   const gradeColor = GRADE_COLORS[customer.grade] ?? GRADE_COLORS.C;
 
@@ -53,9 +55,14 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
     >
       {/* 顶部：名称 + 分级 */}
       <div style={{ display: "flex", alignItems: "center", gap: "var(--dp-space-2)", marginBottom: "var(--dp-space-2)" }}>
-        <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--dp-color-text-primary)" }}>
+        <button
+          type="button"
+          onClick={onOpen}
+          title="打开客户详情"
+          style={{ border: "none", background: "transparent", padding: 0, cursor: onOpen ? "pointer" : "default", fontWeight: 600, fontSize: "14px", color: "var(--dp-color-text-primary)" }}
+        >
           {customer.name}
-        </span>
+        </button>
         <span
           style={{
             display: "inline-flex",

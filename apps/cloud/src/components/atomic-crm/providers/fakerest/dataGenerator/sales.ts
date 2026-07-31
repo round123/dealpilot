@@ -1,4 +1,4 @@
-import { internet, name } from "faker/locale/en_US";
+import { internet, name } from "faker/locale/zh_CN";
 
 import type { RAFile, Sale } from "../../../types";
 import type { Db } from "./types";

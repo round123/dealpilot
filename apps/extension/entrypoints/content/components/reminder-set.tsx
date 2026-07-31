@@ -10,7 +10,7 @@
 
 import React, { useState } from "react";
 import { Clock, Loader2, X } from "lucide-react";
-import { createReminder } from "../../../src/lib/api-client";
+import { createReminder, extensionErrorMessage } from "../../../src/lib/api-client";
 import { ReminderType } from "@dealpilot/shared";
 
 interface ReminderSetProps {
@@ -113,8 +113,7 @@ export const ReminderSet: React.FC<ReminderSetProps> = ({
       await createReminder(payload);
       onSaved?.();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "保存失败，可重试";
-      setError(msg);
+      setError(extensionErrorMessage(err, "提醒保存失败，可重试"));
     } finally {
       setLoading(false);
     }

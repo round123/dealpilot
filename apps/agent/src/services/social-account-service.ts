@@ -1,16 +1,21 @@
 import { normalizePlatformIdentifier } from "@dealpilot/shared";
-import type { SocialAccountCreate } from "@dealpilot/shared";
+import type {
+  SocialAccountCreate,
+  SocialAccountListQuery,
+} from "@dealpilot/shared";
 import { ApiError } from "../errors/api-error";
 import {
   deleteSocialAccountRecord,
   findActiveCustomer,
   findSocialAccount,
   insertSocialAccount,
+  listSocialAccountRecords,
   listSocialAccounts,
 } from "../repositories/crm-repository";
+import { toCursorPage } from "./pagination";
 
 async function requireCustomer(customerId: string) {
-  if (!await findActiveCustomer(customerId)) {
+  if (!(await findActiveCustomer(customerId))) {
     throw ApiError.notFound("Customer not found");
   }
 }
@@ -20,9 +25,19 @@ export async function getSocialAccounts(customerId: string) {
   return listSocialAccounts(customerId);
 }
 
-export async function createSocialAccount(customerId: string, input: SocialAccountCreate) {
+export async function listSocialAccountsPage(query: SocialAccountListQuery) {
+  return toCursorPage(await listSocialAccountRecords(query), query.limit);
+}
+
+export async function createSocialAccount(
+  customerId: string,
+  input: SocialAccountCreate,
+) {
   await requireCustomer(customerId);
-  const normalized = normalizePlatformIdentifier(input.platform, input.raw_identifier);
+  const normalized = normalizePlatformIdentifier(
+    input.platform,
+    input.raw_identifier,
+  );
   if (await findSocialAccount(input.platform, normalized)) {
     throw ApiError.conflict("Social account already bound to a customer");
   }

@@ -95,6 +95,11 @@ export const CustomerListQuerySchema = z.object({
   sort: z.enum(["name", "created_at", "updated_at", "grade"]).optional().default("created_at"),
 });
 
+export const CustomerDeletedListQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 /**
  * 客户合并
  */

@@ -3,7 +3,7 @@ import type { Meta } from "@storybook/react-vite";
 import { ContactEdit } from "./ContactEdit";
 import { Route, Routes } from "react-router";
 import { buildContact, StoryWrapper } from "@/test/StoryWrapper";
-import type { DataProvider } from "ra-core";
+import type { CrmDataProvider } from "../providers/types";
 
 const meta = {
   title: "Atomic CRM/Contacts/Contact Edit",
@@ -21,7 +21,7 @@ export const ContactEditBasic = ({
   dataProvider = {},
   silent,
 }: {
-  dataProvider?: Partial<DataProvider>;
+  dataProvider?: Partial<CrmDataProvider>;
   silent?: boolean;
 }) => (
   <StoryWrapper
@@ -48,7 +48,7 @@ export const ContactEditWithEmailsAndPhones = ({
   dataProvider = {},
   silent,
 }: {
-  dataProvider?: Partial<DataProvider>;
+  dataProvider?: Partial<CrmDataProvider>;
   silent?: boolean;
 }) => (
   <StoryWrapper

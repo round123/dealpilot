@@ -3,7 +3,9 @@
  */
 
 import { z } from "zod";
-import { UUIDSchema, DateTimeSchema } from "./common.js";
+import { UUIDSchema } from "./common.js";
+import { MilestoneSchema } from "./milestone.js";
+import { RiskSchema } from "./risk.js";
 import { ProjectStage, ProjectGrade } from "../types/enums.js";
 
 export const ProjectCreateSchema = z.object({
@@ -23,6 +25,7 @@ export const ProjectCreateSchema = z.object({
     ProjectStage.ARCHIVED,
   ]).optional().default(ProjectStage.LEAD),
   grade: z.enum([ProjectGrade.S, ProjectGrade.A, ProjectGrade.B, ProjectGrade.C]).default(ProjectGrade.B),
+  closed_reason: z.string().nullable().optional(),
 });
 
 export const ProjectUpdateSchema = z.object({
@@ -41,6 +44,7 @@ export const ProjectUpdateSchema = z.object({
     ProjectStage.ARCHIVED,
   ]).optional(),
   grade: z.enum([ProjectGrade.S, ProjectGrade.A, ProjectGrade.B, ProjectGrade.C]).optional(),
+  closed_reason: z.string().nullable().optional(),
 });
 
 export const ProjectStageUpdateSchema = z.object({
@@ -71,18 +75,8 @@ export const ProjectSchema = z.object({
 });
 
 export const ProjectDetailSchema = ProjectSchema.extend({
-  risks: z.array(z.object({
-    id: UUIDSchema,
-    description: z.string(),
-    severity: z.string(),
-    status: z.string(),
-  })).optional(),
-  milestones: z.array(z.object({
-    id: UUIDSchema,
-    name: z.string(),
-    date: z.string(),
-    completed: z.boolean(),
-  })).optional(),
+  risks: z.array(RiskSchema).optional(),
+  milestones: z.array(MilestoneSchema).optional(),
   open_reminders: z.array(z.object({
     id: UUIDSchema,
     type: z.string(),

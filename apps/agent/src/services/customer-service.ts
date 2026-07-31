@@ -1,5 +1,6 @@
 import type {
   CustomerCreate,
+  CustomerDeletedListQuery,
   CustomerListQuery,
   CustomerMerge,
   CustomerUpdate,
@@ -10,6 +11,7 @@ import {
   getCustomerDetail,
   insertCustomer,
   listCustomers as listCustomerRecords,
+  listDeletedCustomers as listDeletedCustomerRecords,
   mergeCustomerRecords,
   restoreCustomerRecord,
   softDeleteCustomerRecord,
@@ -19,6 +21,10 @@ import { toCursorPage } from "./pagination";
 
 export async function listCustomers(query: CustomerListQuery) {
   return toCursorPage(await listCustomerRecords(query), query.limit);
+}
+
+export async function listDeletedCustomers(query: CustomerDeletedListQuery) {
+  return toCursorPage(await listDeletedCustomerRecords(query), query.limit);
 }
 
 export function createCustomer(input: CustomerCreate) {

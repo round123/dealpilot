@@ -1,12 +1,12 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import { BackupCreateSchema } from "@dealpilot/shared";
+import { validateJson } from "../middleware/validation";
 import { ApiError } from "../errors/api-error";
 import { createBackup, restoreBackup, validateBackup } from "../services/backup-service";
 
 const app = new Hono();
 
-app.post("/backups/create", zValidator("json", BackupCreateSchema), async (c) => {
+app.post("/backups/create", validateJson(BackupCreateSchema), async (c) => {
   const buffer = await createBackup(c.req.valid("json").password);
   c.header("Content-Type", "application/octet-stream");
   c.header("Content-Disposition", `attachment; filename="dealpilot-backup-${Date.now()}.dpbk"`);

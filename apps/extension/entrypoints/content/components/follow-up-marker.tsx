@@ -11,7 +11,7 @@
 import React, { useRef, useState } from "react";
 import { Bookmark, Plus, Loader2 } from "lucide-react";
 import type { FollowUpCreate } from "@dealpilot/shared";
-import { createFollowUp, generateIdempotencyKey } from "../../../src/lib/api-client";
+import { createFollowUp, extensionErrorMessage, generateIdempotencyKey } from "../../../src/lib/api-client";
 import { getPlatformAdapter } from "./platform-adapter";
 
 interface FollowUpMarkerProps {
@@ -103,8 +103,7 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
       messageAttempt.current = null;
       onSaved?.();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "保存失败，可重试";
-      setError(msg);
+      setError(extensionErrorMessage(err, "跟进保存失败，可重试"));
     } finally {
       setLoading(false);
     }
@@ -140,8 +139,7 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
       setShowManual(false);
       onSaved?.();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "保存失败，可重试";
-      setError(msg);
+      setError(extensionErrorMessage(err, "跟进保存失败，可重试"));
     } finally {
       setLoading(false);
     }

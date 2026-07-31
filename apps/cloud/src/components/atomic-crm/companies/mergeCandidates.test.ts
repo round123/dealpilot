@@ -9,6 +9,7 @@ vi.mock("../providers/apiClient", () => ({
 }));
 
 import { loadMergeCandidates } from "./mergeCandidates";
+import { cloudCustomerOperations } from "../providers/cloudCustomerOperations";
 
 describe("loadMergeCandidates", () => {
   it("pushes active search, source exclusion, stable pagination, and signal", async () => {
@@ -18,7 +19,14 @@ describe("loadMergeCandidates", () => {
     mocks.list.mockResolvedValue(result);
 
     await expect(
-      loadMergeCandidates(sourceId, "  North  ", 2, 10, controller.signal),
+      loadMergeCandidates(
+        cloudCustomerOperations,
+        sourceId,
+        "  North  ",
+        2,
+        10,
+        controller.signal,
+      ),
     ).resolves.toBe(result);
     expect(mocks.list).toHaveBeenCalledWith(
       "companies_summary",

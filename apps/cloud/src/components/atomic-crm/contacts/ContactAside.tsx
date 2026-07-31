@@ -14,10 +14,12 @@ import { AsideSection } from "../misc/AsideSection";
 import type { Contact } from "../types";
 import { ContactMergeButton } from "./ContactMergeButton";
 import { ExportVCardButton } from "./ExportVCardButton";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
   const record = useRecordContext<Contact>();
   const translate = useTranslate();
+  const capabilities = useCrmProviderCapabilities();
 
   if (!record) return null;
 
@@ -31,9 +33,11 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         )}
       </div>
 
-      <AsideSection title={translate("resources.notes.fields.status")}>
-        <ContactStatusSelector />
-      </AsideSection>
+      {capabilities.contacts.status ? (
+        <AsideSection title={translate("resources.notes.fields.status")}>
+          <ContactStatusSelector />
+        </AsideSection>
+      ) : null}
 
       <AsideSection
         title={translate("resources.contacts.field_categories.personal_info")}
@@ -41,37 +45,45 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         <ContactPersonalInfo />
       </AsideSection>
 
-      <AsideSection
-        title={translate("resources.contacts.field_categories.background_info")}
-      >
-        <ContactBackgroundInfo />
-      </AsideSection>
-
-      <AsideSection
-        title={translate("resources.tags.name", { smart_count: 2 })}
-      >
-        <TagsListEdit />
-      </AsideSection>
-
-      <AsideSection
-        title={translate("resources.tasks.name", { smart_count: 2 })}
-      >
-        <ReferenceManyField
-          target="contact_id"
-          reference="tasks"
-          sort={{ field: "due_date", order: "ASC" }}
-          perPage={1000}
+      {capabilities.contacts.extendedProfile ? (
+        <AsideSection
+          title={translate(
+            "resources.contacts.field_categories.background_info",
+          )}
         >
-          <TasksIterator />
-        </ReferenceManyField>
-        <AddTask />
-      </AsideSection>
+          <ContactBackgroundInfo />
+        </AsideSection>
+      ) : null}
+
+      {capabilities.contacts.tags ? (
+        <AsideSection
+          title={translate("resources.tags.name", { smart_count: 2 })}
+        >
+          <TagsListEdit />
+        </AsideSection>
+      ) : null}
+
+      {capabilities.contacts.tasks ? (
+        <AsideSection
+          title={translate("resources.tasks.name", { smart_count: 2 })}
+        >
+          <ReferenceManyField
+            target="contact_id"
+            reference="tasks"
+            sort={{ field: "due_date", order: "ASC" }}
+            perPage={1000}
+          >
+            <TasksIterator />
+          </ReferenceManyField>
+          <AddTask />
+        </AsideSection>
+      ) : null}
 
       {link !== "edit" && (
         <>
           <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
             <ExportVCardButton />
-            <ContactMergeButton />
+            {capabilities.contacts.merge ? <ContactMergeButton /> : null}
           </div>
           <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
             <DeleteButton

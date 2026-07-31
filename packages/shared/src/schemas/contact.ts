@@ -3,7 +3,12 @@
  */
 
 import { z } from "zod";
-import { UUIDSchema } from "./common.js";
+import { CursorPaginationSchema, UUIDSchema } from "./common.js";
+
+export const ContactListQuerySchema = CursorPaginationSchema.extend({
+  cursor: UUIDSchema.optional(),
+  customer_id: UUIDSchema.optional(),
+});
 
 export const ContactCreateSchema = z.object({
   name: z.string().min(1, "联系人名称不能为空").max(200),

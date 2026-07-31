@@ -30,6 +30,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import type { Company } from "../types";
+import { useCustomerOperations } from "../providers/CustomerOperationsContext";
 import { useMergeCustomers } from "./customerMutations";
 import { loadMergeCandidates } from "./mergeCandidates";
 
@@ -53,6 +54,7 @@ export const MergeCustomerButton = () => {
   const record = useRecordContext<Company>();
   const translate = useTranslate();
   const navigate = useNavigate();
+  const operations = useCustomerOperations();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -62,7 +64,14 @@ export const MergeCustomerButton = () => {
   const candidates = useQuery({
     queryKey: ["customers", "merge-candidates", source?.id, search, page],
     queryFn: ({ signal }) =>
-      loadMergeCandidates(source!.id, search, page, PAGE_SIZE, signal),
+      loadMergeCandidates(
+        operations,
+        source!.id,
+        search,
+        page,
+        PAGE_SIZE,
+        signal,
+      ),
     enabled: open && source !== undefined,
     retry: false,
   });
@@ -404,9 +413,9 @@ const FieldChoice = ({
 };
 
 const toMergeCustomer = (record: Company | undefined): Customer | undefined => {
-  if (!record || typeof record.id !== "string") return undefined;
+  if (!record) return undefined;
   return {
-    id: record.id,
+    id: String(record.id) as Customer["id"],
     name: record.name,
     company: record.company,
     country: record.country || null,

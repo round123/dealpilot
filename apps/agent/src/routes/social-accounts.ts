@@ -1,13 +1,23 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-import { SocialAccountCreateSchema } from "@dealpilot/shared";
+import {
+  SocialAccountCreateSchema,
+  SocialAccountListQuerySchema,
+} from "@dealpilot/shared";
+import { validateJson, validateQuery } from "../middleware/validation";
 import {
   createSocialAccount,
   deleteSocialAccount,
   getSocialAccounts,
+  listSocialAccountsPage,
 } from "../services/social-account-service";
 
 const app = new Hono();
+
+app.get(
+  "/social-accounts",
+  validateQuery(SocialAccountListQuerySchema),
+  async (c) => c.json(await listSocialAccountsPage(c.req.valid("query"))),
+);
 
 app.get("/customers/:id/social-accounts", async (c) => {
   return c.json(await getSocialAccounts(c.req.param("id")));
@@ -15,11 +25,12 @@ app.get("/customers/:id/social-accounts", async (c) => {
 
 app.post(
   "/customers/:id/social-accounts",
-  zValidator("json", SocialAccountCreateSchema),
-  async (c) => c.json(
-    await createSocialAccount(c.req.param("id"), c.req.valid("json")),
-    201,
-  ),
+  validateJson(SocialAccountCreateSchema),
+  async (c) =>
+    c.json(
+      await createSocialAccount(c.req.param("id"), c.req.valid("json")),
+      201,
+    ),
 );
 
 app.delete("/social-accounts/:id", async (c) => {

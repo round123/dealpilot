@@ -1,24 +1,40 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-import { ContactCreateSchema, ContactUpdateSchema } from "@dealpilot/shared";
+import {
+  ContactCreateSchema,
+  ContactListQuerySchema,
+  ContactUpdateSchema,
+} from "@dealpilot/shared";
+import { validateJson, validateQuery } from "../middleware/validation";
 import {
   createContact,
   deleteContact,
   getContacts,
+  listContactsPage,
   updateContact,
 } from "../services/contact-service";
 
 const app = new Hono();
 
+app.get("/contacts", validateQuery(ContactListQuerySchema), async (c) =>
+  c.json(await listContactsPage(c.req.valid("query"))),
+);
+
 app.get("/customers/:id/contacts", async (c) => {
   return c.json(await getContacts(c.req.param("id")));
 });
 
-app.post("/customers/:id/contacts", zValidator("json", ContactCreateSchema), async (c) => {
-  return c.json(await createContact(c.req.param("id"), c.req.valid("json")), 201);
-});
+app.post(
+  "/customers/:id/contacts",
+  validateJson(ContactCreateSchema),
+  async (c) => {
+    return c.json(
+      await createContact(c.req.param("id"), c.req.valid("json")),
+      201,
+    );
+  },
+);
 
-app.put("/contacts/:id", zValidator("json", ContactUpdateSchema), async (c) => {
+app.put("/contacts/:id", validateJson(ContactUpdateSchema), async (c) => {
   return c.json(await updateContact(c.req.param("id"), c.req.valid("json")));
 });
 

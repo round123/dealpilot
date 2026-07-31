@@ -46,7 +46,8 @@ export const NoMatchState: React.FC<{
   bindSearch: string;
   setBindSearch: (v: string) => void;
   bindLoading: boolean;
-}> = ({ conversation, bindSearch, setBindSearch, bindLoading }) => {
+  onCreate: () => void;
+}> = ({ conversation, bindSearch, setBindSearch, bindLoading, onCreate }) => {
   const [showBind, setShowBind] = useState(false);
 
   return (
@@ -65,6 +66,7 @@ export const NoMatchState: React.FC<{
       {!showBind ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--dp-space-2)" }}>
           <button
+            onClick={onCreate}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--dp-space-1)",
               padding: "var(--dp-space-2) var(--dp-space-3)", borderRadius: "var(--dp-radius-md)",

@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
     exclude: ["playwright", "playwright-core"],
+    include: ["faker/locale/zh_CN"],
   },
   resolve: {
     alias: {

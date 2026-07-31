@@ -1,6 +1,7 @@
 import { Mars, NonBinary, Venus } from "lucide-react";
 
 import type { Company, Contact, ContactGender } from "../types";
+import type { CrmProviderCapabilities } from "../providers/types";
 
 export const defaultEmailJsonb = [{ email: null, type: null }];
 export const defaultPhoneJsonb = [{ number: null, type: null }];
@@ -27,6 +28,31 @@ export const cleanupContactForCreate = (data: Contact) => {
 };
 
 export const cleanupContactForEdit = cleanContactArrayFields;
+
+export const applyContactCapabilities = (
+  data: ReturnType<typeof cleanContactArrayFields>,
+  capabilities: CrmProviderCapabilities,
+) => {
+  if (capabilities.contacts.extendedProfile) return data;
+
+  const input = data as typeof data & { name?: string };
+  const name =
+    input.name?.trim() ||
+    [input.first_name, input.last_name].filter(Boolean).join(" ").trim();
+  return {
+    name,
+    title: input.title,
+    company_id: input.company_id,
+    email_jsonb: input.email_jsonb?.slice(
+      0,
+      capabilities.contacts.maxEmailAddresses ?? undefined,
+    ),
+    phone_jsonb: input.phone_jsonb?.slice(
+      0,
+      capabilities.contacts.maxPhoneNumbers ?? undefined,
+    ),
+  };
+};
 
 type TranslateFn = (key: string, options?: { [key: string]: any }) => string;
 

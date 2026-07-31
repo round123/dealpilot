@@ -3,8 +3,13 @@
  */
 
 import { z } from "zod";
-import { UUIDSchema } from "./common.js";
+import { CursorPaginationSchema, UUIDSchema } from "./common.js";
 import { Platform } from "../types/enums.js";
+
+export const SocialAccountListQuerySchema = CursorPaginationSchema.extend({
+  cursor: UUIDSchema.optional(),
+  customer_id: UUIDSchema.optional(),
+});
 
 export const SocialAccountCreateSchema = z.object({
   platform: z.enum([Platform.WHATSAPP, Platform.TELEGRAM]),

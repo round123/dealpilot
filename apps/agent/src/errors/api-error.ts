@@ -6,6 +6,7 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public details?: unknown,
+    public fields?: Record<string, string[]>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -13,6 +14,13 @@ export class ApiError extends Error {
 
   static badRequest(message: string, details?: unknown) {
     return new ApiError(400, "BAD_REQUEST", message, details);
+  }
+
+  static validation(
+    fields: Record<string, string[]>,
+    message = "Request validation failed",
+  ) {
+    return new ApiError(400, "VALIDATION_ERROR", message, undefined, fields);
   }
 
   static notFound(message: string) {

@@ -11,19 +11,23 @@
   "type": "module",
   "scripts": {
     "dev": "vite --force",
+    "dev:agent": "vite --mode agent --force",
     "dev:demo": "vite --mode demo --force",
     "build": "tsc && vite build",
+    "build:agent": "tsc && vite build --mode agent",
     "type-check": "tsc --noEmit --project tsconfig.app.json",
     "preview": "vite preview",
     "lint": "eslint src",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e:demo": "playwright test e2e/cloud-demo.spec.ts --config playwright.config.ts",
+    "test:e2e:agent": "playwright test --config playwright.agent.config.ts",
     "test:e2e:supabase": "playwright test --config playwright.supabase.config.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
   "dependencies": {
     "@dealpilot/api-client": "workspace:*",
+    "@dealpilot/shared": "workspace:*",
     "@fontsource-variable/inter": "^5.2.8",
     "@hello-pangea/dnd": "^18.0.1",
     "@nivo/bar": "^0.99.0",
@@ -134,6 +138,7 @@
     "vite-plugin-pwa": "^1.2.0",
     "vite-plugin-simple-html": "^1.0.1",
     "vitest": "^4.1.0",
-    "vitest-browser-react": "^2.0.5"
+    "vitest-browser-react": "^2.0.5",
+    "xlsx": "^0.18.5"
   }
 }

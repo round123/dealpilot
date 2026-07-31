@@ -37,6 +37,7 @@ export interface TokenResultMessage {
   type: typeof MSG_TYPES.TOKEN_RESULT;
   token: string;
   port: number;
+  workbenchOrigin?: string;
 }
 
 /** token 错误消息 */
@@ -63,7 +64,11 @@ export type ExtensionMessage =
  * 向 background 请求获取 API token
  * Content Script 和 Popup 统一使用此函数
  */
-export async function requestToken(): Promise<{ token: string; port: number }> {
+export async function requestToken(): Promise<{
+  token: string;
+  port: number;
+  workbenchOrigin?: string;
+}> {
   return new Promise((resolve, reject) => {
     const message: GetTokenMessage = { type: MSG_TYPES.GET_TOKEN };
 
@@ -77,7 +82,11 @@ export async function requestToken(): Promise<{ token: string; port: number }> {
         return;
       }
       if (response.type === MSG_TYPES.TOKEN_RESULT) {
-        resolve({ token: response.token, port: response.port });
+        resolve({
+          token: response.token,
+          port: response.port,
+          workbenchOrigin: response.workbenchOrigin,
+        });
       } else if (response.type === MSG_TYPES.TOKEN_ERROR) {
         reject(new Error(response.error));
       } else {

@@ -23,6 +23,7 @@ export default defineConfig({
     plugins: [react()],
     resolve: {
       alias: {
+        "@dealpilot/api-client/error": resolve(__dirname, "../../packages/api-client/src/error.ts"),
         "@dealpilot/shared": resolve(__dirname, "../../packages/shared/src"),
       },
     },

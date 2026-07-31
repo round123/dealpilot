@@ -85,8 +85,7 @@ async function main() {
   }
 
   console.log("[agent] DealPilot Agent started successfully.");
-  console.log(`[agent] Token: ${config.token}`);
-  console.log(`[agent] Workbench: ${config.workbenchUrl}`);
+  console.log(`[agent] Workbench origin: ${config.workbenchOrigin}`);
 
   // 优雅关闭（function 声明，可在 startTray 的 onQuit 中前向引用）
   async function shutdown() {

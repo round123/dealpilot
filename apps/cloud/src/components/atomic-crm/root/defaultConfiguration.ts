@@ -30,9 +30,9 @@ export const defaultDealStages = [
   { value: "opportunity", label: "Opportunity" },
   { value: "proposal-sent", label: "Proposal Sent" },
   { value: "in-negociation", label: "In Negotiation" },
+  { value: "delayed", label: "Delayed" },
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
-  { value: "delayed", label: "Delayed" },
 ];
 
 export const defaultDealPipelineStatuses = ["won"];

@@ -32,6 +32,7 @@ import { TopToolbar } from "../layout/TopToolbar";
 import { InfinitePagination } from "../misc/InfinitePagination";
 import MobileHeader from "../layout/MobileHeader";
 import { MobileContent } from "../layout/MobileContent";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactList = () => {
   const { identity } = useGetIdentity();
@@ -75,14 +76,17 @@ const ContactListLayoutDesktop = () => {
   );
 };
 
-const ContactBulkActionButtons = () => (
-  <>
-    <SelectAllButton />
-    <BulkTagButton />
-    <BulkExportButton />
-    <BulkDeleteButton />
-  </>
-);
+const ContactBulkActionButtons = () => {
+  const capabilities = useCrmProviderCapabilities();
+  return (
+    <>
+      <SelectAllButton />
+      {capabilities.contacts.tags ? <BulkTagButton /> : null}
+      <BulkExportButton />
+      <BulkDeleteButton />
+    </>
+  );
+};
 
 const ContactListActions = () => (
   <TopToolbar>

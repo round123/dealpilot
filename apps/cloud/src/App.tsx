@@ -3,6 +3,12 @@ import {
   authProvider as demoAuthProvider,
   dataProvider as demoDataProvider,
 } from "@/components/atomic-crm/providers/fakerest";
+import { createAgentRuntime } from "@/components/atomic-crm/providers/agent";
+
+const agentRuntime =
+  import.meta.env.VITE_DATA_BACKEND === "agent"
+    ? createAgentRuntime()
+    : undefined;
 
 /**
  * Application entry point
@@ -36,6 +42,19 @@ import {
  * );
  */
 const App = () => {
+  if (agentRuntime) {
+    return (
+      <CRM
+        authProvider={agentRuntime.authProvider}
+        customerOperations={agentRuntime.customerOperations}
+        dataProvider={agentRuntime.dataProvider}
+        importOperations={agentRuntime.importOperations}
+        localDataOperations={agentRuntime.localDataOperations}
+        title="DealPilot"
+      />
+    );
+  }
+
   if (import.meta.env.VITE_IS_DEMO === "true") {
     return (
       <CRM

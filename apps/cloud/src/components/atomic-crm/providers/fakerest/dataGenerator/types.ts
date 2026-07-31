@@ -4,7 +4,12 @@ import type {
   ContactNote,
   Deal,
   DealNote,
+  DealMilestone,
+  DealRisk,
+  FollowUp,
+  Reminder,
   Sale,
+  SocialAccount,
   Tag,
   Task,
 } from "../../../types";
@@ -19,5 +24,10 @@ export interface Db {
   sales: Sale[];
   tags: Tag[];
   tasks: Task[];
+  social_accounts: SocialAccount[];
+  follow_ups: FollowUp[];
+  reminders: Reminder[];
+  deal_risks: DealRisk[];
+  deal_milestones: DealMilestone[];
   configuration: Array<{ id: number; config: ConfigurationContextValue }>;
 }

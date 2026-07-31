@@ -13,6 +13,7 @@ vi.mock("../providers/apiClient", () => ({
 }));
 
 import { loadCustomerDetail } from "./useCustomerDetail";
+import { cloudCustomerOperations } from "../providers/cloudCustomerOperations";
 
 describe("loadCustomerDetail", () => {
   it("uses the shared customer API and forwards cancellation", async () => {
@@ -21,7 +22,7 @@ describe("loadCustomerDetail", () => {
     mocks.getCustomerDetail.mockResolvedValue(detail);
 
     await expect(
-      loadCustomerDetail(detail.id, controller.signal),
+      loadCustomerDetail(cloudCustomerOperations, detail.id, controller.signal),
     ).resolves.toBe(detail);
     expect(mocks.getCustomerDetail).toHaveBeenCalledWith(
       detail.id as CustomerDetail["id"],

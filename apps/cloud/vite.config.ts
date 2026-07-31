@@ -7,10 +7,21 @@ import { VitePWA } from "vite-plugin-pwa";
 import createHtmlPlugin from "vite-plugin-simple-html";
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     host: true,
+    // Keep browser requests same-origin in Agent mode. Vite alone knows the
+    // local upstream; production assets are served directly by the Agent.
+    proxy:
+      mode === "agent"
+        ? {
+            "/api": {
+              target:
+                process.env.DEALPILOT_AGENT_ORIGIN ?? "http://127.0.0.1:31081",
+            },
+          }
+        : undefined,
   },
   plugins: [
     react(),
@@ -65,4 +76,4 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-});
+}));

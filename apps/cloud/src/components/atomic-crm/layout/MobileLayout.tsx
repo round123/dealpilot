@@ -20,7 +20,7 @@ export const MobileLayout = ({ children }: { children: ReactNode }) => {
     <>
       <ErrorBoundary FallbackComponent={Error}>
         <Suspense fallback={<Skeleton className="h-12 w-12 rounded-full" />}>
-          {children}
+          <div className="min-h-screen pb-20">{children}</div>
         </Suspense>
       </ErrorBoundary>
       <MobileNavigation />

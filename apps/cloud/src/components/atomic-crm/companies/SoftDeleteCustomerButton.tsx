@@ -30,8 +30,8 @@ export const SoftDeleteCustomerButton = () => {
     },
   });
 
-  if (!record || typeof record.id !== "string") return null;
-  const customerId = record.id as Customer["id"];
+  if (!record) return null;
+  const customerId = String(record.id) as Customer["id"];
 
   return (
     <>

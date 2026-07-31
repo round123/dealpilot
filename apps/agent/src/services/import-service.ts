@@ -7,9 +7,16 @@ import {
   commitImportRows,
   findDuplicateCustomer,
   findImportJob,
-  insertImportJob,
 } from "../repositories/import-repository";
-import type { ImportCustomerRow } from "../repositories/import-repository";
+import type {
+  ImportCustomerRow,
+  ImportJobMetadata,
+} from "../repositories/import-repository";
+import {
+  applyImportFieldMapping,
+  getImportSourceColumns,
+  type ImportFieldMapping,
+} from "./import-mapping";
 
 interface ParsedRow {
   rowIndex: number;
@@ -20,6 +27,7 @@ interface ParsedRow {
 interface CachedImport {
   rows: ParsedRow[];
   duplicateRows: Set<number>;
+  job: ImportJobMetadata;
 }
 
 type ImportError = { row: number; field?: string; message: string };
@@ -35,7 +43,9 @@ function value(row: Record<string, unknown>, ...keys: string[]) {
   return undefined;
 }
 
-function toCustomerRow(row: ParsedRow): Omit<ImportCustomerRow, "action" | "targetCustomerId"> {
+function toCustomerRow(
+  row: ParsedRow,
+): Omit<ImportCustomerRow, "action" | "targetCustomerId"> {
   const grade = value(row.data, "grade", "分级") ?? "B";
   return {
     valid: row.valid,
@@ -50,14 +60,21 @@ function toCustomerRow(row: ParsedRow): Omit<ImportCustomerRow, "action" | "targ
   };
 }
 
-export async function parseImportFile(fileBuffer: Buffer, fileName: string) {
+export async function parseImportFile(
+  fileBuffer: Buffer,
+  fileName: string,
+  mapping?: ImportFieldMapping,
+) {
   let rows: Record<string, unknown>[];
   if (fileName.toLowerCase().endsWith(".csv")) {
-    const parsed = Papa.parse<Record<string, unknown>>(fileBuffer.toString("utf-8"), {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: true,
-    });
+    const parsed = Papa.parse<Record<string, unknown>>(
+      fileBuffer.toString("utf-8"),
+      {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true,
+      },
+    );
     if (parsed.errors.length > 0) {
       throw ApiError.badRequest("CSV parse failed", parsed.errors);
     }
@@ -71,17 +88,30 @@ export async function parseImportFile(fileBuffer: Buffer, fileName: string) {
     throw ApiError.badRequest("Only .xlsx, .xls and .csv files are supported");
   }
 
+  const sourceColumns = getImportSourceColumns(rows);
+  if (mapping) {
+    rows = applyImportFieldMapping(rows, mapping, sourceColumns);
+  }
+
   const errors: ImportError[] = [];
   const parsedRows = rows.map((data, index): ParsedRow => {
     const rowIndex = index + 1;
     const name = value(data, "name", "名称");
     const grade = value(data, "grade", "分级") ?? "B";
     if (!name) {
-      errors.push({ row: rowIndex, field: "name", message: "客户名称不能为空" });
+      errors.push({
+        row: rowIndex,
+        field: "name",
+        message: "客户名称不能为空",
+      });
       return { rowIndex, data, valid: false };
     }
     if (!["A", "B", "C"].includes(grade)) {
-      errors.push({ row: rowIndex, field: "grade", message: `无效的分级: ${grade}` });
+      errors.push({
+        row: rowIndex,
+        field: "grade",
+        message: `无效的分级: ${grade}`,
+      });
       return { rowIndex, data, valid: false };
     }
     return { rowIndex, data, valid: true };
@@ -105,15 +135,14 @@ export async function parseImportFile(fileBuffer: Buffer, fileName: string) {
 
   const jobId = crypto.randomUUID();
   const validRows = parsedRows.filter(({ valid }) => valid).length;
-  await insertImportJob({
-    id: jobId,
+  const job = {
     fileName,
     totalRows: rows.length,
     validRows,
     failedRows: rows.length - validRows,
     duplicateCount: duplicateCandidates.length,
-  });
-  parsedResultsCache.set(jobId, { rows: parsedRows, duplicateRows });
+  };
+  parsedResultsCache.set(jobId, { rows: parsedRows, duplicateRows, job });
   errorReportCache.set(jobId, errors);
 
   return {
@@ -122,48 +151,62 @@ export async function parseImportFile(fileBuffer: Buffer, fileName: string) {
     valid_rows: validRows,
     errors,
     duplicate_candidates: duplicateCandidates,
+    source_columns: sourceColumns,
     preview: parsedRows.slice(0, 50).map(({ data }) => data),
   };
 }
 
 export async function commitImport(request: ImportCommitRequest) {
   const job = await findImportJob(request.job_id);
-  if (!job) throw ApiError.notFound("Import job not found");
-  if (job.status === "committed") throw ApiError.conflict("Import job already committed");
+  if (job?.status === "committed")
+    throw ApiError.conflict("Import job already committed");
   const cached = parsedResultsCache.get(request.job_id);
   if (!cached) {
-    throw ApiError.badRequest("Import job data not found, please re-parse the file");
+    throw ApiError.badRequest(
+      "Import job data not found, please re-parse the file",
+    );
   }
 
-  const resolutions = new Map((request.resolutions ?? []).map((item) => [item.row_index, item]));
+  const resolutions = new Map(
+    (request.resolutions ?? []).map((item) => [item.row_index, item]),
+  );
   for (const rowIndex of cached.duplicateRows) {
     if (!resolutions.has(rowIndex)) {
-      throw ApiError.badRequest(`Duplicate row ${rowIndex} requires an explicit resolution`);
+      throw ApiError.badRequest(
+        `Duplicate row ${rowIndex} requires an explicit resolution`,
+      );
     }
   }
 
   const rows: ImportCustomerRow[] = cached.rows.map((row) => {
     const resolution = resolutions.get(row.rowIndex);
     if (resolution?.action === "merge" && !resolution.target_customer_id) {
-      throw ApiError.badRequest(`Merge row ${row.rowIndex} requires target_customer_id`);
+      throw ApiError.badRequest(
+        `Merge row ${row.rowIndex} requires target_customer_id`,
+      );
     }
     return {
       ...toCustomerRow(row),
-      action: !row.valid ? "skip"
-        : resolution?.action === "merge" ? "merge"
-        : resolution?.action === "skip" ? "skip"
-        : "create",
+      action: !row.valid
+        ? "skip"
+        : resolution?.action === "merge"
+          ? "merge"
+          : resolution?.action === "skip"
+            ? "skip"
+            : "create",
       targetCustomerId: resolution?.target_customer_id,
     };
   });
 
-  const result = await commitImportRows(request.job_id, rows);
+  const result = await commitImportRows(request.job_id, rows, cached.job);
   parsedResultsCache.delete(request.job_id);
   return result;
 }
 
 export async function getImportErrorsCsv(jobId: string) {
-  if (!await findImportJob(jobId)) throw ApiError.notFound("Import job not found");
+  if (!parsedResultsCache.has(jobId) && !(await findImportJob(jobId))) {
+    throw ApiError.notFound("Import job not found");
+  }
   const header = "row,field,message\n";
   const lines = (errorReportCache.get(jobId) ?? []).map((error) => {
     const field = (error.field ?? "").replace(/"/g, '""');

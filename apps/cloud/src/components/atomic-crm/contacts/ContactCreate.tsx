@@ -7,7 +7,9 @@ import {
   cleanupContactForCreate,
   defaultEmailJsonb,
   defaultPhoneJsonb,
+  applyContactCapabilities,
 } from "./contactModel";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactCreate = ({
   mutationMode,
@@ -15,11 +17,14 @@ export const ContactCreate = ({
   mutationMode?: MutationMode;
 }) => {
   const { identity } = useGetIdentity();
+  const capabilities = useCrmProviderCapabilities();
 
   return (
     <CreateBase
       redirect="show"
-      transform={cleanupContactForCreate}
+      transform={(data) =>
+        applyContactCapabilities(cleanupContactForCreate(data), capabilities)
+      }
       mutationMode={mutationMode}
     >
       <div className="mt-2 flex lg:mr-72">

@@ -5,7 +5,7 @@
  * 数据目录策略（G1 Spike S1 判据：非管理员可写、卸载无残留）：
  * - 已编译 exe（安装运行）：%LOCALAPPDATA%\DealPilot\data —— 不落 Program Files，非管理员可写
  * - 开发模式（bun src/index.ts）：沿用仓库内 data 目录，不破坏现有 db
- * web 资源目录：编译 exe 同级 web/；开发模式 apps/web/dist（vite build 产物）
+ * web 资源目录：编译 exe 同级 web/；开发模式 apps/cloud/dist（Atomic CRM 构建产物）
  */
 
 import { generateUUID } from "@dealpilot/shared";
@@ -32,7 +32,8 @@ function isCompiledExe(): boolean {
  * 开发态：DEALPILOT_DATA_DIR 环境变量覆盖，否则沿用 cwd/data
  */
 function resolveAppDataDir(): string {
-  if (process.env.DEALPILOT_DATA_DIR) return resolve(process.env.DEALPILOT_DATA_DIR);
+  if (process.env.DEALPILOT_DATA_DIR)
+    return resolve(process.env.DEALPILOT_DATA_DIR);
   if (isCompiledExe() && process.env.LOCALAPPDATA) {
     return join(process.env.LOCALAPPDATA, "DealPilot");
   }
@@ -42,12 +43,18 @@ function resolveAppDataDir(): string {
 /**
  * 解析 web 静态资源目录
  * 编译 exe：exe 同级 web/（安装包 app\web\）
- * 开发态：DEALPILOT_WEB_DIR 覆盖，否则 apps/web/dist（vite build 产物，dev 由 Vite 代理）
+ * 开发态：DEALPILOT_WEB_DIR 覆盖，否则 apps/cloud/dist（Atomic CRM 构建产物，dev 由 Vite 代理）
  */
-function resolveWebDir(): string {
-  if (process.env.DEALPILOT_WEB_DIR) return resolve(process.env.DEALPILOT_WEB_DIR);
-  if (isCompiledExe()) return join(dirname(process.execPath), "web");
-  return resolve(process.cwd(), "apps/web/dist");
+export function resolveWebDir(
+  override = process.env.DEALPILOT_WEB_DIR,
+  executablePath = process.execPath,
+  workingDirectory = process.cwd(),
+): string {
+  if (override) return resolve(workingDirectory, override);
+  if (basename(executablePath).toLowerCase() === "dealpilot-agent.exe") {
+    return join(dirname(executablePath), "web");
+  }
+  return resolve(workingDirectory, "apps/cloud/dist");
 }
 
 const APP_DATA_DIR = resolveAppDataDir();
@@ -65,14 +72,50 @@ try {
 /** 一次性工作台 token，启动时生成，通过 URL 传给浏览器 */
 const WORKBENCH_TOKEN = generateUUID();
 
-/** Origin 白名单，只允许本地回环 */
-const ALLOWED_ORIGINS = [
-  `http://127.0.0.1:${AGENT_DEFAULT_PORT}`,
-  `http://localhost:${AGENT_DEFAULT_PORT}`,
-];
+export function parseAdditionalAllowedOrigins(value?: string): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .map((origin) => {
+      const url = new URL(origin);
+      if (
+        (url.protocol !== "http:" && url.protocol !== "https:") ||
+        url.origin !== origin
+      ) {
+        throw new Error(`Invalid DEALPILOT_ALLOWED_ORIGINS entry: ${origin}`);
+      }
+      return url.origin;
+    });
+}
 
-/** 工作台 URL（含 token） */
-const WORKBENCH_URL = `http://127.0.0.1:${AGENT_DEFAULT_PORT}/?token=${WORKBENCH_TOKEN}`;
+export function resolveWorkbenchOrigin(
+  value = process.env.DEALPILOT_WORKBENCH_ORIGIN,
+): string {
+  const origin = value?.trim() || `http://127.0.0.1:${AGENT_DEFAULT_PORT}`;
+  const url = new URL(origin);
+  if (
+    url.origin !== origin ||
+    (url.hostname !== "127.0.0.1" && url.hostname !== "localhost")
+  ) {
+    throw new Error("DEALPILOT_WORKBENCH_ORIGIN must be an exact loopback origin");
+  }
+  return url.origin;
+}
+
+/** Origin 白名单默认只允许 Agent 同源，可通过环境变量精确追加开发源。 */
+const ALLOWED_ORIGINS = Array.from(
+  new Set([
+    `http://127.0.0.1:${AGENT_DEFAULT_PORT}`,
+    `http://localhost:${AGENT_DEFAULT_PORT}`,
+    ...parseAdditionalAllowedOrigins(process.env.DEALPILOT_ALLOWED_ORIGINS),
+  ]),
+);
+
+const WORKBENCH_ORIGIN = resolveWorkbenchOrigin();
+/** 工作台 URL（含 token，只用于直接启动浏览器，不写日志） */
+const WORKBENCH_URL = `${WORKBENCH_ORIGIN}/?token=${encodeURIComponent(WORKBENCH_TOKEN)}#/`;
 
 export const config = {
   port: AGENT_DEFAULT_PORT,
@@ -82,6 +125,7 @@ export const config = {
   dbPath: DB_PATH,
   webDir: WEB_DIR,
   token: WORKBENCH_TOKEN,
+  workbenchOrigin: WORKBENCH_ORIGIN,
   workbenchUrl: WORKBENCH_URL,
   allowedOrigins: ALLOWED_ORIGINS,
   apiVersion: API_VERSION,

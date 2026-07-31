@@ -1,7 +1,12 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 import type { InputProps } from "ra-core";
-import { FieldTitle, useInput, useResourceContext } from "ra-core";
+import {
+  FieldTitle,
+  sanitizeInputRestProps,
+  useInput,
+  useResourceContext,
+} from "ra-core";
 import { FormControl, FormField, FormLabel } from "@/components/admin/form";
 import { Input } from "@/components/ui/input";
 import { FormError } from "@/components/admin/form";
@@ -91,7 +96,7 @@ export const NumberInput = (props: NumberInputProps) => {
       )}
       <FormControl>
         <Input
-          {...rest}
+          {...sanitizeInputRestProps(rest)}
           {...field}
           type="number"
           value={value}

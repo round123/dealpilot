@@ -10,9 +10,9 @@ import type { Deal } from "../types";
 
 const multiplier = {
   opportunity: 0.2,
-  "proposal-sent": 0.5,
-  "in-negociation": 0.8,
-  delayed: 0.3,
+  "proposal-sent": 0.3,
+  "in-negociation": 0.5,
+  delayed: 0.8,
 };
 
 const threeMonthsAgo = new Date(

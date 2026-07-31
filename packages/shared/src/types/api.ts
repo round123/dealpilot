@@ -3,18 +3,76 @@
  */
 
 import { z } from "zod";
-import { CustomerSchema, CustomerCreateSchema, CustomerUpdateSchema, CustomerDetailSchema, CustomerListQuerySchema, CustomerMergeSchema } from "../schemas/customer.js";
-import { ContactSchema, ContactCreateSchema, ContactUpdateSchema } from "../schemas/contact.js";
-import { SocialAccountSchema, SocialAccountCreateSchema } from "../schemas/social-account.js";
-import { FollowUpSchema, FollowUpCreateSchema, FollowUpUpdateSchema, FollowUpListQuerySchema } from "../schemas/follow-up.js";
-import { ReminderSchema, ReminderCreateSchema, ReminderStatusUpdateSchema, ReminderListQuerySchema } from "../schemas/reminder.js";
-import { ProjectSchema, ProjectDetailSchema, ProjectCreateSchema, ProjectUpdateSchema, ProjectStageUpdateSchema, ProjectListQuerySchema } from "../schemas/project.js";
-import { RiskSchema, RiskCreateSchema, RiskUpdateSchema } from "../schemas/risk.js";
-import { MilestoneSchema, MilestoneCreateSchema, MilestoneUpdateSchema } from "../schemas/milestone.js";
-import { MatchResolveSchema, MatchBindSchema, MatchResolveResponseSchema, BindingSchema } from "../schemas/match.js";
-import { ImportCommitRequestSchema, ImportParseResponseSchema, ImportCommitResponseSchema } from "../schemas/import.js";
+import {
+  CustomerSchema,
+  CustomerCreateSchema,
+  CustomerUpdateSchema,
+  CustomerDetailSchema,
+  CustomerListQuerySchema,
+  CustomerDeletedListQuerySchema,
+  CustomerMergeSchema,
+} from "../schemas/customer.js";
+import {
+  ContactSchema,
+  ContactCreateSchema,
+  ContactUpdateSchema,
+  ContactListQuerySchema,
+} from "../schemas/contact.js";
+import {
+  SocialAccountSchema,
+  SocialAccountCreateSchema,
+  SocialAccountListQuerySchema,
+} from "../schemas/social-account.js";
+import {
+  FollowUpSchema,
+  FollowUpCreateSchema,
+  FollowUpUpdateSchema,
+  FollowUpListQuerySchema,
+} from "../schemas/follow-up.js";
+import {
+  ReminderSchema,
+  PopupReminderSchema,
+  ReminderCreateSchema,
+  ReminderStatusUpdateSchema,
+  ReminderListQuerySchema,
+} from "../schemas/reminder.js";
+import {
+  ProjectSchema,
+  ProjectDetailSchema,
+  ProjectCreateSchema,
+  ProjectUpdateSchema,
+  ProjectStageUpdateSchema,
+  ProjectListQuerySchema,
+} from "../schemas/project.js";
+import {
+  RiskSchema,
+  RiskCreateSchema,
+  RiskUpdateSchema,
+  RiskListQuerySchema,
+} from "../schemas/risk.js";
+import {
+  MilestoneSchema,
+  MilestoneCreateSchema,
+  MilestoneUpdateSchema,
+  MilestoneListQuerySchema,
+} from "../schemas/milestone.js";
+import {
+  MatchResolveSchema,
+  MatchBindSchema,
+  MatchResolveResponseSchema,
+  BindingSchema,
+} from "../schemas/match.js";
+import {
+  ImportCommitRequestSchema,
+  ImportParseResponseSchema,
+  ImportCommitResponseSchema,
+} from "../schemas/import.js";
 import { SettingsSchema, SettingsUpdateSchema } from "../schemas/settings.js";
-import { BackupCreateSchema, BackupValidateResponseSchema, BackupRestoreResponseSchema } from "../schemas/backup.js";
+import {
+  BackupCreateSchema,
+  BackupValidateResponseSchema,
+  BackupRestoreResponseSchema,
+} from "../schemas/backup.js";
 import { StatsSchema } from "../schemas/stats.js";
 
 // Customer
@@ -23,16 +81,23 @@ export type CustomerCreate = z.infer<typeof CustomerCreateSchema>;
 export type CustomerUpdate = z.infer<typeof CustomerUpdateSchema>;
 export type CustomerDetail = z.infer<typeof CustomerDetailSchema>;
 export type CustomerListQuery = z.infer<typeof CustomerListQuerySchema>;
+export type CustomerDeletedListQuery = z.infer<
+  typeof CustomerDeletedListQuerySchema
+>;
 export type CustomerMerge = z.infer<typeof CustomerMergeSchema>;
 
 // Contact
 export type Contact = z.infer<typeof ContactSchema>;
 export type ContactCreate = z.infer<typeof ContactCreateSchema>;
 export type ContactUpdate = z.infer<typeof ContactUpdateSchema>;
+export type ContactListQuery = z.infer<typeof ContactListQuerySchema>;
 
 // SocialAccount
 export type SocialAccount = z.infer<typeof SocialAccountSchema>;
 export type SocialAccountCreate = z.infer<typeof SocialAccountCreateSchema>;
+export type SocialAccountListQuery = z.infer<
+  typeof SocialAccountListQuerySchema
+>;
 
 // FollowUp
 export type FollowUp = z.infer<typeof FollowUpSchema>;
@@ -42,6 +107,7 @@ export type FollowUpListQuery = z.infer<typeof FollowUpListQuerySchema>;
 
 // Reminder
 export type Reminder = z.infer<typeof ReminderSchema>;
+export type PopupReminder = z.infer<typeof PopupReminderSchema>;
 export type ReminderCreate = z.infer<typeof ReminderCreateSchema>;
 export type ReminderStatusUpdate = z.infer<typeof ReminderStatusUpdateSchema>;
 export type ReminderListQuery = z.infer<typeof ReminderListQuerySchema>;
@@ -58,11 +124,13 @@ export type ProjectListQuery = z.infer<typeof ProjectListQuerySchema>;
 export type Risk = z.infer<typeof RiskSchema>;
 export type RiskCreate = z.infer<typeof RiskCreateSchema>;
 export type RiskUpdate = z.infer<typeof RiskUpdateSchema>;
+export type RiskListQuery = z.infer<typeof RiskListQuerySchema>;
 
 // Milestone
 export type Milestone = z.infer<typeof MilestoneSchema>;
 export type MilestoneCreate = z.infer<typeof MilestoneCreateSchema>;
 export type MilestoneUpdate = z.infer<typeof MilestoneUpdateSchema>;
+export type MilestoneListQuery = z.infer<typeof MilestoneListQuerySchema>;
 
 // Match
 export type MatchResolve = z.infer<typeof MatchResolveSchema>;
@@ -81,7 +149,9 @@ export type SettingsUpdate = z.infer<typeof SettingsUpdateSchema>;
 
 // Backup
 export type BackupCreate = z.infer<typeof BackupCreateSchema>;
-export type BackupValidateResponse = z.infer<typeof BackupValidateResponseSchema>;
+export type BackupValidateResponse = z.infer<
+  typeof BackupValidateResponseSchema
+>;
 export type BackupRestoreResponse = z.infer<typeof BackupRestoreResponseSchema>;
 
 // Stats

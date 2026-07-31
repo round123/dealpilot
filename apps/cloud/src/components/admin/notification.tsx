@@ -4,6 +4,7 @@ import type { ToasterProps } from "sonner";
 import { Toaster, toast } from "sonner";
 import { useTheme } from "@/components/admin/use-theme";
 import { getErrorMessageKey } from "@/components/admin/error-message";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   CloseNotificationContext,
   useNotificationContext,
@@ -37,6 +38,7 @@ export const Notification = (props: ToasterProps) => {
   const { notifications, takeNotification } = useNotificationContext();
   const takeMutation = useTakeUndoableMutation();
   const { theme } = useTheme();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (notifications.length) {
@@ -112,7 +114,7 @@ export const Notification = (props: ToasterProps) => {
         richColors
         theme={theme}
         closeButton
-        position="bottom-center"
+        position={isMobile ? "top-center" : "bottom-center"}
         {...props}
       />
     </CloseNotificationContext.Provider>

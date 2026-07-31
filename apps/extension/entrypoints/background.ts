@@ -9,15 +9,18 @@
  */
 
 import { defineBackground } from "wxt/sandbox";
-import { AGENT_DEFAULT_PORT, APP_VERSION } from "@dealpilot/shared";
+import { APP_VERSION } from "@dealpilot/shared";
 import {
   fetchPendingReminderCount,
   getAgentPort,
   getStoredToken,
+  getWorkbenchOrigin,
   setAgentPort,
   setStoredToken,
+  setWorkbenchOrigin,
 } from "../src/lib/api-client";
 import { MSG_TYPES, type ExtensionMessage } from "../src/lib/native-messaging";
+import { buildWorkbenchUrl } from "../src/lib/workbench-links";
 
 /** Native Messaging 连接名（需与 Agent 注册的 native messaging host name 一致） */
 const NM_HOST_NAME = "com.dealpilot.agent";
@@ -31,6 +34,7 @@ let nmPort: chrome.runtime.Port | null = null;
 
 /** token 刷新定时器 */
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let openWorkbenchAfterPairing = false;
 
 /**
  * 连接 DealPilot Agent (Native Messaging)
@@ -68,7 +72,13 @@ function connectToAgent(): void {
  * 处理来自 Agent 的 Native Messaging 消息
  */
 function handleNativeMessage(msg: unknown): void {
-  const message = msg as { type?: string; token?: string; port?: number; error?: string };
+  const message = msg as {
+    type?: string;
+    token?: string;
+    port?: number;
+    workbench_origin?: string;
+    error?: string;
+  };
 
   if (!message || typeof message !== "object") return;
 
@@ -77,8 +87,15 @@ function handleNativeMessage(msg: unknown): void {
       const updates: Promise<void>[] = [];
       if (message.token) updates.push(setStoredToken(message.token));
       if (message.port) updates.push(setAgentPort(message.port));
+      if (message.workbench_origin) {
+        updates.push(setWorkbenchOrigin(message.workbench_origin));
+      }
       Promise.all(updates).then(() => {
         console.log("[DealPilot] Agent 配对信息已保存");
+        if (openWorkbenchAfterPairing) {
+          openWorkbenchAfterPairing = false;
+          void openStoredWorkbench();
+        }
         return refreshReminderBadge();
       }).catch((error) => console.warn("[DealPilot] 角标刷新失败:", error));
       break;
@@ -86,7 +103,12 @@ function handleNativeMessage(msg: unknown): void {
     case "token_refresh": {
       // token 刷新
       if (message.token) {
-        setStoredToken(message.token).then(() => {
+        const updates = [setStoredToken(message.token)];
+        if (message.port) updates.push(setAgentPort(message.port));
+        if (message.workbench_origin) {
+          updates.push(setWorkbenchOrigin(message.workbench_origin));
+        }
+        Promise.all(updates).then(() => {
           console.log("[DealPilot] API token 已刷新");
         });
       }
@@ -157,13 +179,16 @@ function setupMessageListener(): void {
           // Content Script / Popup 请求 token
           getStoredToken().then((token) => {
             if (token) {
-              getAgentPort().then((port) => {
+              Promise.all([getAgentPort(), getWorkbenchOrigin()]).then(
+                ([port, workbenchOrigin]) => {
                 sendResponse({
                   type: MSG_TYPES.TOKEN_RESULT,
                   token,
                   port,
+                  workbenchOrigin,
                 });
-              });
+                },
+              );
             } else {
               // 无 token，尝试刷新
               requestTokenRefresh();
@@ -197,15 +222,30 @@ function setupMessageListener(): void {
 function setupInstallListener(): void {
   chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install") {
-      // 首次安装：打开引导页
+      // 首次安装：等 Native Messaging 配对完成后打开带 token 的 Atomic 工作台。
       console.log("[DealPilot] 插件已安装");
-      chrome.tabs.create({
-        url: "http://127.0.0.1:" + AGENT_DEFAULT_PORT + "/welcome",
+      openWorkbenchAfterPairing = true;
+      void openStoredWorkbench().then((opened) => {
+        if (opened) openWorkbenchAfterPairing = false;
+        else requestTokenRefresh();
       });
     } else if (details.reason === "update") {
       console.log(`[DealPilot] 插件已更新到 ${APP_VERSION}`);
     }
   });
+}
+
+async function openStoredWorkbench(): Promise<boolean> {
+  const [token, port, workbenchOrigin] = await Promise.all([
+    getStoredToken(),
+    getAgentPort(),
+    getWorkbenchOrigin(),
+  ]);
+  if (!token) return false;
+  await chrome.tabs.create({
+    url: buildWorkbenchUrl({ token, port, workbenchOrigin }, "home"),
+  });
+  return true;
 }
 
 /**
@@ -214,6 +254,11 @@ function setupInstallListener(): void {
 export default defineBackground({
   main() {
     console.log(`[DealPilot] Background Service Worker 启动 (v${APP_VERSION})`);
+
+    // Content Script 仍通过扩展隔离世界访问会话级配对信息。
+    void chrome.storage.session.setAccessLevel({
+      accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS",
+    });
 
     // 1. 连接 Agent（Native Messaging）
     connectToAgent();

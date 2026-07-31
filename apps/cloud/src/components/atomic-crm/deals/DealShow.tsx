@@ -25,9 +25,21 @@ import { CompanyAvatar } from "../companies/CompanyAvatar";
 import { NoteCreate } from "../notes/NoteCreate";
 import { NotesIterator } from "../notes/NotesIterator";
 import { useLocalizedConfigurationContext } from "../root/ConfigurationContext";
+import type { CrmDataProvider } from "../providers/types";
 import type { Deal } from "../types";
 import { ContactList } from "./ContactList";
+import { DealMilestones } from "./DealMilestones";
+import { DealRisks } from "./DealRisks";
 import { findDealLabel, formatISODateString } from "./dealUtils";
+import { isClosedDealStage } from "./dealValidation";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
+
+type DealDetailRecord = Deal & {
+  currency?: string;
+  probability?: number | null;
+  grade?: "S" | "A" | "B" | "C";
+  closed_reason?: string | null;
+};
 
 export const DealShow = ({ open, id }: { open: boolean; id?: string }) => {
   const redirect = useRedirect();
@@ -52,8 +64,13 @@ const DealShowContent = () => {
   const translate = useTranslate();
   const { dealStages, dealCategories, currency } =
     useLocalizedConfigurationContext();
-  const record = useRecordContext<Deal>();
+  const record = useRecordContext<DealDetailRecord>();
+  const dataProvider = useDataProvider<CrmDataProvider>();
+  const capabilities = useCrmProviderCapabilities();
   if (!record) return null;
+  const dealCurrency = record.currency || currency;
+  const fieldLabel = (key: string, fallback: string) =>
+    translate(`resources.deals.fields.${key}`, { _: fallback });
 
   return (
     <>
@@ -75,7 +92,9 @@ const DealShowContent = () => {
               {record.archived_at ? (
                 <>
                   <UnarchiveButton record={record} />
-                  <DeleteButton />
+                  {dataProvider.supportsPermanentDealDeletion ? (
+                    <DeleteButton />
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -86,8 +105,8 @@ const DealShowContent = () => {
             </div>
           </div>
 
-          <div className="flex gap-8 m-4">
-            <div className="flex flex-col mr-10">
+          <div className="m-4 grid grid-cols-2 gap-5 md:grid-cols-3 xl:grid-cols-6">
+            <div className="flex min-w-0 flex-col">
               <span className="text-xs text-muted-foreground tracking-wide">
                 {translate("resources.deals.fields.expected_closing_date")}
               </span>
@@ -105,15 +124,15 @@ const DealShowContent = () => {
               </div>
             </div>
 
-            <div className="flex flex-col mr-10">
+            <div className="flex min-w-0 flex-col">
               <span className="text-xs text-muted-foreground tracking-wide">
                 {translate("resources.deals.fields.amount")}
               </span>
               <span className="text-sm">
-                {record.amount.toLocaleString("en-US", {
+                {record.amount.toLocaleString(undefined, {
                   notation: "compact",
                   style: "currency",
-                  currency,
+                  currency: dealCurrency,
                   currencyDisplay: "narrowSymbol",
                   minimumSignificantDigits: 3,
                 })}
@@ -121,7 +140,7 @@ const DealShowContent = () => {
             </div>
 
             {record.category && (
-              <div className="flex flex-col mr-10">
+              <div className="flex min-w-0 flex-col">
                 <span className="text-xs text-muted-foreground tracking-wide">
                   {translate("resources.deals.fields.category")}
                 </span>
@@ -132,12 +151,28 @@ const DealShowContent = () => {
               </div>
             )}
 
-            <div className="flex flex-col mr-10">
+            <div className="flex min-w-0 flex-col">
               <span className="text-xs text-muted-foreground tracking-wide">
                 {translate("resources.deals.fields.stage")}
               </span>
               <span className="text-sm">
                 {findDealLabel(dealStages, record.stage)}
+              </span>
+            </div>
+
+            <div className="flex min-w-0 flex-col">
+              <span className="text-xs text-muted-foreground tracking-wide">
+                {fieldLabel("grade", "项目评级")}
+              </span>
+              <span className="text-sm">{record.grade ?? "-"}</span>
+            </div>
+
+            <div className="flex min-w-0 flex-col">
+              <span className="text-xs text-muted-foreground tracking-wide">
+                {fieldLabel("probability", "成交概率（%）")}
+              </span>
+              <span className="text-sm">
+                {record.probability == null ? "-" : `${record.probability}%`}
               </span>
             </div>
           </div>
@@ -167,20 +202,42 @@ const DealShowContent = () => {
             </div>
           )}
 
-          <div className="m-4">
-            <Separator className="mb-4" />
-            <InfiniteListBase
-              resource="deal_notes"
-              filter={{ deal_id: record.id }}
-              sort={{ field: "date", order: "DESC" }}
-              perPage={25}
-              disableSyncWithLocation
-              storeKey={false}
-              empty={<NoteCreate reference={"deals"} />}
-            >
-              <NotesIterator reference="deals" />
-            </InfiniteListBase>
+          {record.closed_reason ? (
+            <div className="m-4 whitespace-pre-line">
+              <span className="text-xs text-muted-foreground tracking-wide">
+                {fieldLabel("closed_reason", "失单或关闭原因")}
+              </span>
+              <p className="text-sm leading-6">{record.closed_reason}</p>
+            </div>
+          ) : isClosedDealStage(record.stage) ? (
+            <p className="m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+              {translate("resources.deals.validation.closed_reason", {
+                _: "项目已失单或关闭，请填写原因",
+              })}
+            </p>
+          ) : null}
+
+          <div className="m-4 space-y-6">
+            <DealRisks dealId={record.id} />
+            <DealMilestones dealId={record.id} />
           </div>
+
+          {capabilities.deals.notes ? (
+            <div className="m-4">
+              <Separator className="mb-4" />
+              <InfiniteListBase
+                resource="deal_notes"
+                filter={{ deal_id: record.id }}
+                sort={{ field: "date", order: "DESC" }}
+                perPage={25}
+                disableSyncWithLocation
+                storeKey={false}
+                empty={<NoteCreate reference={"deals"} />}
+              >
+                <NotesIterator reference="deals" />
+              </InfiniteListBase>
+            </div>
+          ) : null}
         </div>
       </div>
     </>

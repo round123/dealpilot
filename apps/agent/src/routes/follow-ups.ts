@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import {
   FollowUpCreateSchema,
   FollowUpListQuerySchema,
@@ -11,6 +10,7 @@ import {
   listFollowUps,
   updateFollowUp,
 } from "../services/follow-up-service";
+import { validateJson } from "../middleware/validation";
 
 const app = new Hono();
 
@@ -24,11 +24,11 @@ app.get("/follow-ups", async (c) => {
   return c.json(await listFollowUps(query));
 });
 
-app.post("/follow-ups", zValidator("json", FollowUpCreateSchema), async (c) => {
+app.post("/follow-ups", validateJson(FollowUpCreateSchema), async (c) => {
   return c.json(await createFollowUp(c.req.valid("json")), 201);
 });
 
-app.put("/follow-ups/:id", zValidator("json", FollowUpUpdateSchema), async (c) => {
+app.put("/follow-ups/:id", validateJson(FollowUpUpdateSchema), async (c) => {
   return c.json(await updateFollowUp(c.req.param("id"), c.req.valid("json")));
 });
 

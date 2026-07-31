@@ -73,4 +73,54 @@ describe("reminder delivery", () => {
     expect(result).toEqual({ due: 0, upcoming: 0, failed: 1 });
     expect(fake.overdue).toEqual([]);
   });
+
+  test("uses an exact five-minute upcoming window", async () => {
+    let dueAt = "";
+    let windowStart = "";
+    let windowEnd = "";
+    const now = new Date("2026-07-29T10:00:00.000Z");
+    const store: ReminderDeliveryStore = {
+      findDue: async (value) => { dueAt = value; return []; },
+      findUpcoming: async (start, end) => {
+        windowStart = start;
+        windowEnd = end;
+        return [];
+      },
+      markOverdue: async () => {},
+      markNotified: async () => {},
+    };
+
+    await runReminderDeliverySweep(async () => {}, now, store);
+
+    expect(dueAt).toBe(now.toISOString());
+    expect(windowStart).toBe(now.toISOString());
+    expect(windowEnd).toBe("2026-07-29T10:05:00.000Z");
+  });
+
+  test("continues delivering later reminders after one state write fails", async () => {
+    const notifications: string[] = [];
+    const persisted: string[] = [];
+    const store: ReminderDeliveryStore = {
+      findDue: async () => [
+        { reminder: { id: "broken", last_notified_at: null }, customerName: "Broken" },
+        { reminder: { id: "healthy", last_notified_at: null }, customerName: "Healthy" },
+      ],
+      findUpcoming: async () => [],
+      markOverdue: async (id) => {
+        if (id === "broken") throw new Error("database busy");
+        persisted.push(id);
+      },
+      markNotified: async () => {},
+    };
+
+    const result = await runReminderDeliverySweep(
+      async ({ message }) => { notifications.push(message); },
+      new Date("2026-07-29T10:00:00.000Z"),
+      store,
+    );
+
+    expect(result).toEqual({ due: 1, upcoming: 0, failed: 1 });
+    expect(notifications).toHaveLength(2);
+    expect(persisted).toEqual(["healthy"]);
+  });
 });

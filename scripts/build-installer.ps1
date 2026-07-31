@@ -1,6 +1,6 @@
 ﻿# =============================================================================
 #  scripts/build-installer.ps1
-#  编排: shared -> web -> agent(bun --compile) -> staging -> makensis
+#  编排: shared -> api-client -> Atomic Cloud (Agent mode) -> agent(bun --compile) -> staging -> makensis
 #  产物: dist/DealPilot-Setup.exe
 #
 #  用法:
@@ -44,9 +44,13 @@ if (-not $SkipBuild) {
   pnpm --filter @dealpilot/shared build
   if ($LASTEXITCODE -ne 0) { Die "shared 构建失败 (exit $LASTEXITCODE)" }
 
-  Step "构建 @dealpilot/web"
-  pnpm --filter @dealpilot/web build
-  if ($LASTEXITCODE -ne 0) { Die "web 构建失败 (exit $LASTEXITCODE)" }
+  Step "构建 @dealpilot/api-client"
+  pnpm --filter @dealpilot/api-client build
+  if ($LASTEXITCODE -ne 0) { Die "api-client 构建失败 (exit $LASTEXITCODE)" }
+
+  Step "构建 Atomic 工作台（Agent/SQLite 模式）"
+  pnpm --filter @dealpilot/cloud build:agent
+  if ($LASTEXITCODE -ne 0) { Die "Atomic 工作台构建失败 (exit $LASTEXITCODE)" }
 
   Step "构建 @dealpilot/agent (bun build --compile)"
   pnpm --filter @dealpilot/agent build
@@ -66,7 +70,7 @@ if (-not (Test-Path $agentExe)) { Die "未找到 agent exe: $agentExe (先跑构
 Copy-Item $agentExe $appDir -Force
 Copy-Item (Join-Path $root "scripts/installer/nm-host-template.json") $appDir -Force
 
-$webDist = Join-Path $root "apps/web/dist"
+$webDist = Join-Path $root "apps/cloud/dist"
 if (-not (Test-Path $webDist)) { Die "未找到 web 构建产物: $webDist" }
 Copy-Item (Join-Path $webDist "*") $webOut -Recurse -Force
 

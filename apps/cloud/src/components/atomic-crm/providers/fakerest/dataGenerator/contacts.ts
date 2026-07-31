@@ -5,7 +5,7 @@ import {
   name,
   phone,
   random,
-} from "faker/locale/en_US";
+} from "faker/locale/zh_CN";
 
 import { defaultNoteStatuses } from "../../../root/defaultConfiguration";
 import { contactGender } from "../../../contacts/contactModel";

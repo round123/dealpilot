@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useTheme } from "@/components/admin/use-theme";
 import { getErrorMessageKey } from "@/components/admin/error-message";
-import { ChevronRight, KeyRound } from "lucide-react";
+import { ChevronRight, DatabaseBackup, KeyRound } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +43,8 @@ import { MobileContent } from "../layout/MobileContent";
 import MobileHeader from "../layout/MobileHeader";
 import { ChangelogPage } from "../misc/ChangelogPage";
 import { personalAccount } from "../providers/personalAccount";
+import { useLocalDataOperations } from "../providers/localDataOperations";
+import { LocalDataToolsPage } from "./LocalDataToolsPage";
 
 const ChangePasswordButton = () => {
   const translate = useTranslate();
@@ -100,6 +102,7 @@ export const SettingsPageMobile = () => {
           <div className="space-y-6">
             <ProfileSection />
             <PreferencesSection />
+            <LocalDataSection />
             <McpServerSection />
             <AboutSection />
           </div>
@@ -161,6 +164,30 @@ const PreferencesSection = () => {
         <LanguageRow />
         <ItemSeparator />
         <ThemeRow />
+      </ItemGroup>
+    </div>
+  );
+};
+
+const LocalDataSection = () => {
+  const operations = useLocalDataOperations();
+  if (!operations) return null;
+
+  return (
+    <div>
+      <SectionLabel>本地数据</SectionLabel>
+      <ItemGroup className="rounded-lg border overflow-hidden">
+        <Item asChild size="sm" className="cursor-pointer">
+          <Link to={LocalDataToolsPage.path}>
+            <DatabaseBackup className="size-5 text-muted-foreground" />
+            <ItemContent>
+              <ItemTitle className="font-normal">备份、恢复与全域导出</ItemTitle>
+            </ItemContent>
+            <ItemActions>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </ItemActions>
+          </Link>
+        </Item>
       </ItemGroup>
     </div>
   );

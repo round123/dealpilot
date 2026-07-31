@@ -5,7 +5,6 @@ import {
   type CustomerMergeChoices,
   type CustomerSummary,
   type ListResult,
-  resolveCustomerMergeFields,
 } from "@dealpilot/api-client";
 import {
   useMutation,
@@ -14,7 +13,9 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 
-import { getCloudApiClient } from "../providers/apiClient";
+import { cloudCustomerOperations } from "../providers/cloudCustomerOperations";
+import { useCustomerOperations } from "../providers/CustomerOperationsContext";
+import type { CustomerOperations } from "../providers/customerOperations";
 import { customerDetailQueryKey } from "./useCustomerDetail";
 
 export const customerCacheKeys = {
@@ -24,26 +25,26 @@ export const customerCacheKeys = {
     ["customers", "deleted", "list", { page, perPage }] as const,
 };
 
-export const softDeleteCustomer = (id: Customer["id"], signal?: AbortSignal) =>
-  getCloudApiClient().customers.softDeleteCustomer(id, { signal });
+export const softDeleteCustomer = (
+  id: Customer["id"],
+  signal?: AbortSignal,
+  operations: CustomerOperations = cloudCustomerOperations,
+) => operations.softDeleteCustomer(id, { signal });
 
-export const restoreCustomer = (id: Customer["id"], signal?: AbortSignal) =>
-  getCloudApiClient().customers.restoreCustomer(id, { signal });
+export const restoreCustomer = (
+  id: Customer["id"],
+  signal?: AbortSignal,
+  operations: CustomerOperations = cloudCustomerOperations,
+) => operations.restoreCustomer(id, { signal });
 
 export const mergeCustomers = (
   source: Customer,
   target: CustomerSummary,
   choices: CustomerMergeChoices,
   signal?: AbortSignal,
+  operations: CustomerOperations = cloudCustomerOperations,
 ) =>
-  getCloudApiClient().customers.mergeCustomers(
-    {
-      sourceId: source.id,
-      targetId: target.id,
-      fieldResolutions: resolveCustomerMergeFields(source, target, choices),
-    },
-    { signal },
-  );
+  operations.mergeCustomers(source, target, choices, { signal });
 
 export const invalidateCustomerCaches = async (queryClient: QueryClient) => {
   await Promise.all(
@@ -106,10 +107,11 @@ export const useSoftDeleteCustomer = (options?: {
   onSuccess?: (customer: Customer) => void;
 }) => {
   const queryClient = useQueryClient();
+  const operations = useCustomerOperations();
 
   return useMutation<Customer, ApiError, Customer["id"]>({
     mutationKey: ["customers", "soft-delete"],
-    mutationFn: (id) => softDeleteCustomer(id),
+    mutationFn: (id) => softDeleteCustomer(id, undefined, operations),
     retry: false,
     onSuccess: (customer, id) => {
       removeCustomerDetailCaches(queryClient, id);
@@ -127,10 +129,11 @@ interface RestoreContext {
 
 export const useRestoreCustomer = () => {
   const queryClient = useQueryClient();
+  const operations = useCustomerOperations();
 
   return useMutation<Customer, ApiError, Customer["id"], RestoreContext>({
     mutationKey: ["customers", "restore"],
-    mutationFn: (id) => restoreCustomer(id),
+    mutationFn: (id) => restoreCustomer(id, undefined, operations),
     retry: false,
     onMutate: async (id) => {
       await queryClient.cancelQueries({
@@ -153,6 +156,7 @@ export const useMergeCustomers = (options?: {
   onSuccess?: (customer: Customer, target: CustomerSummary) => void;
 }) => {
   const queryClient = useQueryClient();
+  const operations = useCustomerOperations();
 
   return useMutation<
     Customer,
@@ -165,7 +169,7 @@ export const useMergeCustomers = (options?: {
   >({
     mutationKey: ["customers", "merge"],
     mutationFn: ({ source, target, choices }) =>
-      mergeCustomers(source, target, choices),
+      mergeCustomers(source, target, choices, undefined, operations),
     retry: false,
     onSuccess: async (customer, { source, target }) => {
       removeCustomerDetailCaches(queryClient, source.id);

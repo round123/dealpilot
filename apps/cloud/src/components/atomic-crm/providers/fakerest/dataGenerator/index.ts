@@ -7,6 +7,13 @@ import { finalize } from "./finalize";
 import { generateSales } from "./sales";
 import { generateTags } from "./tags";
 import { generateTasks } from "./tasks";
+import {
+  generateDealMilestones,
+  generateDealRisks,
+  generateFollowUps,
+  generateReminders,
+  generateSocialAccounts,
+} from "./domainResources";
 import type { Db } from "./types";
 
 export default (): Db => {
@@ -19,6 +26,11 @@ export default (): Db => {
   db.deals = generateDeals(db);
   db.deal_notes = generateDealNotes(db);
   db.tasks = generateTasks(db);
+  db.social_accounts = generateSocialAccounts(db);
+  db.follow_ups = generateFollowUps(db);
+  db.deal_risks = generateDealRisks(db);
+  db.deal_milestones = generateDealMilestones(db);
+  db.reminders = generateReminders(db);
   db.configuration = [
     {
       id: 1,

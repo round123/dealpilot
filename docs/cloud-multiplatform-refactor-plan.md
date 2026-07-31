@@ -1,7 +1,7 @@
 # DealPilot 基于 Atomic CRM 的个人云改造计划
 
 > 状态：实施中；G0A 已完成，P1/P2 已完成代码基线但等待本地 Supabase 数据库门禁，P3 进行中
-> 日期：2026-07-30
+> 日期：2026-07-31
 > 目标版本：V2
 > V1 基线：`codex/pragmatic-three-layer`
 > 产品决策：`docs/DealPilot_PRD_V2_G0.md`
@@ -15,9 +15,9 @@ V2 是个人云 CRM，不提供团队 workspace、成员、角色和邀请。每
 
 现有 DealPilot 不废弃：
 
-- V1 Web、Agent、SQLite 和测试是迁移来源、行为基线和确认前回退路径。
+- V1 Agent、SQLite、测试和 `apps/web` 源码是迁移来源、行为基线和确认前的数据回退依据；`apps/web` 不再作为 Agent 默认运行 UI。
 - Atomic CRM 派生应用作为新的 `apps/cloud` 并行建设。
-- P3 Customer 硬门槛通过前，不删除或重命名现有 `apps/web`，也不停止本地业务模式。
+- P3 Customer 硬门槛通过前，不删除或重命名现有 `apps/web` 源码，也不停止由 Atomic 前端 + Agent/SQLite 承载的本地业务模式。
 - 用户确认迁移后，PostgreSQL 永久成为该账号的唯一业务事实源；SQLite 仅保留为只读迁移快照。
 
 ## 2. 目标与非目标
@@ -48,7 +48,7 @@ V2 是个人云 CRM，不提供团队 workspace、成员、角色和邀请。每
 | 资产 | 处理方式 | 说明 |
 |---|---|---|
 | `apps/cloud` | 新增 | 引入固定 commit 的 Atomic CRM 派生应用，承载 V2 Web/PWA |
-| `apps/web` | 仅过渡期保留 | P3 前作为 V1 行为基线；P3 通过后冻结功能，P5 迁移验收后退出运行，P7 从活动代码树删除 |
+| `apps/web` | 仅保留源码行为基线 | 已冻结功能开发且不再作为 Agent 默认入口或安装包输入；P7 从活动代码树删除，历史实现由 `v1-local-final` 标签保留 |
 | `apps/agent` | 保留并逐步瘦身 | 保留迁移、托盘、通知、Native Messaging；确认后不再承担主业务 API |
 | `apps/extension` | 保留并改造 | 保留页面识别、匹配和快捷录入；由本地 API 切换到云端客户端 |
 | `packages/shared` | 选择性保留 | 业务枚举、Zod schema、格式化、迁移类型和纯业务规则继续复用 |
@@ -224,18 +224,28 @@ P3 全部门禁通过前，不删除 V1 Web、不批量迁移其余领域、不�
 
 单人全职预计约 8-13 个开发周，规划基准为 10 周。该估算不包含真实用户试点等待、应用商店审核、跨境数据合规和上游重大升级。Docker Desktop、本地 Supabase 和邮件测试服务未可用期间，P1/P2 数据库门禁不能验收。
 
-### 8.1 当前实施进度（2026-07-30）
+### 8.1 当前实施进度（2026-07-31）
 
 | 阶段 | 状态 | 已完成 | 尚未满足的退出条件 |
 |---|---|---|---|
 | G0A | 已完成 | PRD、Atomic 个人云 ADR、V1 最终标签和独立改造分支已建立 | 无 |
-| P1 | 代码基线完成，验收阻塞 | 固定并引入 Atomic CRM；保留 MIT 和来源；接入 pnpm/Turbo；Cloud、V1 与 API 客户端可构建和测试；增加合成数据 `dev:demo` 和 GitHub Actions 质量/数据库门禁 | 本机缺少 Docker/Podman，尚未启动本地 Supabase、Auth、Storage 和邮件服务做运行验收；新增 CI 尚未在远端 Runner 实际执行 |
+| P1 | 代码基线完成，验收阻塞 | 固定并引入 Atomic CRM；保留 MIT 和来源；接入 pnpm/Turbo；Cloud、V1 与 API 客户端可构建和测试；增加可刷新持久化的合成数据 `dev:demo` 和 GitHub Actions 质量/数据库门禁 | 本机缺少 Docker/Podman，尚未启动本地 Supabase、Auth、Storage 和邮件服务做运行验收；新增 CI 尚未在远端 Runner 实际执行 |
 | P2 | 静态实现完成，运行门禁待验 | 个人 profile、团队入口移除、19 张表的 owner 隔离、RLS、复合外键、私有 Storage 和双用户 SQL 测试已入库 | migration 尚未在本地 PostgreSQL 执行；RLS、复合外键、Storage 和 RPC 隔离矩阵尚未产生真实数据库测试结果 |
-| P3 | 进行中 | 单例 `packages/api-client`/React Admin DataProvider、严格 Customer 契约、结构化服务端过滤与稳定多字段排序、Customer 字段/表单/响应式列表、五类关联详情、删除/恢复/回收站/六字段合并 UI，以及合并/软删除/恢复 RPC 和提醒快照/CAS 已建立；桌面和移动 Customer 详情的 Edit、Merge、Soft Delete 均可直接到达，并有 1440x900/390x844 组件与 demo 回归；固定 Customer 行为夹具及纯 TypeScript V1/V2 对照基线已入库；本地 Supabase 双用户 browser、REST、RPC、Edge、复合外键和 Storage E2E runner 及 CI 串联代码已就绪；30 天清理的 durable queue、受限 RPC、Edge Function 和授权测试已静态完成 | migration/RLS/Storage/RPC、双用户 browser/REST/RPC/Edge/FK/Storage E2E 与清理队列尚未在运行中的真实本地 Supabase 或远端 CI 执行；真实 Auth/PKCE 邮件流程、V1 与 Supabase 同 seed 差异报告，以及确认后旧 V2 API 继续读取 PostgreSQL 的回滚演练未通过 |
+| P3 | 进行中 | 单例 `packages/api-client`/React Admin DataProvider、严格 Customer 契约、结构化服务端过滤与稳定多字段排序、Customer 字段/表单/响应式列表、五类关联详情、删除/恢复/回收站/六字段合并 UI，以及合并/软删除/恢复 RPC 和提醒快照/CAS 已建立；Customer 操作已通过端口隔离 Cloud 与本地适配器，`dev:demo` 可持久化并在桌面和移动端完成创建、刷新、关联详情、软删除、恢复和合并成功 E2E；固定 Customer 行为夹具及纯 TypeScript V1/V2 对照基线已入库；本地 Supabase 双用户 browser、REST、RPC、Edge、复合外键和 Storage E2E runner 及 CI 串联代码已就绪；30 天清理的 durable queue、受限 RPC、Edge Function 和授权测试已静态完成 | migration/RLS/Storage/RPC、双用户 browser/REST/RPC/Edge/FK/Storage E2E 与清理队列尚未在运行中的真实本地 Supabase 或远端 CI 执行；真实 Auth/PKCE 邮件流程、V1 与 Supabase 同 seed 差异报告，以及确认后旧 V2 API 继续读取 PostgreSQL 的回滚演练未通过 |
+| P4 | 本地功能门禁完成，发布验收待收口 | 中文 Dashboard、Customer、项目、跟进、提醒、风险、里程碑、导入、全域导出和加密备份恢复已接入同一 Atomic 前端与 Agent/SQLite；桌面和移动端共用 DataProvider/AuthProvider/CustomerOperations；FollowUp 改为悲观提交，提醒 `replied` 契约、列表 cache invalidation、导入 ISO 时间戳及风险/里程碑 ISO 时间已修正；Agent 提醒 AC-13～17 已覆盖 5 分钟窗口、启动补发、通知去重、稍后重入、失败隔离和“已收到回复”状态流转；全仓 type-check、lint、测试、构建及 demo/真实 Agent E2E 已通过 | 功能门禁已通过；发布收口仍需安装 NSIS 后完成安装/升级/卸载实机验证，并人工确认 Windows 系统通知；P4 本地证据不能替代 P3 的 Supabase/PostgreSQL 硬门槛，也不代表云端领域迁移完成 |
 
-2026-07-30 本地代码门禁：全仓 `type-check`、`lint`、`test`、`build` 和 `git diff --check` 通过；`packages/api-client` 9 个测试文件共 89 项通过，包含固定 Customer seed 对列表/搜索/分页、创建默认值、五类详情摘要、更新、软删除、恢复、六字段合并和提醒 compare-and-set 联动的纯 TypeScript 对照基线，以及所有归一化 `ApiError` 的必填 `requestId`、服务端 body/header 优先级与客户端兜底生成验证；Cloud 34 个 Vitest 测试文件中 183 项通过、1 项跳过。Customer 详情的 Edit、Merge、Soft Delete 在桌面和移动布局中均可直接到达，并通过 1440x900/390x844 组件与 demo 回归；Cloud `test:e2e:demo` 还检查 Dashboard、Customer 列表/创建/详情/回收站及移动路由滚动复位，无控制台 error/warning、横向溢出或控件重叠。
+2026-07-31 已记录的本地验收证据：
 
-以上仍是本地静态和 demo 证据：Demo provider 不执行真实 Customer RPC，固定夹具测试也不连接 V1 API 或 PostgreSQL。关联详情、操作入口、回收站和 Merge 的 demo/组件测试不能替代真实 Supabase 事务验收。本地 Supabase 双用户 browser、REST、RPC、Edge、复合外键和 Storage E2E runner 已实现并串入 CI 定义，但尚未在运行中的真实本地 Supabase 或远端 CI 执行，因此不构成隔离门槛通过证据。30 天清理虽已具备 durable queue、租约/重试、最终路径快照、Storage 删除编排和仅限 `service_role` 的 Edge 入口，但尚未在运行中的本地 Supabase、Storage 与 Cron/Vault 环境完成执行验证。
+- Cloud demo E2E 为 4/4，通过桌面和移动端的 Customer 及全领域合成数据流程。
+- 真实 Agent/SQLite E2E 为 5/5，通过桌面/移动 Customer 和全领域流程；桌面端另通过非标准 CSV 的 UI 字段映射导入、DPBK 下载后回传恢复校验，以及包含 8 个 sheet 的 Excel 全域导出。
+- Agent 提醒 AC-13～17 的服务、调度器和临时 SQLite 集成测试通过；覆盖精确 5 分钟窗口、启动立即补扫、`last_notified_at` 去重、稍后到期重入、单项失败隔离、3 天逾期排序权重和手动 `replied -> pending`。
+- Extension 的唯一类型化 API 边界已有 12 项测试，覆盖共享 Zod schema、网络/取消、非 JSON 错误、服务端错误包络、不可解析的 2xx、幂等键和 popup 展示契约；界面不直接展示服务端原始错误。
+- 导入 ISO timestamp、列表 cache invalidation、FollowUp 悲观提交、reminder replied contract、risk/milestone ISO timestamp 已完成修订并纳入相应回归。
+- Cloud `type-check`、`lint`、构建和上述 E2E 已通过；Cloud Vitest 为 55 个测试文件、271 项通过、1 项跳过。该结果是本地功能门禁证据，不用于宣告 Supabase/PostgreSQL 阶段完成。
+
+功能审计口径：本地 Atomic + Agent/SQLite 已从“适配基线”推进到主要业务流程可执行并有桌面/移动 E2E 证据，但仍处于开发验收而非发布完成状态。`dev:demo` 使用合成数据和浏览器 `localStorage`，用于快速 UI 回归；真实本地模式使用 Agent/SQLite，验证范围包括 Customer、全领域、导入、导出和备份恢复。旧 `apps/web` 已冻结功能开发，只保留源码行为基线；默认本地入口和安装包均使用 Atomic 前端，从而避免长期维护两套运行 UI。
+
+以上新增证据仍然只证明 demo 和真实本地 Agent/SQLite 流程可用。Demo provider 不执行真实 Customer RPC，Agent/SQLite E2E 也不连接 Supabase/PostgreSQL，因而不能替代云端事务、用户隔离和迁移回滚验收。本地 Supabase 双用户 browser、REST、RPC、Edge、复合外键和 Storage E2E runner 已实现并串入 CI 定义，但尚未在运行中的真实本地 Supabase 或远端 CI 执行，因此不构成 P3 隔离门槛通过证据。30 天清理虽已具备 durable queue、租约/重试、最终路径快照、Storage 删除编排和仅限 `service_role` 的 Edge 入口，但尚未在运行中的本地 Supabase、Storage 与 Cron/Vault 环境完成执行验证。Supabase/PostgreSQL 继续后置，P3 状态保持“进行中”。
 
 P3 剩余硬门槛必须逐项产生可复核证据：
 
@@ -292,7 +302,7 @@ P3 剩余硬门槛必须逐项产生可复核证据：
 7. 本地快照至少保留 30 天，仅用于核对、取证和重新迁移。
 8. 客户软删除保留 30 天；账号关闭提供 30 天撤销期，之后按发布前确认的删除 SLA 清理主库、Storage 和备份。
 9. 上游 Atomic CRM 升级与 DealPilot 发布分开执行，不在故障回滚时同时升级上游。
-10. P3 通过后 V1 冻结，P5 后不再作为运行入口，P7 删除 `apps/web` 及 Agent 本地业务 routes/services/repositories；历史实现只保留在 `v1-local-final` 标签中。
+10. `apps/web` 已冻结功能开发并退出 Agent 默认入口和安装包；P7 删除 `apps/web` 及完成云迁移后不再需要的 Agent 本地业务 routes/services/repositories，历史实现只保留在 `v1-local-final` 标签中。
 
 30 天 Customer 期满清理当前已静态实现为 durable queue + Edge Function：数据库只负责排队、租约、重试状态和最终关系删除，Edge Function 负责 replay-safe Storage 删除；队列保留操作证据且浏览器角色不可访问。该实现必须在真实本地 Supabase 中验证 service-role 授权、Cron/Vault 调用、租约回收、失败重试、路径变化重排队、Storage 删除和最终级联后，才能计为 P3 已通过。
 
@@ -311,6 +321,9 @@ P3 剩余硬门槛必须逐项产生可复核证据：
 | React 18/19、Tailwind 3/4 并存 | 依赖和样式冲突 | `apps/cloud` 独立 package，P3 前不强制升级 V1 应用 |
 | Supabase 平台绑定 | 迁移成本 | PostgreSQL schema/migration 入库；业务事务使用标准 SQL；对象接口集中在适配器 |
 | 本地 Docker 不可用 | 无法验证 Auth/RLS/Functions | P1 首项安装并验证 Docker Desktop，不使用远程真实数据替代本地门禁 |
+| 本机缺少 `makensis` | 无法完成 NSIS 安装包最终产出与安装/卸载实机验收 | 安装 NSIS 后重新执行安装器构建、签名、安装、升级和卸载门禁；当前不得宣称安装包完成 |
+| 编译版 Agent exe 约 94.6 MiB | 分发、下载和安装体积偏大 | 在功能门禁稳定后分析 Bun 编译产物和可选依赖；优化前保留体积基线，不以删减运行依赖换取不可验证的缩小 |
+| Vite 构建存在 chunk size warning | 首屏加载和缓存粒度可能劣化 | 记录当前 warning，后续按路由和重依赖拆包；必须用构建产物与 E2E 验证，不能仅隐藏阈值告警 |
 
 ## 12. 完成定义
 

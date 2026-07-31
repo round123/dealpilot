@@ -170,6 +170,66 @@ export const CustomerReminderSchema = z
   })
   .strict();
 
+const FollowUpInputShape = z.object({
+  company_id: CustomerIdSchema,
+  deal_id: DealIdSchema.nullable().optional(),
+  type: z.enum(["call", "email", "chat", "visit", "note", "message"]),
+  note: NullableTextSchema.optional(),
+  message_body: NullableTextSchema.optional(),
+  message_direction: z.enum(["inbound", "outbound"]).nullable().optional(),
+  occurred_at: DateTimeSchema,
+});
+
+const validateMessageFollowUp = (
+  value: {
+    type?: string;
+    message_body?: string | null;
+    message_direction?: string | null;
+  },
+  context: z.RefinementCtx,
+) => {
+  if (value.type !== "message") return;
+  if (!value.message_body?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["message_body"],
+      message: "Message follow-up requires message_body",
+    });
+  }
+  if (!value.message_direction) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["message_direction"],
+      message: "Message follow-up requires message_direction",
+    });
+  }
+};
+
+export const FollowUpCreateInputSchema = FollowUpInputShape.strict().superRefine(
+  validateMessageFollowUp,
+);
+
+export const FollowUpUpdateInputSchema = FollowUpInputShape.partial()
+  .strict()
+  .superRefine(validateMessageFollowUp);
+
+const ReminderInputShape = z.object({
+  company_id: CustomerIdSchema,
+  deal_id: DealIdSchema.nullable().optional(),
+  type: z.enum(["fixed_time", "waiting_reply", "paused"]),
+  status: z
+    .enum(["pending", "completed", "snoozed", "ignored", "overdue", "replied"])
+    .optional(),
+  due_at: DateTimeSchema,
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  last_notified_at: DateTimeSchema.nullable().optional(),
+  snooze_until: DateTimeSchema.nullable().optional(),
+  resolution: NullableTextSchema.optional(),
+});
+
+export const ReminderCreateInputSchema = ReminderInputShape.strict();
+export const ReminderUpdateInputSchema = ReminderInputShape.partial().strict();
+
 export const CustomerDetailSchema = CustomerSchema.extend({
   contacts: z.array(CustomerContactSchema),
   social_accounts: z.array(CustomerSocialAccountSchema),
@@ -219,6 +279,10 @@ export type CustomerSocialAccount = z.infer<typeof CustomerSocialAccountSchema>;
 export type CustomerDeal = z.infer<typeof CustomerDealSchema>;
 export type CustomerFollowUp = z.infer<typeof CustomerFollowUpSchema>;
 export type CustomerReminder = z.infer<typeof CustomerReminderSchema>;
+export type FollowUpCreateInput = z.infer<typeof FollowUpCreateInputSchema>;
+export type FollowUpUpdateInput = z.infer<typeof FollowUpUpdateInputSchema>;
+export type ReminderCreateInput = z.infer<typeof ReminderCreateInputSchema>;
+export type ReminderUpdateInput = z.infer<typeof ReminderUpdateInputSchema>;
 export type CustomerDetail = z.infer<typeof CustomerDetailSchema>;
 export type CustomerSummary = z.infer<typeof CustomerSummarySchema>;
 export type CustomerMergeFieldResolutions = z.infer<

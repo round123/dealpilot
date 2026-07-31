@@ -18,6 +18,7 @@ import contacts from "../contacts";
 import { Dashboard } from "../dashboard/Dashboard";
 import { MobileDashboard } from "../dashboard/MobileDashboard";
 import deals from "../deals";
+import followUps from "../followUps";
 import { Layout } from "../layout/Layout";
 import { MobileLayout } from "../layout/MobileLayout";
 import { SignupPage } from "../login/SignupPage";
@@ -30,6 +31,7 @@ import {
 } from "../providers/supabase";
 import { SettingsPageMobile } from "../settings/SettingsPageMobile";
 import { SettingsPage } from "../settings/SettingsPage";
+import { LocalDataToolsPage } from "../settings/LocalDataToolsPage";
 import {
   CONFIGURATION_STORE_KEY,
   type ConfigurationContextValue,
@@ -51,12 +53,26 @@ import { i18nProvider as defaulti18nProvider } from "../providers/commons/i18nPr
 import { StartPage } from "../login/StartPage.tsx";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { MobileTasksList } from "../tasks/MobileTasksList.tsx";
+import reminders from "../reminders";
 import { ContactListMobile } from "../contacts/ContactList.tsx";
 import { ContactShow } from "../contacts/ContactShow.tsx";
 import { DeletedCustomersPage } from "../companies/DeletedCustomersPage.tsx";
 import { CompanyListMobile } from "../companies/CompanyList.tsx";
 import { NoteShowPage } from "../notes/NoteShowPage.tsx";
 import { clearAccountState, createCloudQueryClient } from "./accountState";
+import { cloudCustomerOperations } from "../providers/cloudCustomerOperations";
+import { CustomerOperationsProvider } from "../providers/CustomerOperationsContext";
+import type { CustomerOperations } from "../providers/customerOperations";
+import { createLocalCustomerOperations } from "../providers/localCustomerOperations";
+import {
+  ImportOperationsProvider,
+  type CustomerImportOperations,
+} from "../providers/importOperations";
+import {
+  LocalDataOperationsProvider,
+  type LocalDataOperations,
+} from "../providers/localDataOperations";
+import { CrmProviderCapabilitiesProvider } from "../providers/capabilities";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 const defaultQueryClient = createCloudQueryClient();
@@ -69,6 +85,9 @@ export type CRMProps = {
   store?: CoreAdminProps["store"];
   dashboard?: DashboardComponent;
   layout?: LayoutComponent;
+  customerOperations?: CustomerOperations;
+  importOperations?: CustomerImportOperations;
+  localDataOperations?: LocalDataOperations;
 } & Partial<ConfigurationContextValue>;
 
 /**
@@ -129,6 +148,9 @@ export const CRM = ({
   i18nProvider = defaulti18nProvider,
   store = defaultStore,
   disableTelemetry: _disableTelemetry,
+  customerOperations,
+  importOperations,
+  localDataOperations,
   ...rest
 }: CRMProps) => {
   // Seed the store with CRM prop values if not already stored
@@ -153,6 +175,14 @@ export const CRM = ({
 
   const isMobile = useIsMobile();
   const queryClient = useMemo(() => createCloudQueryClient(), []);
+  const resolvedCustomerOperations = useMemo(
+    () =>
+      customerOperations ??
+      (import.meta.env.VITE_IS_DEMO === "true"
+        ? createLocalCustomerOperations(dataProvider)
+        : cloudCustomerOperations),
+    [customerOperations, dataProvider],
+  );
 
   // on login, pre-fetch the configuration to avoid a flickering
   // when accessing the app for the first time
@@ -204,17 +234,27 @@ export const CRM = ({
   const ResponsiveAdmin = isMobile ? MobileAdmin : DesktopAdmin;
 
   return (
-    <ResponsiveAdmin
-      dataProvider={dataProvider}
-      authProvider={wrappedAuthProvider}
-      i18nProvider={i18nProvider}
-      store={store}
-      queryClient={queryClient}
-      loginPage={StartPage}
-      requireAuth
-      disableTelemetry={true}
-      {...rest}
-    />
+    <LocalDataOperationsProvider operations={localDataOperations}>
+      <ImportOperationsProvider operations={importOperations}>
+        <CustomerOperationsProvider operations={resolvedCustomerOperations}>
+          <CrmProviderCapabilitiesProvider
+            capabilities={dataProvider.capabilities}
+          >
+            <ResponsiveAdmin
+              dataProvider={dataProvider}
+              authProvider={wrappedAuthProvider}
+              i18nProvider={i18nProvider}
+              store={store}
+              queryClient={queryClient}
+              loginPage={StartPage}
+              requireAuth
+              disableTelemetry={true}
+              {...rest}
+            />
+          </CrmProviderCapabilitiesProvider>
+        </CustomerOperationsProvider>
+      </ImportOperationsProvider>
+    </LocalDataOperationsProvider>
   );
 };
 
@@ -245,6 +285,10 @@ const DesktopAdmin = (
 
       <CustomRoutes>
         <Route path={SettingsPage.path} element={<SettingsPage />} />
+        <Route
+          path={LocalDataToolsPage.path}
+          element={<LocalDataToolsPage />}
+        />
         <Route path={ImportPage.path} element={<ImportPage />} />
         <Route path={ChangelogPage.path} element={<ChangelogPage />} />
         <Route
@@ -252,9 +296,13 @@ const DesktopAdmin = (
           element={<DeletedCustomersPage />}
         />
       </CustomRoutes>
-      <Resource name="deals" {...deals} />
-      <Resource name="contacts" {...contacts} />
       <Resource name="companies" {...companies} />
+      <Resource name="contacts" {...contacts} />
+      <Resource name="deals" {...deals} />
+      <Resource name="follow_ups" {...followUps} />
+      <Resource name="reminders" {...reminders} />
+      <Resource name="deal_risks" />
+      <Resource name="deal_milestones" />
       <Resource name="contact_notes" />
       <Resource name="deal_notes" />
       <Resource name="tasks" />
@@ -302,6 +350,11 @@ const MobileAdmin = (
             path={SettingsPageMobile.path}
             element={<SettingsPageMobile />}
           />
+          <Route
+            path={LocalDataToolsPage.path}
+            element={<LocalDataToolsPage />}
+          />
+          <Route path={ImportPage.path} element={<ImportPage />} />
           <Route path={ChangelogPage.path} element={<ChangelogPage />} />
           <Route
             path={DeletedCustomersPage.path}
@@ -317,6 +370,11 @@ const MobileAdmin = (
           <Route path=":id/notes/:noteId" element={<NoteShowPage />} />
         </Resource>
         <Resource name="companies" {...companies} list={CompanyListMobile} />
+        <Resource name="deals" {...deals} />
+        <Resource name="follow_ups" {...followUps} />
+        <Resource name="reminders" {...reminders} />
+        <Resource name="deal_risks" />
+        <Resource name="deal_milestones" />
         <Resource name="tasks" list={MobileTasksList} />
       </Admin>
     </PersistQueryClientProvider>

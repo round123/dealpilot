@@ -159,6 +159,74 @@ export type Task = {
   sales_id?: Identifier;
 } & Pick<RaRecord, "id">;
 
+export type SocialAccount = {
+  owner_user_id?: Identifier;
+  company_id: Identifier;
+  contact_id?: Identifier | null;
+  platform: string;
+  raw_identifier: string;
+  normalized_identifier: string;
+  manually_bound: boolean;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
+export type FollowUp = {
+  owner_user_id?: Identifier;
+  company_id: Identifier;
+  deal_id?: Identifier | null;
+  type: "call" | "email" | "chat" | "visit" | "note" | "message";
+  note?: string | null;
+  message_body?: string | null;
+  message_direction?: "inbound" | "outbound" | null;
+  occurred_at: string;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
+export type Reminder = {
+  owner_user_id?: Identifier;
+  company_id: Identifier;
+  deal_id?: Identifier | null;
+  type: "fixed_time" | "waiting_reply" | "paused";
+  status:
+    | "pending"
+    | "completed"
+    | "snoozed"
+    | "ignored"
+    | "overdue"
+    | "replied";
+  due_at: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  last_notified_at?: string | null;
+  snooze_until?: string | null;
+  resolution?: string | null;
+  deletion_event_id?: string | null;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
+export type DealRisk = {
+  owner_user_id?: Identifier;
+  deal_id: Identifier;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: "open" | "handling" | "resolved" | "ignored";
+  handled_at?: string | null;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
+export type DealMilestone = {
+  owner_user_id?: Identifier;
+  deal_id: Identifier;
+  name: string;
+  due_date: string;
+  completed: boolean;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
 export type ActivityCompanyCreated = {
   type: typeof COMPANY_CREATED;
   company_id: Identifier;

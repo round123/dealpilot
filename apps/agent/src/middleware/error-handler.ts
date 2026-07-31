@@ -19,6 +19,7 @@ export function handleError(err: unknown, c: Context<AppEnv>) {
           code: err.code,
           message: err.message,
           details: err.details,
+          fields: err.fields,
           request_id: requestId,
         },
       },

@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { RotateCcw, Save } from "lucide-react";
+import { ChevronRight, DatabaseBackup, RotateCcw, Save } from "lucide-react";
 import type { RaRecord } from "ra-core";
 import {
   EditBase,
@@ -12,6 +12,7 @@ import {
 } from "ra-core";
 import { useCallback, useMemo } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
+import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -33,12 +34,15 @@ import {
   parseLocalizedConfigurationLabel,
   type ConfigurationLabelGroup,
 } from "../root/configurationLocalization";
+import { useLocalDataOperations } from "../providers/localDataOperations";
+import { LocalDataToolsPage } from "./LocalDataToolsPage";
 
 const SECTIONS = [
   {
     id: "branding",
     label: "crm.settings.sections.branding",
   },
+  { id: "local-data", label: "本地数据" },
   {
     id: "companies",
     label: "resources.companies.name",
@@ -194,6 +198,7 @@ const SettingsForm = () => {
 const SettingsFormFields = () => {
   const translate = useTranslate();
   const currencyChoices = useMemo(() => getCurrencyChoices(), []);
+  const localDataOperations = useLocalDataOperations();
   const {
     watch,
     setValue,
@@ -256,7 +261,9 @@ const SettingsFormFields = () => {
           <h1 className="text-2xl font-semibold px-3 mb-2">
             {translate("crm.settings.title")}
           </h1>
-          {SECTIONS.map((section) => (
+          {SECTIONS.filter(
+            (section) => section.id !== "local-data" || localDataOperations,
+          ).map((section) => (
             <button
               key={section.id}
               type="button"
@@ -275,6 +282,27 @@ const SettingsFormFields = () => {
 
       {/* Main content */}
       <div className="flex-1 min-w-0 max-w-2xl space-y-6">
+        {localDataOperations ? (
+          <Card id="local-data">
+            <CardContent className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <DatabaseBackup className="size-5 shrink-0" />
+                <div>
+                  <h2 className="text-lg font-semibold">本地数据</h2>
+                  <p className="text-sm text-muted-foreground">
+                    创建加密备份、恢复 SQLite 或导出全部业务数据
+                  </p>
+                </div>
+              </div>
+              <Button asChild type="button" variant="outline" size="icon">
+                <Link to={LocalDataToolsPage.path} aria-label="打开本地数据工具">
+                  <ChevronRight className="size-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
         {/* Branding */}
         <Card id="branding">
           <CardContent className="space-y-4">

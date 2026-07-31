@@ -11,6 +11,8 @@ export type SocialAccountId = EntityId<"SocialAccount">;
 export type DealId = EntityId<"Deal">;
 export type FollowUpId = EntityId<"FollowUp">;
 export type ReminderId = EntityId<"Reminder">;
+export type DealRiskId = EntityId<"DealRisk">;
+export type DealMilestoneId = EntityId<"DealMilestone">;
 
 export function toEntityId<Entity extends string>(
   value: string,
@@ -32,3 +34,5 @@ export const SocialAccountIdSchema = entityIdSchema("SocialAccount");
 export const DealIdSchema = entityIdSchema("Deal");
 export const FollowUpIdSchema = entityIdSchema("FollowUp");
 export const ReminderIdSchema = entityIdSchema("Reminder");
+export const DealRiskIdSchema = entityIdSchema("DealRisk");
+export const DealMilestoneIdSchema = entityIdSchema("DealMilestone");

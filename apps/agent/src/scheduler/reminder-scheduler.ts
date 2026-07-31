@@ -5,11 +5,16 @@ import { runReminderDeliverySweep } from "../services/reminder-service";
 let timer: ReturnType<typeof setInterval> | null = null;
 let sweepInFlight = false;
 
-async function checkReminders() {
+export interface ReminderSchedulerOptions {
+  intervalMs?: number;
+  sweep?: () => Promise<unknown>;
+}
+
+async function checkReminders(sweep: () => Promise<unknown>) {
   if (sweepInFlight) return;
   sweepInFlight = true;
   try {
-    await runReminderDeliverySweep(notify);
+    await sweep();
   } catch (error) {
     console.error("[reminder-scheduler] Sweep failed:", error);
   } finally {
@@ -17,10 +22,12 @@ async function checkReminders() {
   }
 }
 
-export function startReminderScheduler(): void {
+export function startReminderScheduler(options: ReminderSchedulerOptions = {}): void {
   if (timer) return;
-  timer = setInterval(checkReminders, REMINDER_CHECK_INTERVAL_MS);
-  void checkReminders();
+  const sweep = options.sweep ?? (() => runReminderDeliverySweep(notify));
+  const intervalMs = options.intervalMs ?? REMINDER_CHECK_INTERVAL_MS;
+  timer = setInterval(() => void checkReminders(sweep), intervalMs);
+  void checkReminders(sweep);
 }
 
 export function stopReminderScheduler(): void {

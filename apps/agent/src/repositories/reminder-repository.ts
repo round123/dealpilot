@@ -73,6 +73,8 @@ export async function updateReminderRecord(reminderId: string, updates: Reminder
 export function getPopupReminderCandidates() {
   return db.select({
     reminder: reminders,
+    customerName: customers.name,
+    projectName: projects.name,
     customerGrade: customers.grade,
     projectGrade: projects.grade,
   }).from(reminders)
@@ -90,10 +92,18 @@ export function findDueReminderDeliveries(now: string) {
     .innerJoin(customers, eq(reminders.customer_id, customers.id))
     .where(and(
       isNull(customers.deleted_at),
-      lte(reminders.due_at, now),
       or(
-        eq(reminders.status, ReminderStatus.PENDING),
-        and(eq(reminders.status, ReminderStatus.OVERDUE), isNull(reminders.last_notified_at)),
+        and(
+          lte(reminders.due_at, now),
+          or(
+            eq(reminders.status, ReminderStatus.PENDING),
+            and(eq(reminders.status, ReminderStatus.OVERDUE), isNull(reminders.last_notified_at)),
+          ),
+        ),
+        and(
+          eq(reminders.status, ReminderStatus.SNOOZED),
+          lte(reminders.snooze_until, now),
+        ),
       ),
     )).limit(100);
 }
@@ -118,7 +128,7 @@ export function markReminderOverdue(reminderId: string, notifiedAt: string | nul
     updated_at: new Date().toISOString(),
   }).where(and(
     eq(reminders.id, reminderId),
-    sql`${reminders.status} IN ('pending', 'overdue')`,
+    sql`${reminders.status} IN ('pending', 'snoozed', 'overdue')`,
   ));
 }
 

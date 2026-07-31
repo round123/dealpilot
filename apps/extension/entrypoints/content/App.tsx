@@ -18,7 +18,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { ChevronDown, Compass, AlertCircle, Clock, Bell } from "lucide-react";
 import { useExtensionStore } from "../../src/stores/extension-store";
-import { resolveMatch, bindMatch, fetchFollowUps, fetchRemindersByCustomer } from "../../src/lib/api-client";
+import { bindMatch, extensionErrorMessage, fetchFollowUps, fetchRemindersByCustomer, resolveMatch } from "../../src/lib/api-client";
 import { onConversationChange, type ConversationInfo } from "../../src/lib/platform-detect";
 import { CustomerCard } from "./components/customer-card";
 import { FollowUpMarker } from "./components/follow-up-marker";
@@ -26,6 +26,7 @@ import { ReminderSet } from "./components/reminder-set";
 import { LoadingState, UnsupportedState, NoMatchState, MultipleMatchState } from "./components/match-states";
 import type { FollowUp, Reminder } from "@dealpilot/shared";
 import { isOverdue, formatRelativeTime } from "@dealpilot/shared";
+import { openWorkbench } from "../../src/lib/workbench-links";
 
 /** 提醒类型图标 */
 const REMINDER_ICON = <Clock size={12} />;
@@ -74,6 +75,7 @@ const UniqueMatchContent: React.FC<{
         customer={customer as any}
         lastFollowUpAt={lastFu?.occurred_at ?? null}
         lastFollowUpNote={lastFu?.note ?? lastFu?.message_body ?? null}
+        onOpen={() => void openWorkbench({ customerId: customer.id })}
       />
       {reminders.length > 0 && <ReminderList reminders={reminders} />}
       <div style={{ borderTop: "1px solid var(--dp-color-border-default)" }}>
@@ -120,7 +122,7 @@ export const FloatApp: React.FC = () => {
         setReminders(rm.items.filter((r) => r.status !== "completed" && r.status !== "ignored"));
       }
     } catch (err) {
-      store.setError(err instanceof Error ? err.message : "匹配失败");
+      store.setError(extensionErrorMessage(err, "客户匹配失败，请重试"));
     }
   }, [store]);
 
@@ -144,7 +146,7 @@ export const FloatApp: React.FC = () => {
       });
       doMatch(store.conversation);
     } catch (err) {
-      store.setError(err instanceof Error ? err.message : "绑定失败");
+      store.setError(extensionErrorMessage(err, "客户绑定失败，请重试"));
     } finally {
       setBindLoading(false);
     }
@@ -176,7 +178,13 @@ export const FloatApp: React.FC = () => {
       {/* 顶部条 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--dp-space-2) var(--dp-space-3)", borderBottom: "1px solid var(--dp-color-border-default)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--dp-space-2)" }}>
-          <Compass size={16} style={{ color: "var(--dp-color-primary)" }} />
+          <button
+            onClick={() => void openWorkbench("home")}
+            title="打开工作台"
+            style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", display: "flex" }}
+          >
+            <Compass size={16} style={{ color: "var(--dp-color-primary)" }} />
+          </button>
           <span style={{ fontSize: "13px", fontWeight: 600 }}>DealPilot</span>
         </div>
         <button onClick={() => store.setExpanded(false)} style={{ border: "none", background: "transparent", cursor: "pointer", padding: "var(--dp-space-1)" }}>
@@ -189,7 +197,7 @@ export const FloatApp: React.FC = () => {
         {store.matchState === "loading" && <LoadingState />}
         {store.matchState === "unsupported" && <UnsupportedState />}
         {store.matchState === "none" && (
-          <NoMatchState conversation={store.conversation} onSearch={handleBind} bindSearch={bindSearch} setBindSearch={setBindSearch} bindLoading={bindLoading} />
+          <NoMatchState conversation={store.conversation} onSearch={handleBind} bindSearch={bindSearch} setBindSearch={setBindSearch} bindLoading={bindLoading} onCreate={() => void openWorkbench("new-customer")} />
         )}
         {store.matchState === "multiple" && (
           <MultipleMatchState candidates={store.candidates} onSelect={handleBind} bindLoading={bindLoading} />

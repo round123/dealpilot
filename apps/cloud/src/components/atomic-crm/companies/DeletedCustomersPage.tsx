@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCustomerOperations } from "../providers/CustomerOperationsContext";
 
 import {
   customerCacheKeys,
@@ -21,12 +22,13 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export const DeletedCustomersPage = () => {
   const translate = useTranslate();
+  const operations = useCustomerOperations();
   const [page, setPage] = useState(1);
   const restoreMutation = useRestoreCustomer();
   const query = useQuery({
     queryKey: customerCacheKeys.deletedList(page, DEFAULT_PAGE_SIZE),
     queryFn: ({ signal }) =>
-      loadDeletedCustomers(page, DEFAULT_PAGE_SIZE, signal),
+      loadDeletedCustomers(operations, page, DEFAULT_PAGE_SIZE, signal),
     retry: false,
   });
   const pageCount = Math.max(

@@ -15,7 +15,9 @@ import {
   cleanupContactForEdit,
   defaultEmailJsonb,
   defaultPhoneJsonb,
+  applyContactCapabilities,
 } from "./contactModel";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export interface ContactEditSheetProps {
   open: boolean;
@@ -28,13 +30,16 @@ export const ContactEditSheet = ({
   onOpenChange,
   contactId,
 }: ContactEditSheetProps) => {
+  const capabilities = useCrmProviderCapabilities();
   return (
     <EditSheet
       resource="contacts"
       id={contactId}
       open={open}
       onOpenChange={onOpenChange}
-      transform={cleanupContactForEdit}
+      transform={(data) =>
+        applyContactCapabilities(cleanupContactForEdit(data), capabilities)
+      }
       defaultValues={{
         email_jsonb: defaultEmailJsonb,
         phone_jsonb: defaultPhoneJsonb,

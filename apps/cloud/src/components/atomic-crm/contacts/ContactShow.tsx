@@ -32,6 +32,7 @@ import type { Contact } from "../types";
 import { Avatar } from "./Avatar";
 import { ContactAside } from "./ContactAside";
 import { MobileBackButton } from "../misc/MobileBackButton";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactShow = (props: ShowBaseProps = {}) => {
   const isMobile = useIsMobile();
@@ -57,6 +58,7 @@ export const ContactShow = (props: ShowBaseProps = {}) => {
 const ContactShowContentMobile = () => {
   const translate = useTranslate();
   const { defaultTitle, record, isPending } = useShowContext<Contact>();
+  const capabilities = useCrmProviderCapabilities();
   const [noteCreateOpen, setNoteCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   if (isPending || !record) return null;
@@ -67,11 +69,13 @@ const ContactShowContentMobile = () => {
     <>
       {/* We need to repeat the note creation sheet here to support the note
       create button that is rendered when there are no notes. */}
-      <NoteCreateSheet
-        open={noteCreateOpen}
-        onOpenChange={setNoteCreateOpen}
-        contact_id={record.id}
-      />
+      {capabilities.contacts.notes ? (
+        <NoteCreateSheet
+          open={noteCreateOpen}
+          onOpenChange={setNoteCreateOpen}
+          contact_id={record.id}
+        />
+      ) : null}
       <ContactEditSheet
         open={editOpen}
         onOpenChange={setEditOpen}
@@ -133,69 +137,86 @@ const ContactShowContentMobile = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="notes" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-10">
-            <TabsTrigger value="notes">
-              {translate("resources.notes.name", { smart_count: 2 })}
-            </TabsTrigger>
-            <TabsTrigger value="tasks">
-              {translate("crm.common.task_count", {
-                smart_count: taskCount ?? 0,
-              })}
-            </TabsTrigger>
+        <Tabs
+          defaultValue={capabilities.contacts.notes ? "notes" : "details"}
+          className="w-full"
+        >
+          <TabsList
+            className={`grid w-full h-10 ${
+              capabilities.contacts.notes ? "grid-cols-3" : "grid-cols-1"
+            }`}
+          >
+            {capabilities.contacts.notes ? (
+              <TabsTrigger value="notes">
+                {translate("resources.notes.name", { smart_count: 2 })}
+              </TabsTrigger>
+            ) : null}
+            {capabilities.contacts.tasks ? (
+              <TabsTrigger value="tasks">
+                {translate("crm.common.task_count", {
+                  smart_count: taskCount ?? 0,
+                })}
+              </TabsTrigger>
+            ) : null}
             <TabsTrigger value="details">
               {translate("crm.common.details")}
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="notes" className="mt-2">
-            <InfiniteListBase
-              resource="contact_notes"
-              filter={{ contact_id: record.id }}
-              sort={{ field: "date", order: "DESC" }}
-              perPage={25}
-              disableSyncWithLocation
-              storeKey={false}
-              empty={
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <p className="text-muted-foreground mb-4">
-                    {translate("resources.notes.empty")}
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => setNoteCreateOpen(true)}
-                  >
-                    {translate("resources.notes.action.add")}
-                  </Button>
-                </div>
-              }
-              loading={false}
-              error={false}
-              queryOptions={{
-                onError: () => {
-                  /** override to hide notification as error case is handled by NotesIteratorMobile */
-                },
-              }}
-            >
-              <NotesIteratorMobile contactId={record.id} showStatus />
-            </InfiniteListBase>
-          </TabsContent>
+          {capabilities.contacts.notes ? (
+            <TabsContent value="notes" className="mt-2">
+              <InfiniteListBase
+                resource="contact_notes"
+                filter={{ contact_id: record.id }}
+                sort={{ field: "date", order: "DESC" }}
+                perPage={25}
+                disableSyncWithLocation
+                storeKey={false}
+                empty={
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <p className="text-muted-foreground mb-4">
+                      {translate("resources.notes.empty")}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setNoteCreateOpen(true)}
+                    >
+                      {translate("resources.notes.action.add")}
+                    </Button>
+                  </div>
+                }
+                loading={false}
+                error={false}
+                queryOptions={{
+                  onError: () => {
+                    /** override to hide notification as error case is handled by NotesIteratorMobile */
+                  },
+                }}
+              >
+                <NotesIteratorMobile contactId={record.id} showStatus />
+              </InfiniteListBase>
+            </TabsContent>
+          ) : null}
 
-          <TabsContent value="tasks" className="mt-4">
-            <ContactTasksList />
-          </TabsContent>
+          {capabilities.contacts.tasks ? (
+            <TabsContent value="tasks" className="mt-4">
+              <ContactTasksList />
+            </TabsContent>
+          ) : null}
 
           <TabsContent value="details" className="mt-4">
             <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  {translate("resources.notes.fields.status")}
-                </h3>
-                <Separator />
-                <div className="mt-3">
-                  <ContactStatusSelector />
+              {capabilities.contacts.status ? (
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {translate("resources.notes.fields.status")}
+                  </h3>
+                  <Separator />
+                  <div className="mt-3">
+                    <ContactStatusSelector />
+                  </div>
                 </div>
-              </div>
+              ) : null}
               <div>
                 <h3 className="text-lg font-semibold">
                   {translate(
@@ -207,26 +228,30 @@ const ContactShowContentMobile = () => {
                   <ContactPersonalInfo />
                 </div>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold">
-                  {translate(
-                    "resources.contacts.field_categories.background_info",
-                  )}
-                </h3>
-                <Separator />
-                <div className="mt-3">
-                  <ContactBackgroundInfo />
+              {capabilities.contacts.extendedProfile ? (
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {translate(
+                      "resources.contacts.field_categories.background_info",
+                    )}
+                  </h3>
+                  <Separator />
+                  <div className="mt-3">
+                    <ContactBackgroundInfo />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold">
-                  {translate("resources.tags.name", { smart_count: 2 })}
-                </h3>
-                <Separator />
-                <div className="mt-3">
-                  <TagsListEdit />
+              ) : null}
+              {capabilities.contacts.tags ? (
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {translate("resources.tags.name", { smart_count: 2 })}
+                  </h3>
+                  <Separator />
+                  <div className="mt-3">
+                    <TagsListEdit />
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           </TabsContent>
         </Tabs>
@@ -238,6 +263,7 @@ const ContactShowContentMobile = () => {
 const ContactShowContent = () => {
   const translate = useTranslate();
   const { record, isPending } = useShowContext<Contact>();
+  const capabilities = useCrmProviderCapabilities();
   if (isPending || !record) return null;
 
   return (
@@ -280,19 +306,25 @@ const ContactShowContent = () => {
                 </ReferenceField>
               </div>
             </div>
-            <InfiniteListBase
-              resource="contact_notes"
-              filter={{ contact_id: record.id }}
-              sort={{ field: "date", order: "DESC" }}
-              perPage={25}
-              disableSyncWithLocation
-              storeKey={false}
-              empty={
-                <NoteCreate reference="contacts" showStatus className="mt-4" />
-              }
-            >
-              <NotesIterator reference="contacts" showStatus />
-            </InfiniteListBase>
+            {capabilities.contacts.notes ? (
+              <InfiniteListBase
+                resource="contact_notes"
+                filter={{ contact_id: record.id }}
+                sort={{ field: "date", order: "DESC" }}
+                perPage={25}
+                disableSyncWithLocation
+                storeKey={false}
+                empty={
+                  <NoteCreate
+                    reference="contacts"
+                    showStatus
+                    className="mt-4"
+                  />
+                }
+              >
+                <NotesIterator reference="contacts" showStatus />
+              </InfiniteListBase>
+            ) : null}
           </CardContent>
         </Card>
       </div>

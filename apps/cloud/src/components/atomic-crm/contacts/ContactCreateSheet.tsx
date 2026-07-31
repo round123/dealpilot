@@ -5,7 +5,9 @@ import {
   cleanupContactForCreate,
   defaultEmailJsonb,
   defaultPhoneJsonb,
+  applyContactCapabilities,
 } from "./contactModel";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export interface ContactCreateSheetProps {
   open: boolean;
@@ -18,6 +20,7 @@ export const ContactCreateSheet = ({
 }: ContactCreateSheetProps) => {
   const { identity } = useGetIdentity();
   const translate = useTranslate();
+  const capabilities = useCrmProviderCapabilities();
   return (
     <CreateSheet
       resource="contacts"
@@ -27,7 +30,9 @@ export const ContactCreateSheet = ({
         email_jsonb: defaultEmailJsonb,
         phone_jsonb: defaultPhoneJsonb,
       }}
-      transform={cleanupContactForCreate}
+      transform={(data) =>
+        applyContactCapabilities(cleanupContactForCreate(data), capabilities)
+      }
       open={open}
       onOpenChange={onOpenChange}
     >

@@ -18,7 +18,15 @@ describe("MobileNavigation More menu", () => {
 
     await expect
       .element(
-        screen.getByRole("menuitem", { name: "resources.companies.name" }),
+        screen.getByRole("menuitem", { name: "resources.contacts.name" }),
+      )
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "resources.deals.name" }))
+      .toBeVisible();
+    await expect
+      .element(
+        screen.getByRole("menuitem", { name: "resources.follow_ups.name" }),
       )
       .toBeVisible();
     await expect

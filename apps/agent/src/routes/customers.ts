@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import {
   CustomerCreateSchema,
+  CustomerDeletedListQuerySchema,
   CustomerListQuerySchema,
   CustomerMergeSchema,
   CustomerUpdateSchema,
@@ -10,11 +10,13 @@ import {
   createCustomer,
   getCustomer,
   listCustomers,
+  listDeletedCustomers,
   mergeCustomers,
   restoreCustomer,
   softDeleteCustomer,
   updateCustomer,
 } from "../services/customer-service";
+import { validateJson } from "../middleware/validation";
 
 const app = new Hono();
 
@@ -30,7 +32,15 @@ app.get("/customers", async (c) => {
   return c.json(await listCustomers(query));
 });
 
-app.post("/customers", zValidator("json", CustomerCreateSchema), async (c) => {
+app.get("/customers/deleted", async (c) => {
+  const query = CustomerDeletedListQuerySchema.parse({
+    cursor: c.req.query("cursor"),
+    limit: c.req.query("limit") ?? "20",
+  });
+  return c.json(await listDeletedCustomers(query));
+});
+
+app.post("/customers", validateJson(CustomerCreateSchema), async (c) => {
   return c.json(await createCustomer(c.req.valid("json")), 201);
 });
 
@@ -38,7 +48,7 @@ app.get("/customers/:id", async (c) => {
   return c.json(await getCustomer(c.req.param("id")));
 });
 
-app.put("/customers/:id", zValidator("json", CustomerUpdateSchema), async (c) => {
+app.put("/customers/:id", validateJson(CustomerUpdateSchema), async (c) => {
   return c.json(await updateCustomer(c.req.param("id"), c.req.valid("json")));
 });
 
@@ -51,7 +61,7 @@ app.post("/customers/:id/restore", async (c) => {
   return c.json(await restoreCustomer(c.req.param("id")));
 });
 
-app.post("/customers/merge", zValidator("json", CustomerMergeSchema), async (c) => {
+app.post("/customers/merge", validateJson(CustomerMergeSchema), async (c) => {
   return c.json(await mergeCustomers(c.req.valid("json")));
 });
 

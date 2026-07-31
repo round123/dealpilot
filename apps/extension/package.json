@@ -8,9 +8,11 @@
     "build": "wxt build",
     "zip": "wxt zip",
     "type-check": "wxt prepare && tsc --noEmit",
+    "test": "bun test src",
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
+    "@dealpilot/api-client": "workspace:*",
     "@dealpilot/shared": "workspace:*",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-dialog": "^1.1.0",

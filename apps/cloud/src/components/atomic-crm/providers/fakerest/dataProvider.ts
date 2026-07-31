@@ -13,8 +13,13 @@ import type {
   Contact,
   ContactNote,
   Deal,
+  DealMilestone,
   DealNote,
+  DealRisk,
+  FollowUp,
+  Reminder,
   Sale,
+  SocialAccount,
   Task,
 } from "../../types";
 import type { ConfigurationContextValue } from "../../root/ConfigurationContext";
@@ -29,7 +34,15 @@ import {
 } from "./authProvider";
 import generateData from "./dataGenerator";
 import type { Db } from "./dataGenerator/types";
+import {
+  getBrowserDemoDataStorage,
+  loadDemoData,
+  type DemoDataStorage,
+  withDemoDataPersistence,
+} from "./demoDataPersistence";
 import { withSupabaseFilterAdapter } from "./internal/supabaseAdapter";
+import { getMilestoneReminderDueAt, milestoneReminderKey } from "./domainRules";
+import { FULL_CRM_CAPABILITIES } from "../capabilities";
 
 const TASK_MARKED_AS_DONE = "TASK_MARKED_AS_DONE";
 const TASK_MARKED_AS_UNDONE = "TASK_MARKED_AS_UNDONE";
@@ -115,6 +128,14 @@ export interface CreateFakeRestDataProviderOptions {
   latency?: number;
   authProvider?: Pick<typeof defaultAuthProvider, "getIdentity">;
   silent?: boolean;
+  persistence?:
+    | false
+    | {
+        storage?: DemoDataStorage;
+        storageKey?: string;
+        version?: number;
+        seed?: () => Db;
+      };
 }
 
 const processConfigLogo = async (logo: any): Promise<string> => {
@@ -138,12 +159,36 @@ const preserveAttachmentMimeType = <
 });
 
 export const createDataProvider = ({
-  db = generateData(),
+  db,
   latency = 300,
   authProvider,
   silent = false,
+  persistence,
 }: CreateFakeRestDataProviderOptions = {}): CrmDataProvider => {
-  const baseDataProvider = fakeRestDataProvider(db, !silent, latency);
+  const persistenceOptions =
+    persistence === false || (db !== undefined && persistence === undefined)
+      ? undefined
+      : (persistence ?? {});
+  const storage = persistenceOptions?.storage ?? getBrowserDemoDataStorage();
+  const seed = persistenceOptions?.seed ?? (() => db ?? generateData());
+  const initialDb =
+    persistenceOptions && storage
+      ? loadDemoData({
+          storage,
+          seed,
+          storageKey: persistenceOptions.storageKey,
+          version: persistenceOptions.version,
+        })
+      : (db ?? seed());
+  const rawDataProvider = fakeRestDataProvider(initialDb, !silent, latency);
+  const baseDataProvider =
+    persistenceOptions && storage
+      ? withDemoDataPersistence(rawDataProvider, initialDb, {
+          storage,
+          storageKey: persistenceOptions.storageKey,
+          version: persistenceOptions.version,
+        })
+      : rawDataProvider;
   let taskUpdateType = TASK_DONE_NOT_CHANGED;
   const getIdentity = async () =>
     authProvider?.getIdentity?.() ?? defaultAuthProvider.getIdentity?.();
@@ -167,6 +212,8 @@ export const createDataProvider = ({
 
   const dataProviderWithCustomMethod: CrmDataProvider = {
     ...baseDataProvider,
+    capabilities: FULL_CRM_CAPABILITIES,
+    supportsPermanentDealDeletion: true,
     async getList(resource: string, params: any) {
       if (resource === "activity_log") {
         const { filter = {}, pagination } = params;
@@ -517,8 +564,137 @@ export const createDataProvider = ({
         resource: "deal_notes",
         beforeSave: async (params) => preserveAttachmentMimeType(params),
       } satisfies ResourceCallbacks<DealNote>,
+      {
+        resource: "social_accounts",
+        beforeCreate: async (params) => {
+          const timestamp = new Date().toISOString();
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              manually_bound: params.data.manually_bound ?? false,
+              created_at: params.data.created_at ?? timestamp,
+              updated_at: timestamp,
+            },
+          };
+        },
+        beforeUpdate: async (params) => ({
+          ...params,
+          data: { ...params.data, updated_at: new Date().toISOString() },
+        }),
+      } satisfies ResourceCallbacks<SocialAccount>,
+      {
+        resource: "follow_ups",
+        beforeCreate: async (params) => {
+          const timestamp = new Date().toISOString();
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              created_at: params.data.created_at ?? timestamp,
+              updated_at: timestamp,
+            },
+          };
+        },
+        beforeUpdate: async (params) => ({
+          ...params,
+          data: { ...params.data, updated_at: new Date().toISOString() },
+        }),
+      } satisfies ResourceCallbacks<FollowUp>,
+      {
+        resource: "reminders",
+        beforeCreate: async (params) => {
+          const timestamp = new Date().toISOString();
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              status: params.data.status ?? "pending",
+              priority: params.data.priority ?? "normal",
+              created_at: params.data.created_at ?? timestamp,
+              updated_at: timestamp,
+            },
+          };
+        },
+        beforeUpdate: async (params) => ({
+          ...params,
+          data: { ...params.data, updated_at: new Date().toISOString() },
+        }),
+      } satisfies ResourceCallbacks<Reminder>,
+      {
+        resource: "deal_risks",
+        beforeCreate: async (params) => {
+          const timestamp = new Date().toISOString();
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              status: params.data.status ?? "open",
+              created_at: params.data.created_at ?? timestamp,
+              updated_at: timestamp,
+            },
+          };
+        },
+        beforeUpdate: async (params) => ({
+          ...params,
+          data: { ...params.data, updated_at: new Date().toISOString() },
+        }),
+      } satisfies ResourceCallbacks<DealRisk>,
+      {
+        resource: "deal_milestones",
+        beforeCreate: async (params) => {
+          const timestamp = new Date().toISOString();
+          return {
+            ...params,
+            data: {
+              ...params.data,
+              completed: params.data.completed ?? false,
+              created_at: params.data.created_at ?? timestamp,
+              updated_at: timestamp,
+            },
+          };
+        },
+        afterCreate: async (result, provider) => {
+          const resolution = milestoneReminderKey(result.data);
+          const existing = await provider.getList<Reminder>("reminders", {
+            filter: { resolution },
+            pagination: { page: 1, perPage: 1 },
+            sort: { field: "id", order: "ASC" },
+          });
+          if (existing.data.length > 0) return result;
+
+          const { data: deal } = await provider.getOne<Deal>("deals", {
+            id: result.data.deal_id,
+          });
+          const timestamp = new Date().toISOString();
+          await provider.create<Reminder>("reminders", {
+            data: {
+              company_id: deal.company_id,
+              deal_id: deal.id,
+              owner_user_id: deal.sales_id,
+              type: "fixed_time",
+              status: "pending",
+              due_at: getMilestoneReminderDueAt(result.data.due_date),
+              priority: "normal",
+              last_notified_at: null,
+              snooze_until: null,
+              resolution,
+              deletion_event_id: null,
+              created_at: timestamp,
+              updated_at: timestamp,
+            } as Reminder,
+          });
+          return result;
+        },
+        beforeUpdate: async (params) => ({
+          ...params,
+          data: { ...params.data, updated_at: new Date().toISOString() },
+        }),
+      } satisfies ResourceCallbacks<DealMilestone>,
     ],
   ) as CrmDataProvider;
+
+  dataProvider.capabilities = FULL_CRM_CAPABILITIES;
 
   return dataProvider;
 };

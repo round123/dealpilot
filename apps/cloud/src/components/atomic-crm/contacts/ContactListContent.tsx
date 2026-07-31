@@ -22,6 +22,7 @@ import { formatRelativeDate } from "../misc/RelativeDate";
 import type { Contact } from "../types";
 import { Avatar } from "./Avatar";
 import { TagsList } from "./TagsList";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 export const ContactListContent = () => {
   const translate = useTranslate();
@@ -105,6 +106,7 @@ const ContactItemContent = ({
   handleToggleItem: (id: Identifier, event: MouseEvent) => void;
 }) => {
   const translate = useTranslate();
+  const capabilities = useCrmProviderCapabilities();
   const [locale = "zh-CN"] = useLocaleState();
   const { selectedIds } = useListContext<Contact>();
   const lastActivity = contact.last_seen
@@ -131,7 +133,9 @@ const ContactItemContent = ({
           <div className="font-medium">
             {`${contact.first_name} ${contact.last_name ?? ""}`}
           </div>
-          {contact.title || contact.company_id != null || contact.nb_tasks ? (
+          {contact.title ||
+          contact.company_id != null ||
+          (capabilities.contacts.tasks && contact.nb_tasks) ? (
             <div className="text-sm text-muted-foreground">
               {contact.title && contact.company_id != null
                 ? `${translate("resources.contacts.position_at", {
@@ -147,13 +151,13 @@ const ContactItemContent = ({
                   <TextField source="name" />
                 </ReferenceField>
               )}
-              {contact.nb_tasks
+              {capabilities.contacts.tasks && contact.nb_tasks
                 ? ` - ${translate("crm.common.task_count", {
                     smart_count: contact.nb_tasks,
                   })}`
                 : ""}
               &nbsp;&nbsp;
-              <TagsList />
+              {capabilities.contacts.tags ? <TagsList /> : null}
             </div>
           ) : null}
         </div>
@@ -166,7 +170,9 @@ const ContactItemContent = ({
               {translate("crm.common.last_activity_with_date", {
                 date: lastActivity,
               })}{" "}
-              <Status status={contact.status} />
+              {capabilities.contacts.status ? (
+                <Status status={contact.status} />
+              ) : null}
             </div>
           </div>
         )}
@@ -249,6 +255,7 @@ export const ContactListContentMobile = () => {
 
 const ContactItemContentMobile = ({ contact }: { contact: Contact }) => {
   const translate = useTranslate();
+  const capabilities = useCrmProviderCapabilities();
   return (
     <Link
       to={`/contacts/${contact.id}/show`}
@@ -261,7 +268,9 @@ const ContactItemContentMobile = ({ contact }: { contact: Contact }) => {
             <div className="font-medium">
               <RecordRepresentation />
             </div>
-            <Status status={contact.status} />
+            {capabilities.contacts.status ? (
+              <Status status={contact.status} />
+            ) : null}
           </div>
           <div className="text-sm text-muted-foreground">
             <div className="flex flex-col gap-1">
@@ -281,7 +290,7 @@ const ContactItemContentMobile = ({ contact }: { contact: Contact }) => {
                   </ReferenceField>
                 )}
               </span>
-              {contact.nb_tasks ? (
+              {capabilities.contacts.tasks && contact.nb_tasks ? (
                 <span>
                   {translate("crm.common.task_count", {
                     smart_count: contact.nb_tasks,

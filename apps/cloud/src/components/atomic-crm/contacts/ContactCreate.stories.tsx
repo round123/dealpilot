@@ -2,7 +2,7 @@ import type { Meta } from "@storybook/react-vite";
 
 import { ContactCreate } from "./ContactCreate";
 import { buildContact, StoryWrapper } from "@/test/StoryWrapper";
-import type { DataProvider } from "ra-core";
+import type { CrmDataProvider } from "../providers/types";
 
 const meta = {
   title: "Atomic CRM/Contacts/Contact Create",
@@ -20,7 +20,7 @@ export const ContactCreateBasic = ({
   dataProvider = {},
   silent,
 }: {
-  dataProvider?: Partial<DataProvider>;
+  dataProvider?: Partial<CrmDataProvider>;
   silent?: boolean;
 }) => (
   <StoryWrapper

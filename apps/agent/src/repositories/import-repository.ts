@@ -16,11 +16,23 @@ export interface ImportCustomerRow {
   phone: string | null;
 }
 
-export async function findDuplicateCustomer(name: string, email: string | null) {
+export interface ImportJobMetadata {
+  fileName: string;
+  totalRows: number;
+  validRows: number;
+  failedRows: number;
+  duplicateCount: number;
+}
+
+export async function findDuplicateCustomer(
+  name: string,
+  email: string | null,
+) {
   const match = email
     ? or(eq(customers.name, name), eq(contacts.email, email))
     : eq(customers.name, name);
-  const [existing] = await db.select({ customer: customers })
+  const [existing] = await db
+    .select({ customer: customers })
     .from(customers)
     .leftJoin(contacts, eq(contacts.customer_id, customers.id))
     .where(and(isNull(customers.deleted_at), match))
@@ -28,33 +40,33 @@ export async function findDuplicateCustomer(name: string, email: string | null) 
   return existing?.customer;
 }
 
-export async function insertImportJob(input: {
-  id: string;
-  fileName: string;
-  totalRows: number;
-  validRows: number;
-  failedRows: number;
-  duplicateCount: number;
-}) {
-  await db.insert(import_jobs).values({
-    id: input.id,
-    file_name: input.fileName,
-    total_rows: input.totalRows,
-    valid_rows: input.validRows,
-    failed_rows: input.failedRows,
-    duplicate_count: input.duplicateCount,
-    status: "previewing",
-  });
-}
-
 export async function findImportJob(jobId: string) {
-  const [job] = await db.select().from(import_jobs)
-    .where(eq(import_jobs.id, jobId)).limit(1);
+  const [job] = await db
+    .select()
+    .from(import_jobs)
+    .where(eq(import_jobs.id, jobId))
+    .limit(1);
   return job;
 }
 
-export async function commitImportRows(jobId: string, rows: ImportCustomerRow[]) {
-  return db.transaction(async (tx) => {
+export function commitImportRows(
+  jobId: string,
+  rows: ImportCustomerRow[],
+  job: ImportJobMetadata,
+) {
+  return db.transaction((tx) => {
+    tx.insert(import_jobs)
+      .values({
+        id: jobId,
+        file_name: job.fileName,
+        total_rows: job.totalRows,
+        valid_rows: job.validRows,
+        failed_rows: job.failedRows,
+        duplicate_count: job.duplicateCount,
+        status: "previewing",
+      })
+      .run();
+
     let success = 0;
     let failed = 0;
     let skipped = 0;
@@ -70,42 +82,60 @@ export async function commitImportRows(jobId: string, rows: ImportCustomerRow[])
         continue;
       }
       if (row.action === "merge") {
-        const [target] = await tx.select().from(customers)
-          .where(eq(customers.id, row.targetCustomerId!)).limit(1);
-        if (!target) throw new Error(`Merge target ${row.targetCustomerId} not found`);
-        await tx.update(customers).set({
-          company: target.company ?? row.company,
-          country: target.country ?? row.country,
-          source: target.source ?? row.source,
-          updated_at: new Date().toISOString(),
-        }).where(eq(customers.id, target.id));
+        const [target] = tx
+          .select()
+          .from(customers)
+          .where(eq(customers.id, row.targetCustomerId!))
+          .limit(1)
+          .all();
+        if (!target)
+          throw new Error(`Merge target ${row.targetCustomerId} not found`);
+        tx.update(customers)
+          .set({
+            company: target.company ?? row.company,
+            country: target.country ?? row.country,
+            source: target.source ?? row.source,
+            updated_at: new Date().toISOString(),
+          })
+          .where(eq(customers.id, target.id))
+          .run();
         duplicates++;
         continue;
       }
 
       const customerId = crypto.randomUUID();
-      await tx.insert(customers).values({
-        id: customerId,
-        name: row.name,
-        company: row.company,
-        country: row.country,
-        source: row.source,
-        grade: row.grade,
-        status: "active",
-      });
+      const importedAt = new Date().toISOString();
+      tx.insert(customers)
+        .values({
+          id: customerId,
+          name: row.name,
+          company: row.company,
+          country: row.country,
+          source: row.source,
+          grade: row.grade,
+          status: "active",
+          created_at: importedAt,
+          updated_at: importedAt,
+        })
+        .run();
       if (row.contactName || row.email || row.phone) {
-        await tx.insert(contacts).values({
-          customer_id: customerId,
-          name: row.contactName ?? row.name,
-          email: row.email,
-          phone: row.phone,
-        });
+        tx.insert(contacts)
+          .values({
+            customer_id: customerId,
+            name: row.contactName ?? row.name,
+            email: row.email,
+            phone: row.phone,
+            created_at: importedAt,
+          })
+          .run();
       }
       success++;
     }
 
-    await tx.update(import_jobs).set({ status: "committed" })
-      .where(eq(import_jobs.id, jobId));
+    tx.update(import_jobs)
+      .set({ status: "committed" })
+      .where(eq(import_jobs.id, jobId))
+      .run();
     return { success, failed, skipped, duplicates };
   });
 }
