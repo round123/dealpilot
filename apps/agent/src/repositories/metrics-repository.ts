@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { getRawDb } from "../db/client";
 
 const AUTO_MATCH_EVENT = "match.auto_resolved";
+const MATCH_CONFIRMED_EVENT = "match.auto_confirmed";
 const MATCH_CORRECTION_EVENT = "match.auto_corrected";
 
 export interface RollingUsageMetricCounts {
@@ -9,8 +10,8 @@ export interface RollingUsageMetricCounts {
   windowEnd: string;
   onTimeCompleted: number;
   dueReminders: number;
-  correctAutomaticMatches: number;
-  automaticMatches: number;
+  confirmedAutomaticMatches: number;
+  evaluatedAutomaticMatches: number;
   handledReminders: number;
   deliveredReminders: number;
 }
@@ -28,7 +29,8 @@ export function getRollingUsageMetricCounts(
       COUNT(*) AS due_reminders,
       COALESCE(SUM(CASE
         WHEN status = 'completed'
-          AND julianday(updated_at) <= julianday(due_at, '+24 hours')
+          AND completed_at IS NOT NULL
+          AND julianday(completed_at) <= julianday(due_at, '+24 hours')
         THEN 1 ELSE 0 END), 0) AS on_time_completed
     FROM reminders
     WHERE due_at >= ? AND due_at <= ?
@@ -41,10 +43,10 @@ export function getRollingUsageMetricCounts(
     SELECT
       COUNT(*) AS delivered_reminders,
       COALESCE(SUM(CASE
-        WHEN status IN ('completed', 'ignored') OR snooze_until IS NOT NULL
+        WHEN handled_at IS NOT NULL
         THEN 1 ELSE 0 END), 0) AS handled_reminders
     FROM reminders
-    WHERE last_notified_at >= ? AND last_notified_at <= ?
+    WHERE delivered_at >= ? AND delivered_at <= ?
   `).get(windowStart, windowEnd) as {
     delivered_reminders: number;
     handled_reminders: number;
@@ -52,35 +54,28 @@ export function getRollingUsageMetricCounts(
 
   const matchCounts = raw.query(`
     SELECT
-      COUNT(*) AS automatic_matches,
-      COALESCE(SUM(CASE WHEN EXISTS (
-        SELECT 1 FROM local_events correction
-        WHERE correction.event_type = ?
-          AND correction.entity_id = automatic.entity_id
-          AND correction.occurred_at >= ?
-          AND correction.occurred_at <= ?
-      ) THEN 1 ELSE 0 END), 0) AS corrected_matches
-    FROM local_events automatic
-    WHERE automatic.event_type = ?
-      AND automatic.occurred_at >= ?
-      AND automatic.occurred_at <= ?
+      COUNT(*) AS evaluated_matches,
+      COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0)
+        AS confirmed_matches
+    FROM local_events
+    WHERE event_type IN (?, ?)
+      AND occurred_at >= ?
+      AND occurred_at <= ?
   `).get(
+    MATCH_CONFIRMED_EVENT,
+    MATCH_CONFIRMED_EVENT,
     MATCH_CORRECTION_EVENT,
     windowStart,
     windowEnd,
-    AUTO_MATCH_EVENT,
-    windowStart,
-    windowEnd,
-  ) as { automatic_matches: number; corrected_matches: number };
+  ) as { evaluated_matches: number; confirmed_matches: number };
 
   return {
     windowStart,
     windowEnd,
     onTimeCompleted: Number(reminderCounts.on_time_completed),
     dueReminders: Number(reminderCounts.due_reminders),
-    correctAutomaticMatches:
-      Number(matchCounts.automatic_matches) - Number(matchCounts.corrected_matches),
-    automaticMatches: Number(matchCounts.automatic_matches),
+    confirmedAutomaticMatches: Number(matchCounts.confirmed_matches),
+    evaluatedAutomaticMatches: Number(matchCounts.evaluated_matches),
     handledReminders: Number(handlingCounts.handled_reminders),
     deliveredReminders: Number(handlingCounts.delivered_reminders),
   };
@@ -100,7 +95,7 @@ export function recordAutomaticMatchObservation(
   );
 }
 
-export function recordAutomaticMatchCorrection(
+export function recordAutomaticMatchEvaluation(
   platform: string,
   normalizedIdentifier: string,
   customerId: string,
@@ -116,8 +111,22 @@ export function recordAutomaticMatchCorrection(
   if (!automatic) return;
 
   const originalCustomerHash = parseMatchedCustomerHash(automatic.metadata);
-  if (originalCustomerHash === sensitiveValueHash(customerId)) return;
-  upsertConversationEvent(MATCH_CORRECTION_EVENT, hash, occurredAt);
+  if (!originalCustomerHash) return;
+
+  const selectedCustomerHash = sensitiveValueHash(customerId);
+  const eventType = originalCustomerHash === selectedCustomerHash
+    ? MATCH_CONFIRMED_EVENT
+    : MATCH_CORRECTION_EVENT;
+  const oppositeEventType = eventType === MATCH_CONFIRMED_EVENT
+    ? MATCH_CORRECTION_EVENT
+    : MATCH_CONFIRMED_EVENT;
+
+  const transaction = raw.transaction(() => {
+    raw.query("DELETE FROM local_events WHERE event_type = ? AND entity_id = ?")
+      .run(oppositeEventType, hash);
+    upsertConversationEvent(eventType, hash, occurredAt);
+  });
+  transaction();
 }
 
 function upsertConversationEvent(

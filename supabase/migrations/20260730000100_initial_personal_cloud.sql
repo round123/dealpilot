@@ -1319,7 +1319,7 @@ revoke all on table public.customer_purge_jobs
 
 grant usage on schema public to authenticated;
 grant usage on schema public to service_role;
-grant select, update on table public.companies to service_role;
+grant select, insert, update, delete on table public.companies to service_role;
 grant select, insert, update, delete on table
   public.companies,
   public.contacts,

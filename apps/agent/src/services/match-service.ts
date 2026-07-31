@@ -10,14 +10,14 @@ import {
   upsertManualBinding,
 } from "../repositories/crm-repository";
 import {
-  recordAutomaticMatchCorrection,
+  recordAutomaticMatchEvaluation,
   recordAutomaticMatchObservation,
 } from "../repositories/metrics-repository";
 
 export async function resolveMatch(input: MatchResolve): Promise<MatchResolveResponse> {
   const normalized = normalizePlatformIdentifier(input.platform, input.raw_identifier);
   const manualBindings = await findManualBindingCustomers(input.platform, normalized);
-  if (manualBindings.length > 0) return matchResponse(manualBindings);
+  if (manualBindings.length > 0) return matchResponse(manualBindings, "manual");
 
   const phone = normalizePhone(input.platform === "whatsapp" ? normalized : input.raw_identifier);
   if (phone && /^\+[1-9]\d{6,14}$/.test(phone)) {
@@ -30,7 +30,7 @@ export async function resolveMatch(input: MatchResolve): Promise<MatchResolveRes
           phoneMatches[0].customer.id,
         );
       }
-      return matchResponse(phoneMatches);
+      return matchResponse(phoneMatches, "phone");
     }
   }
 
@@ -43,16 +43,27 @@ export async function resolveMatch(input: MatchResolve): Promise<MatchResolveRes
         platformMatches[0].customer.id,
       );
     }
-    return matchResponse(platformMatches);
+    return matchResponse(platformMatches, "platform");
   }
-  return { status: "none" };
+  return { status: "none", match_method: null };
 }
 
 function matchResponse(
   matches: Array<{ customer: Customer }>,
+  matchMethod: "manual" | "phone" | "platform",
 ): MatchResolveResponse {
-  if (matches.length === 1) return { status: "unique", customer: matches[0].customer };
-  return { status: "multiple", candidates: matches.map(({ customer }) => customer) };
+  if (matches.length === 1) {
+    return {
+      status: "unique",
+      match_method: matchMethod,
+      customer: matches[0].customer,
+    };
+  }
+  return {
+    status: "multiple",
+    match_method: matchMethod,
+    candidates: matches.map(({ customer }) => customer),
+  };
 }
 
 export async function bindMatch(input: MatchBind) {
@@ -66,7 +77,7 @@ export async function bindMatch(input: MatchBind) {
     input.raw_identifier,
     normalized,
   );
-  recordAutomaticMatchCorrection(input.platform, normalized, input.customer_id);
+  recordAutomaticMatchEvaluation(input.platform, normalized, input.customer_id);
   return binding;
 }
 
