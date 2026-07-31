@@ -1,15 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { API_ERROR_CODES } from "@dealpilot/api-client/error";
 import { z } from "zod";
-import {
-  ApiError,
-  apiFetch,
-  extensionErrorMessage,
-  fetchPopupReminders,
-  searchCustomers,
-  unbindMatch,
-  updateReminderStatus,
-} from "./api-client";
+import { ApiError, apiFetch, extensionErrorMessage, fetchPopupReminders, searchCustomers, unbindMatch, updateReminderStatus } from "./api-client";
 
 const originalChrome = globalThis.chrome;
 const originalFetch = globalThis.fetch;
@@ -26,6 +18,7 @@ const popupReminder = {
   due_at: "2026-08-01T09:00:00.000Z",
   priority: "normal",
   last_notified_at: null,
+  completed_at: null,
   snooze_until: null,
   resolution: null,
   pause_reason: null,
@@ -58,7 +51,9 @@ const reminder = popupReminder;
 
 function installChromeStorage(values: Record<string, unknown> = {}) {
   const sessionValues = { ...values };
-  const sessionGet = mock(async (key: string) => ({ [key]: sessionValues[key] }));
+  const sessionGet = mock(async (key: string) => ({
+    [key]: sessionValues[key],
+  }));
   const sessionSet = mock(async (items: Record<string, unknown>) => {
     Object.assign(sessionValues, items);
   });
@@ -106,14 +101,7 @@ describe("Extension API boundary", () => {
     const fetchMock = mock(async () => response({ data: "created" }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(
-      apiFetch(
-        "/test",
-        z.string(),
-        { method: "POST", body: JSON.stringify({ name: "客户" }) },
-        "stable-operation-key",
-      ),
-    ).resolves.toBe("created");
+    await expect(apiFetch("/test", z.string(), { method: "POST", body: JSON.stringify({ name: "客户" }) }, "stable-operation-key")).resolves.toBe("created");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -150,34 +138,38 @@ describe("Extension API boundary", () => {
       items: [customer],
       next_cursor: null,
     });
-    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
-      "http://127.0.0.1:31081/api/v1/customers?search=%E7%A4%BA%E4%BE%8B+%E5%85%AC%E5%8F%B8&limit=10&sort=name",
-    );
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe("http://127.0.0.1:31081/api/v1/customers?search=%E7%A4%BA%E4%BE%8B+%E5%85%AC%E5%8F%B8&limit=10&sort=name");
   });
 
   test("unbinds through the typed 204 boundary", async () => {
     const fetchMock = mock(async () => new Response(undefined, { status: 204 }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(unbindMatch({
-      platform: "telegram",
-      raw_identifier: "@example_customer",
-    })).resolves.toBeUndefined();
+    await expect(
+      unbindMatch({
+        platform: "telegram",
+        raw_identifier: "@example_customer",
+      }),
+    ).resolves.toBeUndefined();
     const [, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(options.method).toBe("DELETE");
-    expect(options.body).toBe(JSON.stringify({
-      platform: "telegram",
-      raw_identifier: "@example_customer",
-    }));
+    expect(options.body).toBe(
+      JSON.stringify({
+        platform: "telegram",
+        raw_identifier: "@example_customer",
+      }),
+    );
   });
 
   test("updates reminder status through the typed PUT boundary", async () => {
     const fetchMock = mock(async () => response({ data: { ...reminder, status: "completed" } }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(updateReminderStatus(reminder.id, {
-      status: "completed",
-    })).resolves.toMatchObject({ id: reminder.id, status: "completed" });
+    await expect(
+      updateReminderStatus(reminder.id, {
+        status: "completed",
+      }),
+    ).resolves.toMatchObject({ id: reminder.id, status: "completed" });
 
     const [url, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(`http://127.0.0.1:31081/api/v1/reminders/${reminder.id}`);
@@ -186,14 +178,19 @@ describe("Extension API boundary", () => {
   });
 
   test("normalizes an error envelope including fields and request ID", async () => {
-    globalThis.fetch = mock(async () => response({
-      error: {
-        code: API_ERROR_CODES.validation,
-        message: "untrusted server message",
-        fields: { name: ["required"] },
-        request_id: "request-123",
-      },
-    }, { status: 422 })) as unknown as typeof fetch;
+    globalThis.fetch = mock(async () =>
+      response(
+        {
+          error: {
+            code: API_ERROR_CODES.validation,
+            message: "untrusted server message",
+            fields: { name: ["required"] },
+            request_id: "request-123",
+          },
+        },
+        { status: 422 },
+      ),
+    ) as unknown as typeof fetch;
 
     const error = await captureError(() => apiFetch("/test", z.string()));
     expect(error.code).toBe(API_ERROR_CODES.validation);
@@ -204,9 +201,11 @@ describe("Extension API boundary", () => {
   });
 
   test("normalizes non-JSON server failures", async () => {
-    globalThis.fetch = mock(async () => response("gateway unavailable", {
-      status: 503,
-    })) as unknown as typeof fetch;
+    globalThis.fetch = mock(async () =>
+      response("gateway unavailable", {
+        status: 503,
+      }),
+    ) as unknown as typeof fetch;
 
     const error = await captureError(() => apiFetch("/test", z.string()));
     expect(error.code).toBe(API_ERROR_CODES.server);
@@ -240,13 +239,23 @@ describe("Extension API boundary", () => {
   test("never exposes arbitrary or server error messages to the UI", () => {
     const fallback = "操作失败，请重试";
     expect(extensionErrorMessage(new Error("database password"), fallback)).toBe(fallback);
-    expect(extensionErrorMessage(new ApiError({
-      code: API_ERROR_CODES.server,
-      message: "database password",
-    }), fallback)).toBe(fallback);
-    expect(extensionErrorMessage(new ApiError({
-      code: API_ERROR_CODES.network,
-      message: "private network details",
-    }), fallback)).toBe("无法连接本地 Agent，请确认它正在运行");
+    expect(
+      extensionErrorMessage(
+        new ApiError({
+          code: API_ERROR_CODES.server,
+          message: "database password",
+        }),
+        fallback,
+      ),
+    ).toBe(fallback);
+    expect(
+      extensionErrorMessage(
+        new ApiError({
+          code: API_ERROR_CODES.network,
+          message: "private network details",
+        }),
+        fallback,
+      ),
+    ).toBe("无法连接本地 Agent，请确认它正在运行");
   });
 });

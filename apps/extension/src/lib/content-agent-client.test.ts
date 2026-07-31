@@ -22,6 +22,7 @@ const reminder = {
   due_at: "2026-08-01T09:00:00.000Z",
   priority: "normal",
   last_notified_at: null,
+  completed_at: null,
   snooze_until: null,
   resolution: null,
   pause_reason: null,
@@ -60,12 +61,12 @@ describe("Content Script background API proxy", () => {
   });
 
   test("sends only a whitelisted operation and payload, never a token or URL", async () => {
-    const sendMessage = installRuntime({ ok: true, data: { status: "none" } });
+    const sendMessage = installRuntime({ ok: true, data: { status: "none", match_method: null } });
 
     await expect(resolveMatch({
       platform: "whatsapp",
       raw_identifier: "+8613800001234",
-    })).resolves.toEqual({ status: "none" });
+    })).resolves.toEqual({ status: "none", match_method: null });
 
     const request = sendMessage.mock.calls[0][0];
     expect(request).toEqual({
@@ -105,7 +106,7 @@ describe("Content Script background API proxy", () => {
   });
 
   test("rejects an already-aborted request without messaging background", async () => {
-    const sendMessage = installRuntime({ ok: true, data: { status: "none" } });
+    const sendMessage = installRuntime({ ok: true, data: { status: "none", match_method: null } });
     const controller = new AbortController();
     controller.abort();
     await expect(resolveMatch({

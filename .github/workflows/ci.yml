@@ -75,6 +75,8 @@ jobs:
         with:
           version: 2.110.0
       - run: pnpm install --frozen-lockfile
+      - name: Build Cloud workspace dependencies
+        run: pnpm exec turbo build --filter=@dealpilot/api-client
       - run: supabase start
       - run: supabase db reset
       - name: Verify schema security invariants
