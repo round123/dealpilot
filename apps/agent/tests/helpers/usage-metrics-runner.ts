@@ -12,7 +12,12 @@ runMigrations();
 ensureSchema();
 
 const raw = getRawDb();
-const now = new Date("2026-07-31T12:00:00.000Z");
+const fixtureNow = new Date();
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const atOffset = (offsetMs: number) =>
+  new Date(fixtureNow.getTime() + offsetMs).toISOString();
+const snoozedDeliveredAt = atOffset(-2 * DAY_MS);
 const customerA = crypto.randomUUID();
 const customerB = crypto.randomUUID();
 const observedIdentifier = "+8613800001234";
@@ -23,11 +28,24 @@ raw.query(`
   INSERT INTO customers (id, name, grade, status, created_at, updated_at)
   VALUES (?, ?, 'A', 'active', ?, ?),
          (?, '指标客户 B', 'B', 'active', ?, ?)
-`).run(customerA, privateCustomerName, now.toISOString(), now.toISOString(), customerB, now.toISOString(), now.toISOString());
+`).run(
+  customerA,
+  privateCustomerName,
+  fixtureNow.toISOString(),
+  fixtureNow.toISOString(),
+  customerB,
+  fixtureNow.toISOString(),
+  fixtureNow.toISOString(),
+);
 raw.query(`
   INSERT INTO contacts (id, customer_id, name, phone, created_at)
   VALUES (?, ?, '联系人', ?, ?)
-`).run(crypto.randomUUID(), customerA, observedIdentifier, now.toISOString());
+`).run(
+  crypto.randomUUID(),
+  customerA,
+  observedIdentifier,
+  fixtureNow.toISOString(),
+);
 
 function insertReminder(input: {
   id: string;
@@ -64,44 +82,44 @@ function insertReminder(input: {
 insertReminder({
   id: "on-time",
   status: "completed",
-  dueAt: "2026-07-30T10:00:00.000Z",
-  completedAt: "2026-07-31T09:59:59.000Z",
-  updatedAt: "2026-07-31T11:00:00.000Z",
-  lastNotifiedAt: "2026-07-30T10:00:00.000Z",
-  deliveredAt: "2026-07-30T10:00:00.000Z",
-  handledAt: "2026-07-31T09:59:59.000Z",
+  dueAt: atOffset(-36 * HOUR_MS),
+  completedAt: atOffset(-12 * HOUR_MS - 1_000),
+  updatedAt: atOffset(-11 * HOUR_MS),
+  lastNotifiedAt: atOffset(-36 * HOUR_MS),
+  deliveredAt: atOffset(-36 * HOUR_MS),
+  handledAt: atOffset(-12 * HOUR_MS - 1_000),
 });
 insertReminder({
   id: "late",
   status: "completed",
-  dueAt: "2026-07-20T10:00:00.000Z",
-  completedAt: "2026-07-21T10:00:01.000Z",
-  updatedAt: "2026-07-21T10:00:01.000Z",
-  lastNotifiedAt: "2026-07-20T10:00:00.000Z",
-  deliveredAt: "2026-07-20T10:00:00.000Z",
-  handledAt: "2026-07-21T10:00:01.000Z",
+  dueAt: atOffset(-12 * DAY_MS),
+  completedAt: atOffset(-11 * DAY_MS + 1_000),
+  updatedAt: atOffset(-11 * DAY_MS + 1_000),
+  lastNotifiedAt: atOffset(-12 * DAY_MS),
+  deliveredAt: atOffset(-12 * DAY_MS),
+  handledAt: atOffset(-11 * DAY_MS + 1_000),
 });
 insertReminder({
   id: "unknown-completion-time",
   status: "completed",
-  dueAt: "2026-07-25T10:00:00.000Z",
-  updatedAt: "2026-07-25T11:00:00.000Z",
+  dueAt: atOffset(-6 * DAY_MS),
+  updatedAt: atOffset(-6 * DAY_MS + HOUR_MS),
 });
 insertReminder({
   id: "handled-future",
   status: "overdue",
-  dueAt: "2026-08-05T10:00:00.000Z",
-  updatedAt: "2026-07-29T10:10:00.000Z",
-  lastNotifiedAt: "2026-07-29T10:00:00.000Z",
-  deliveredAt: "2026-07-29T10:00:00.000Z",
+  dueAt: atOffset(5 * DAY_MS),
+  updatedAt: atOffset(-2 * DAY_MS + 10 * 60 * 1000),
+  lastNotifiedAt: snoozedDeliveredAt,
+  deliveredAt: snoozedDeliveredAt,
 });
 insertReminder({
   id: "unhandled",
   status: "overdue",
-  dueAt: "2026-07-29T09:00:00.000Z",
-  updatedAt: "2026-07-29T10:00:00.000Z",
-  lastNotifiedAt: "2026-07-29T09:00:00.000Z",
-  deliveredAt: "2026-07-29T09:00:00.000Z",
+  dueAt: atOffset(-2 * DAY_MS - HOUR_MS),
+  updatedAt: atOffset(-2 * DAY_MS),
+  lastNotifiedAt: atOffset(-2 * DAY_MS - HOUR_MS),
+  deliveredAt: atOffset(-2 * DAY_MS - HOUR_MS),
 });
 raw.query(`
   INSERT INTO follow_ups (
@@ -111,23 +129,23 @@ raw.query(`
   crypto.randomUUID(),
   customerA,
   privateMessage,
-  now.toISOString(),
-  now.toISOString(),
+  fixtureNow.toISOString(),
+  fixtureNow.toISOString(),
 );
 insertReminder({
   id: "outside-window",
   status: "completed",
-  dueAt: "2026-06-30T10:00:00.000Z",
-  completedAt: "2026-06-30T11:00:00.000Z",
-  updatedAt: "2026-06-30T11:00:00.000Z",
-  lastNotifiedAt: "2026-06-30T10:00:00.000Z",
-  deliveredAt: "2026-06-30T10:00:00.000Z",
-  handledAt: "2026-06-30T11:00:00.000Z",
+  dueAt: atOffset(-30 * DAY_MS - 1),
+  completedAt: atOffset(-30 * DAY_MS + HOUR_MS),
+  updatedAt: atOffset(-30 * DAY_MS + HOUR_MS),
+  lastNotifiedAt: atOffset(-30 * DAY_MS - 1),
+  deliveredAt: atOffset(-30 * DAY_MS - 1),
+  handledAt: atOffset(-30 * DAY_MS + HOUR_MS),
 });
 
 await updateReminderStatus("handled-future", {
   status: "snoozed",
-  snooze_until: "2026-08-01T10:00:00.000Z",
+  snooze_until: atOffset(DAY_MS),
 });
 
 const app = createApp();
@@ -151,7 +169,7 @@ for (let index = 0; index < 2; index++) {
   });
   if (response.status !== 200) throw new Error(await response.text());
 }
-const beforeCorrection = await getStats(now);
+const beforeCorrection = await getStats(new Date());
 
 const sameTargetBindResponse = await request("matches/bind", "POST", {
   platform: "whatsapp",
@@ -161,7 +179,7 @@ const sameTargetBindResponse = await request("matches/bind", "POST", {
 if (sameTargetBindResponse.status !== 201) {
   throw new Error(await sameTargetBindResponse.text());
 }
-const afterSameTargetBind = await getStats(now);
+const afterSameTargetBind = await getStats(new Date());
 
 const bindResponse = await request("matches/bind", "POST", {
   platform: "whatsapp",
@@ -170,8 +188,8 @@ const bindResponse = await request("matches/bind", "POST", {
 });
 if (bindResponse.status !== 201) throw new Error(await bindResponse.text());
 
-const afterCorrection = await getStats(now);
-const report = await getAnonymizedUsageMetricsReport(now);
+const afterCorrection = await getStats(new Date());
+const report = await getAnonymizedUsageMetricsReport(new Date());
 const exportResponse = await request("stats/export");
 const exportText = await exportResponse.text();
 const events = raw.query(`
@@ -197,6 +215,7 @@ console.log(JSON.stringify({
   exportText,
   events,
   snoozedReminder,
+  snoozedDeliveredAt,
   observedIdentifier,
   customerA,
   customerB,

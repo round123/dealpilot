@@ -52,7 +52,7 @@ test("computes rolling local metrics and exports only anonymized aggregates", as
     });
     expect(result.snoozedReminder).toMatchObject({
       last_notified_at: null,
-      delivered_at: "2026-07-29T10:00:00.000Z",
+      delivered_at: result.snoozedDeliveredAt,
       handled_at: expect.any(String),
     });
 
