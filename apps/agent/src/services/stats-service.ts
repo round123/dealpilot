@@ -27,8 +27,8 @@ export async function getStats(now: Date = new Date()) {
         { minimum_sample: 20 },
       ),
       match_accuracy: metric(
-        rolling.correctAutomaticMatches,
-        rolling.automaticMatches,
+        rolling.confirmedAutomaticMatches,
+        rolling.evaluatedAutomaticMatches,
         0.95,
       ),
       reminder_handling: metric(
@@ -53,7 +53,7 @@ export async function getAnonymizedUsageMetricsReport(now: Date = new Date()) {
       on_time_completion:
         "滚动30天内，到期后24小时内完成的提醒数 / 到期提醒总数。至少20条提醒后再判断是否达到目标。",
       match_accuracy:
-        "滚动30天内，未被用户改绑的自动唯一匹配会话数 / 自动唯一匹配会话总数；同一会话在窗口内只计一次。这是基于改绑行为的代理口径，不代表用户逐条人工确认正确。",
+        "滚动30天内，经用户明确确认的自动唯一匹配会话数 / 经用户确认或纠正的自动唯一匹配会话总数；未评价的自动匹配不进入分母，同一会话只保留当前评价。",
       reminder_handling:
         "滚动30天内，已完成、曾执行稍后处理或明确忽略的提醒数 / 已触达提醒总数；稍后到期重新进入待处理状态仍保留本次处理计数。",
     },
