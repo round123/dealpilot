@@ -9,7 +9,7 @@
 
 DealPilot 采用 Web/PWA + 云端模块化单体 + PostgreSQL 的单一后端架构。
 
-本地开发不是另一套本地产品，而是云端架构的本地实例：Supabase CLI/Docker 在开发者机器上提供 PostgreSQL、Auth、Storage 和 Edge Functions；部署到测试或生产时只替换服务地址、密钥和运行配置，不替换业务后端边界。
+云端开发、测试和生产使用同一套托管 Supabase 架构；开发者电脑只运行 Web/PWA 的 Vite 前端服务，直接连接受控 Supabase 开发项目。环境之间只替换服务地址、密钥和运行配置，不替换业务后端边界，也不维护本地 PostgreSQL/Supabase 业务实例。
 
 SQLite 和旧 Agent 只承担一次性迁移、快照读取和取证工具职责。它们不提供当前产品的业务 API，不作为 PostgreSQL 的第二事实源，也不参与长期双写。
 
