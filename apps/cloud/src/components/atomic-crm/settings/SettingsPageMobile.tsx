@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useTheme } from "@/components/admin/use-theme";
 import { getErrorMessageKey } from "@/components/admin/error-message";
-import { ChevronRight, DatabaseBackup, KeyRound } from "lucide-react";
+import { ChevronRight, KeyRound, Download } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,9 +43,7 @@ import { MobileContent } from "../layout/MobileContent";
 import MobileHeader from "../layout/MobileHeader";
 import { ChangelogPage } from "../misc/ChangelogPage";
 import { personalAccount } from "../providers/personalAccount";
-import { useLocalDataOperations } from "../providers/localDataOperations";
-import { LocalDataToolsPage } from "./LocalDataToolsPage";
-import { LocalBackupStatus } from "./LocalBackupStatus";
+import { CloudDataToolsPage } from "./CloudDataToolsPage";
 import { DeleteAccountControl } from "./AccountDeletionSection";
 import { useCrmProviderCapabilities } from "../providers/capabilities";
 
@@ -103,10 +101,9 @@ export const SettingsPageMobile = () => {
       <MobileContent>
         <div className="flex flex-col min-h-[calc(100dvh-3.5rem-4.5rem)]">
           <div className="space-y-6">
-            <LocalBackupStatus />
             <ProfileSection />
             <PreferencesSection />
-            <LocalDataSection />
+            <CloudDataSection />
             <McpServerSection />
             <AboutSection />
             <AccountSection />
@@ -174,20 +171,17 @@ const PreferencesSection = () => {
   );
 };
 
-const LocalDataSection = () => {
-  const operations = useLocalDataOperations();
-  if (!operations) return null;
-
+const CloudDataSection = () => {
   return (
     <div>
-      <SectionLabel>本地数据</SectionLabel>
+      <SectionLabel>云端数据</SectionLabel>
       <ItemGroup className="rounded-lg border overflow-hidden">
         <Item asChild size="sm" className="cursor-pointer">
-          <Link to={LocalDataToolsPage.path}>
-            <DatabaseBackup className="size-5 text-muted-foreground" />
+          <Link to={CloudDataToolsPage.path}>
+            <Download className="size-5 text-muted-foreground" />
             <ItemContent>
               <ItemTitle className="font-normal">
-                备份、恢复与全域导出
+                导出云端业务数据
               </ItemTitle>
             </ItemContent>
             <ItemActions>

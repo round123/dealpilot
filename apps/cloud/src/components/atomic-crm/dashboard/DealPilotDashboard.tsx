@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import type { Company, Deal, FollowUp } from "../types";
-import { LocalBackupStatus } from "../settings/LocalBackupStatus";
 import { isUnscheduledPausedReminder } from "../reminders/reminderContract";
 
 const PAGE_SIZE = 10_000;
@@ -107,8 +106,6 @@ export const DealPilotDashboard = () => {
           </Button>
         </div>
       </header>
-
-      <LocalBackupStatus />
 
       <section
         aria-label="业务概览"

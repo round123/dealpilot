@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { ChevronRight, DatabaseBackup, RotateCcw, Save } from "lucide-react";
+import { ChevronRight, RotateCcw, Save } from "lucide-react";
 import type { RaRecord } from "ra-core";
 import {
   EditBase,
@@ -34,9 +34,7 @@ import {
   parseLocalizedConfigurationLabel,
   type ConfigurationLabelGroup,
 } from "../root/configurationLocalization";
-import { useLocalDataOperations } from "../providers/localDataOperations";
-import { LocalDataToolsPage } from "./LocalDataToolsPage";
-import { LocalBackupStatus } from "./LocalBackupStatus";
+import { CloudDataToolsPage } from "./CloudDataToolsPage";
 import { AccountDeletionSection } from "./AccountDeletionSection";
 import { useCrmProviderCapabilities } from "../providers/capabilities";
 
@@ -45,7 +43,7 @@ const SECTIONS = [
     id: "branding",
     label: "crm.settings.sections.branding",
   },
-  { id: "local-data", label: "本地数据" },
+  { id: "cloud-data", label: "云端数据" },
   {
     id: "companies",
     label: "resources.companies.name",
@@ -202,7 +200,6 @@ const SettingsForm = () => {
 const SettingsFormFields = () => {
   const translate = useTranslate();
   const currencyChoices = useMemo(() => getCurrencyChoices(), []);
-  const localDataOperations = useLocalDataOperations();
   const capabilities = useCrmProviderCapabilities();
   const {
     watch,
@@ -268,7 +265,6 @@ const SettingsFormFields = () => {
           </h1>
           {SECTIONS.filter(
             (section) =>
-              (section.id !== "local-data" || localDataOperations) &&
               (section.id !== "account" || capabilities.accountDeletion),
           ).map((section) => (
             <button
@@ -289,30 +285,21 @@ const SettingsFormFields = () => {
 
       {/* Main content */}
       <div className="flex-1 min-w-0 max-w-2xl space-y-6">
-        <LocalBackupStatus />
-        {localDataOperations ? (
-          <Card id="local-data">
-            <CardContent className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <DatabaseBackup className="size-5 shrink-0" />
-                <div>
-                  <h2 className="text-lg font-semibold">本地数据</h2>
-                  <p className="text-sm text-muted-foreground">
-                    创建加密备份、恢复 SQLite 或导出全部业务数据
-                  </p>
-                </div>
-              </div>
-              <Button asChild type="button" variant="outline" size="icon">
-                <Link
-                  to={LocalDataToolsPage.path}
-                  aria-label="打开本地数据工具"
-                >
-                  <ChevronRight className="size-4" />
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
+        <Card id="cloud-data">
+          <CardContent className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold">云端数据</h2>
+              <p className="text-sm text-muted-foreground">
+                导出当前账号的云端业务数据
+              </p>
+            </div>
+            <Button asChild type="button" variant="outline" size="icon">
+              <Link to={CloudDataToolsPage.path} aria-label="打开云端数据工具">
+                <ChevronRight className="size-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Branding */}
         <Card id="branding">

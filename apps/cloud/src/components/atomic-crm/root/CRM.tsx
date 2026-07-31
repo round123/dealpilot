@@ -31,6 +31,7 @@ import {
 } from "../providers/supabase";
 import { SettingsPageMobile } from "../settings/SettingsPageMobile";
 import { SettingsPage } from "../settings/SettingsPage";
+import { CloudDataToolsPage } from "../settings/CloudDataToolsPage";
 import { LocalDataToolsPage } from "../settings/LocalDataToolsPage";
 import {
   CONFIGURATION_STORE_KEY,
@@ -288,9 +289,15 @@ const DesktopAdmin = (
 
       <CustomRoutes>
         <Route path={SettingsPage.path} element={<SettingsPage />} />
+        {import.meta.env.VITE_DATA_BACKEND === "agent" ? (
+          <Route
+            path={LocalDataToolsPage.path}
+            element={<LocalDataToolsPage />}
+          />
+        ) : null}
         <Route
-          path={LocalDataToolsPage.path}
-          element={<LocalDataToolsPage />}
+          path={CloudDataToolsPage.path}
+          element={<CloudDataToolsPage />}
         />
         <Route path={ImportPage.path} element={<ImportPage />} />
         <Route path={ChangelogPage.path} element={<ChangelogPage />} />
@@ -354,9 +361,15 @@ const MobileAdmin = (
             path={SettingsPageMobile.path}
             element={<SettingsPageMobile />}
           />
+          {import.meta.env.VITE_DATA_BACKEND === "agent" ? (
+            <Route
+              path={LocalDataToolsPage.path}
+              element={<LocalDataToolsPage />}
+            />
+          ) : null}
           <Route
-            path={LocalDataToolsPage.path}
-            element={<LocalDataToolsPage />}
+            path={CloudDataToolsPage.path}
+            element={<CloudDataToolsPage />}
           />
           <Route path={ImportPage.path} element={<ImportPage />} />
           <Route path={ChangelogPage.path} element={<ChangelogPage />} />
