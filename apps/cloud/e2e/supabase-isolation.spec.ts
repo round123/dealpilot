@@ -10,6 +10,48 @@ type UserSession = {
   user: { id: string };
 };
 
+const NETWORK_RETRY_DELAYS_MS = [200, 500] as const;
+const RETRYABLE_NETWORK_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+const isRetryableNetworkError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  if (error instanceof DOMException && error.name === "AbortError") return false;
+
+  if (error instanceof TypeError && error.message === "fetch failed") {
+    return true;
+  }
+
+  const code = "code" in error ? error.code : undefined;
+  if (typeof code === "string" && RETRYABLE_NETWORK_CODES.has(code)) {
+    return true;
+  }
+
+  return "cause" in error && isRetryableNetworkError(error.cause);
+};
+
+const fetchSupabase = async (url: URL, init?: RequestInit) => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      const retryDelay = NETWORK_RETRY_DELAYS_MS[attempt];
+      if (retryDelay === undefined || !isRetryableNetworkError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  }
+};
+
 test("two local users remain isolated across browser, REST, RPC, Edge, FK, and Storage", async ({
   browser,
 }) => {
@@ -41,7 +83,7 @@ test("two local users remain isolated across browser, REST, RPC, Edge, FK, and S
     "content-type": "application/json",
   };
   const asAlpha = (path: string, init: RequestInit = {}) =>
-    fetch(new URL(path, environment.url), {
+    fetchSupabase(new URL(path, environment.url), {
       ...init,
       headers: { ...alphaHeaders, ...init.headers },
     });
@@ -127,7 +169,7 @@ test("two local users remain isolated across browser, REST, RPC, Edge, FK, and S
     (await crossOwnerChildResponse.json()) as { code?: string },
   ).toMatchObject({ code: "23503" });
 
-  const storageResponse = await fetch(
+  const storageResponse = await fetchSupabase(
     new URL(
       `/storage/v1/object/attachments/${userIds.beta}/forbidden.txt`,
       environment.url,
@@ -161,7 +203,7 @@ test("Auth onboarding creates an isolated profile and configuration", async () =
     "content-type": "application/json",
   };
   const asAlpha = (path: string, init: RequestInit = {}) =>
-    fetch(new URL(path, environment.url), {
+    fetchSupabase(new URL(path, environment.url), {
       ...init,
       headers: { ...headers, ...init.headers },
     });
@@ -257,7 +299,7 @@ const signIn = async (
   password: string,
 ) =>
   expectJson<UserSession>(
-    await fetch(
+    await fetchSupabase(
       new URL("/auth/v1/token?grant_type=password", environment.url),
       {
         method: "POST",
