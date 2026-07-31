@@ -19,6 +19,12 @@ importers:
       '@playwright/test':
         specifier: 1.62.0
         version: 1.62.0
+      '@types/react':
+        specifier: 19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.17)
       cross-env:
         specifier: 10.1.0
         version: 10.1.0
