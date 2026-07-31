@@ -19,6 +19,7 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "test": "vitest run --config vitest.config.ts",
+    "pretest:e2e:demo": "pnpm --filter @dealpilot/shared build && pnpm --filter @dealpilot/api-client build",
     "test:e2e:demo": "playwright test e2e/cloud-demo.spec.ts --config playwright.config.ts",
     "test:e2e:agent": "playwright test --config playwright.agent.config.ts",
     "test:e2e:supabase": "playwright test --config playwright.supabase.config.ts",

@@ -96,11 +96,11 @@ export function ImportPreview({
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-xs text-text-tertiary mb-1">新行数据</p>
-                    <p className="text-text-primary">{dup.new_name}</p>
+                    <p className="text-text-primary">{dup.incoming.name}</p>
                   </div>
                   <div>
                     <p className="text-xs text-text-tertiary mb-1">匹配到现有客户</p>
-                    <p className="text-text-primary">{dup.existing_name}</p>
+                    <p className="text-text-primary">{dup.matches[0]?.existing.name ?? "-"}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex gap-2">

@@ -1347,6 +1347,8 @@ grant update (
 ) on table public.reminders to authenticated;
 grant select, update on table public.profiles to authenticated;
 grant select on table public.audit_events to authenticated;
+revoke all on table public.companies_summary, public.contacts_summary
+  from public, anon, authenticated;
 grant select on table public.companies_summary, public.contacts_summary to authenticated;
 grant execute on function public.soft_delete_customer(uuid) to authenticated;
 grant execute on function public.restore_customer(uuid) to authenticated;
