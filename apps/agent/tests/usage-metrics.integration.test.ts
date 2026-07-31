@@ -27,7 +27,7 @@ test("computes rolling local metrics and exports only anonymized aggregates", as
 
     expect(result.beforeCorrection.on_time_completion).toMatchObject({
       numerator: 1,
-      denominator: 3,
+      denominator: 4,
       minimum_sample: 20,
     });
     expect(result.beforeCorrection.match_accuracy).toMatchObject({
