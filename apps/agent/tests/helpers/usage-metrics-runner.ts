@@ -131,7 +131,7 @@ await updateReminderStatus("handled-future", {
 });
 
 const app = createApp();
-const authorization = `Bearer ${config.workbenchToken}`;
+const authorization = `Bearer ${config.token}`;
 async function request(path: string, method = "GET", body?: unknown) {
   return app.request(`/api/v1/${path}`, {
     method,
