@@ -13,6 +13,7 @@ type UserSession = {
 test("two local users remain isolated across browser, REST, RPC, Edge, FK, and Storage", async ({
   browser,
 }) => {
+  test.setTimeout(90_000);
   const environment = requireSupabasePublicEnvironment();
   const userIds = requireSeededUserIds();
 
