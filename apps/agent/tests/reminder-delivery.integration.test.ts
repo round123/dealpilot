@@ -32,11 +32,23 @@ test("delivers and de-duplicates reminders against SQLite", async () => {
     expect(result.notificationsAfterSecond).toHaveLength(3);
     expect(states.due.status).toBe("overdue");
     expect(states["snoozed-due"].status).toBe("overdue");
+    expect(states["snoozed-due"].delivered_at).toBe(
+      "2026-07-29T10:00:00.000Z",
+    );
     expect(states["snoozed-future"].status).toBe("snoozed");
     expect(states.upcoming.status).toBe("pending");
     expect(states.upcoming.last_notified_at).toBe("2026-07-29T10:00:00.000Z");
+    expect(states.upcoming.delivered_at).toBe("2026-07-29T10:00:00.000Z");
     expect(states["pre-notified"].last_notified_at).toBe("2026-07-29T09:55:00.000Z");
     expect(states["waiting-reply"].status).toBe("pending");
+    expect(result.completionLifecycle.first).toEqual(expect.any(String));
+    expect(result.completionLifecycle.repeated).toBe(
+      result.completionLifecycle.first,
+    );
+    expect(result.completionLifecycle.cleared).toBeNull();
+    expect(result.completionLifecycle.handled).toEqual(expect.any(String));
+    expect(states["completion-lifecycle"].completed_at).toBeNull();
+    expect(states["completion-lifecycle"].handled_at).toEqual(expect.any(String));
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

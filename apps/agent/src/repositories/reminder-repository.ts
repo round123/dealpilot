@@ -72,9 +72,13 @@ export async function insertReminder(input: ReminderCreate) {
   return created;
 }
 
-export async function updateReminderRecord(reminderId: string, updates: ReminderUpdates) {
+export async function updateReminderRecord(
+  reminderId: string,
+  updates: ReminderUpdates,
+  updatedAt = new Date().toISOString(),
+) {
   const [updated] = await db.update(reminders)
-    .set({ ...updates, updated_at: new Date().toISOString() })
+    .set({ ...updates, updated_at: updatedAt })
     .where(eq(reminders.id, reminderId)).returning();
   return updated;
 }
@@ -157,7 +161,9 @@ export function findUpcomingReminderDeliveries(now: string, windowEnd: string) {
 export function markReminderOverdue(reminderId: string, notifiedAt: string | null) {
   return db.update(reminders).set({
     status: ReminderStatus.OVERDUE,
-    ...(notifiedAt ? { last_notified_at: notifiedAt } : {}),
+    ...(notifiedAt
+      ? { last_notified_at: notifiedAt, delivered_at: notifiedAt }
+      : {}),
     updated_at: new Date().toISOString(),
   }).where(and(
     eq(reminders.id, reminderId),
@@ -168,6 +174,7 @@ export function markReminderOverdue(reminderId: string, notifiedAt: string | nul
 export function markReminderNotified(reminderId: string, notifiedAt: string) {
   return db.update(reminders).set({
     last_notified_at: notifiedAt,
+    delivered_at: notifiedAt,
     updated_at: notifiedAt,
   }).where(and(eq(reminders.id, reminderId), isNull(reminders.last_notified_at)));
 }

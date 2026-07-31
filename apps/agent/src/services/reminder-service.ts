@@ -58,7 +58,8 @@ export async function createReminder(input: ReminderCreate) {
 }
 
 export async function updateReminderStatus(reminderId: string, update: ReminderStatusUpdate) {
-  if (!await findReminder(reminderId)) throw ApiError.notFound("Reminder not found");
+  const reminder = await findReminder(reminderId);
+  if (!reminder) throw ApiError.notFound("Reminder not found");
   if (update.status === ReminderStatus.SNOOZED && !update.snooze_until) {
     throw ApiError.badRequest("snooze_until is required when snoozing a reminder");
   }
@@ -66,8 +67,16 @@ export async function updateReminderStatus(reminderId: string, update: ReminderS
   const status = update.status === ReminderStatus.REPLIED
     ? ReminderStatus.PENDING
     : update.status;
+  const now = new Date().toISOString();
+  const isHandled = status === ReminderStatus.COMPLETED ||
+    status === ReminderStatus.SNOOZED ||
+    status === ReminderStatus.IGNORED;
   const updates: Parameters<typeof updateReminderRecord>[1] = {
     status,
+    ...(isHandled ? { handled_at: reminder.handled_at ?? now } : {}),
+    completed_at: status === ReminderStatus.COMPLETED
+      ? reminder.completed_at ?? now
+      : null,
     ...(update.status === ReminderStatus.SNOOZED
       ? { snooze_until: update.snooze_until, last_notified_at: null }
       : { snooze_until: null }),
@@ -76,7 +85,7 @@ export async function updateReminderStatus(reminderId: string, update: ReminderS
   if (update.status === ReminderStatus.REPLIED) {
     updates.resolution = update.resolution ?? "Customer reply received";
   }
-  return updateReminderRecord(reminderId, updates);
+  return updateReminderRecord(reminderId, updates, now);
 }
 
 export async function getPopupReminders(now: Date = new Date()) {

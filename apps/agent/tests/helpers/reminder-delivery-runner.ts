@@ -49,6 +49,7 @@ insertReminder("pre-notified", "pending", "2026-07-29T09:59:00.000Z", "2026-07-2
 insertReminder("snoozed-due", "snoozed", "2026-07-29T09:00:00.000Z", null, "2026-07-29T09:59:00.000Z");
 insertReminder("snoozed-future", "snoozed", "2026-07-29T09:00:00.000Z", null, "2026-07-29T10:10:00.000Z");
 insertReminder("waiting-reply", "pending", "2026-07-30T10:00:00.000Z", null, null, "waiting_reply");
+insertReminder("completion-lifecycle", "pending", "2026-07-30T11:00:00.000Z");
 
 const notifications: string[] = [];
 const first = await runReminderDeliverySweep(
@@ -61,9 +62,19 @@ const second = await runReminderDeliverySweep(
   now,
 );
 await updateReminderStatus("waiting-reply", { status: "replied" });
+const firstCompletion = await updateReminderStatus("completion-lifecycle", {
+  status: "completed",
+});
+const repeatedCompletion = await updateReminderStatus("completion-lifecycle", {
+  status: "completed",
+});
+const clearedCompletion = await updateReminderStatus("completion-lifecycle", {
+  status: "ignored",
+});
 
 const states = raw.query(`
-  SELECT id, status, last_notified_at, snooze_until
+  SELECT id, status, last_notified_at, delivered_at, handled_at,
+    completed_at, snooze_until
   FROM reminders
   ORDER BY id
 `).all();
@@ -73,5 +84,11 @@ console.log(JSON.stringify({
   second,
   notificationsAfterFirst,
   notificationsAfterSecond: notifications,
+  completionLifecycle: {
+    first: firstCompletion.completed_at,
+    repeated: repeatedCompletion.completed_at,
+    cleared: clearedCompletion.completed_at,
+    handled: clearedCompletion.handled_at,
+  },
   states,
 }));

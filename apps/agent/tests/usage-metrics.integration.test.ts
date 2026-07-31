@@ -50,6 +50,11 @@ test("computes rolling local metrics and exports only anonymized aggregates", as
       denominator: 4,
       rate: 0.75,
     });
+    expect(result.snoozedReminder).toMatchObject({
+      last_notified_at: null,
+      delivered_at: "2026-07-29T10:00:00.000Z",
+      handled_at: expect.any(String),
+    });
 
     expect(result.report).toMatchObject({
       report_type: "dealpilot_anonymized_usage_metrics",

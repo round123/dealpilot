@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { StatsSchema, UsageMetricsReportSchema } from "../src";
+import { ReminderSchema, StatsSchema, UsageMetricsReportSchema } from "../src";
 
 const rolling = {
   window_days: 30 as const,
@@ -53,5 +53,38 @@ describe("usage metrics contracts", () => {
         reminder_handling: "method",
       },
     }).contains_customer_identity).toBe(false);
+  });
+});
+
+describe("reminder completion timestamp contract", () => {
+  const reminder = {
+    id: "d1862722-515c-4b90-a85d-b0d680591c72",
+    customer_id: "ab9b1482-8c95-4113-8bf2-6892a9f10a9e",
+    project_id: null,
+    type: "fixed_time",
+    status: "completed",
+    due_at: "2026-07-31T00:00:00.000Z",
+    priority: "normal",
+    last_notified_at: null,
+    completed_at: "2026-07-31T00:30:00.000Z",
+    snooze_until: null,
+    resolution: null,
+    pause_reason: null,
+    reevaluate_at: null,
+    created_at: "2026-07-30T00:00:00.000Z",
+    updated_at: "2026-07-31T02:00:00.000Z",
+  };
+
+  test("accepts a stable completion timestamp or null", () => {
+    expect(ReminderSchema.parse(reminder).completed_at).toBe(
+      "2026-07-31T00:30:00.000Z",
+    );
+    expect(ReminderSchema.parse({ ...reminder, completed_at: null }).completed_at)
+      .toBeNull();
+  });
+
+  test("requires completion timestamp presence in reminder responses", () => {
+    const { completed_at: _, ...withoutCompletedAt } = reminder;
+    expect(ReminderSchema.safeParse(withoutCompletedAt).success).toBe(false);
   });
 });
