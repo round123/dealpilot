@@ -4,10 +4,18 @@ import {
   dataProvider as demoDataProvider,
 } from "@/components/atomic-crm/providers/fakerest";
 import { createAgentRuntime } from "@/components/atomic-crm/providers/agent";
+import { getCloudApiClient } from "@/components/atomic-crm/providers/apiClient";
+import { createCloudCustomerImportOperations } from "@/components/atomic-crm/providers/cloudImportOperations";
 
 const agentRuntime =
   import.meta.env.VITE_DATA_BACKEND === "agent"
     ? createAgentRuntime()
+    : undefined;
+
+const cloudImportOperations =
+  import.meta.env.VITE_DATA_BACKEND !== "agent" &&
+  import.meta.env.VITE_IS_DEMO !== "true"
+    ? createCloudCustomerImportOperations(getCloudApiClient())
     : undefined;
 
 /**
@@ -65,7 +73,7 @@ const App = () => {
     );
   }
 
-  return <CRM title="DealPilot" />;
+  return <CRM importOperations={cloudImportOperations} title="DealPilot" />;
 };
 
 export default App;

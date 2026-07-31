@@ -40,6 +40,8 @@ export type {
   SignUpOptions,
   SignUpResult,
 } from "./auth.js";
+export { AccountDeletionResultSchema, createAccountApi } from "./account.js";
+export type { AccountApi, AccountDeletionResult } from "./account.js";
 export type {
   PrivateStorageApi,
   SignedStorageUrl,

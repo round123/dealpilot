@@ -57,10 +57,14 @@ jobs:
           --include-all
           --password "$SUPABASE_DB_PASSWORD"
       - name: Deploy Edge Functions
-        run: >-
-          supabase functions deploy purge-expired-customers
-          --project-ref "$SUPABASE_PROJECT_REF"
-          --use-api
+        shell: bash
+        run: |
+          supabase functions deploy purge-expired-customers \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --use-api
+          supabase functions deploy delete-account \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --use-api
 
   build-web:
     name: Build Web/PWA

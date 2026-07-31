@@ -37,6 +37,8 @@ import {
 import { useLocalDataOperations } from "../providers/localDataOperations";
 import { LocalDataToolsPage } from "./LocalDataToolsPage";
 import { LocalBackupStatus } from "./LocalBackupStatus";
+import { AccountDeletionSection } from "./AccountDeletionSection";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 const SECTIONS = [
   {
@@ -51,6 +53,7 @@ const SECTIONS = [
   { id: "deals", label: "resources.deals.name" },
   { id: "notes", label: "resources.notes.name" },
   { id: "tasks", label: "resources.tasks.name" },
+  { id: "account", label: "crm.profile.account_section" },
 ];
 
 /** Ensure every item in a { value, label } array has a value (slug from label). */
@@ -200,6 +203,7 @@ const SettingsFormFields = () => {
   const translate = useTranslate();
   const currencyChoices = useMemo(() => getCurrencyChoices(), []);
   const localDataOperations = useLocalDataOperations();
+  const capabilities = useCrmProviderCapabilities();
   const {
     watch,
     setValue,
@@ -263,7 +267,9 @@ const SettingsFormFields = () => {
             {translate("crm.settings.title")}
           </h1>
           {SECTIONS.filter(
-            (section) => section.id !== "local-data" || localDataOperations,
+            (section) =>
+              (section.id !== "local-data" || localDataOperations) &&
+              (section.id !== "account" || capabilities.accountDeletion),
           ).map((section) => (
             <button
               key={section.id}
@@ -297,7 +303,10 @@ const SettingsFormFields = () => {
                 </div>
               </div>
               <Button asChild type="button" variant="outline" size="icon">
-                <Link to={LocalDataToolsPage.path} aria-label="打开本地数据工具">
+                <Link
+                  to={LocalDataToolsPage.path}
+                  aria-label="打开本地数据工具"
+                >
                   <ChevronRight className="size-4" />
                 </Link>
               </Button>
@@ -340,6 +349,8 @@ const SettingsFormFields = () => {
             </div>
           </CardContent>
         </Card>
+
+        {capabilities.accountDeletion ? <AccountDeletionSection /> : null}
 
         {/* Companies */}
         <Card id="companies">

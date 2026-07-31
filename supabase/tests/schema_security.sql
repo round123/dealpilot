@@ -281,6 +281,23 @@ begin
     raise exception 'customer_purge_jobs must survive the Customer delete cascade';
   end if;
 
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint as con
+    join pg_catalog.pg_class as child on child.oid = con.conrelid
+    join pg_catalog.pg_class as parent on parent.oid = con.confrelid
+    join pg_catalog.pg_namespace as child_ns on child_ns.oid = child.relnamespace
+    join pg_catalog.pg_namespace as parent_ns on parent_ns.oid = parent.relnamespace
+    where con.contype = 'f'
+      and child_ns.nspname = 'public'
+      and child.relname = 'customer_purge_jobs'
+      and parent_ns.nspname = 'public'
+      and parent.relname = 'profiles'
+      and con.confdeltype = 'c'
+  ) then
+    raise exception 'customer_purge_jobs must cascade when its owning profile is deleted';
+  end if;
+
   if exists (
     select 1
     from pg_catalog.pg_policies as p

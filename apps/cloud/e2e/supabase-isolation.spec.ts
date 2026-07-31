@@ -146,6 +146,81 @@ test("two local users remain isolated across browser, REST, RPC, Edge, FK, and S
   expect([400, 403]).toContain(storageResponse.status);
 });
 
+test("Auth onboarding creates an isolated profile and configuration", async () => {
+  const environment = requireSupabasePublicEnvironment();
+  const userIds = requireSeededUserIds();
+  const session = await signIn(
+    environment,
+    SUPABASE_E2E_USERS.alpha.email,
+    SUPABASE_E2E_USERS.alpha.password,
+  );
+  const headers = {
+    apikey: environment.anonKey,
+    authorization: `Bearer ${session.access_token}`,
+    "content-type": "application/json",
+  };
+  const asAlpha = (path: string, init: RequestInit = {}) =>
+    fetch(new URL(path, environment.url), {
+      ...init,
+      headers: { ...headers, ...init.headers },
+    });
+
+  const profiles = await expectJson<
+    Array<{
+      id: string;
+      display_name: string | null;
+      locale: string;
+      theme: string;
+    }>
+  >(
+    await asAlpha(
+      `/rest/v1/profiles?id=eq.${userIds.alpha}&select=id,display_name,locale,theme`,
+    ),
+    200,
+  );
+  expect(profiles).toEqual([
+    {
+      id: userIds.alpha,
+      display_name: SUPABASE_E2E_USERS.alpha.displayName,
+      locale: "zh-CN",
+      theme: "light",
+    },
+  ]);
+
+  const configurations = await expectJson<
+    Array<{ owner_user_id: string; config: Record<string, unknown> }>
+  >(
+    await asAlpha(
+      `/rest/v1/configuration?owner_user_id=eq.${userIds.alpha}&select=owner_user_id,config`,
+    ),
+    200,
+  );
+  expect(configurations).toEqual([
+    { owner_user_id: userIds.alpha, config: {} },
+  ]);
+
+  const updateResponse = await asAlpha(
+    `/rest/v1/profiles?id=eq.${userIds.alpha}&select=id,display_name,locale,theme`,
+    {
+      method: "PATCH",
+      headers: { prefer: "return=representation" },
+      body: JSON.stringify({ locale: "en-US", theme: "system" }),
+    },
+  );
+  const updatedProfiles = await expectJson<typeof profiles>(
+    updateResponse,
+    200,
+  );
+  expect(updatedProfiles).toEqual([
+    {
+      id: userIds.alpha,
+      display_name: SUPABASE_E2E_USERS.alpha.displayName,
+      locale: "en-US",
+      theme: "system",
+    },
+  ]);
+});
+
 const assertBrowserCustomerIsolation = async (
   browser: Browser,
   user: (typeof SUPABASE_E2E_USERS)[keyof typeof SUPABASE_E2E_USERS],

@@ -15,7 +15,7 @@
 核心决策：
 
 1. 所有业务后端能力按云端实现，使用 Supabase/PostgreSQL、RLS、RPC/Edge Functions 和统一 API 客户端。
-2. PostgreSQL 是唯一业务事实源。开发阶段运行本地 Supabase/PostgreSQL，生产阶段部署托管 Supabase/PostgreSQL；本地数据库不是另一套业务架构。
+2. PostgreSQL 是唯一业务事实源。开发和生产均使用托管 Supabase/PostgreSQL 项目；开发项目不是另一套业务架构。
 3. Web 工作台是首要产品界面，PWA 复用同一 Web 应用；不建设桌面壳、托盘或安装器作为产品入口。
 4. SQLite/Agent 只用于旧 V1 数据读取、预检、一次性迁移和取证，不参与云端业务读写，不与 PostgreSQL 长期双写。
 5. 首版是个人云 CRM：每个账号拥有自己的业务数据。不建设团队 workspace、成员、角色、邀请或企业 SSO。
@@ -23,15 +23,15 @@
 
 ## 2. 分阶段运行形态
 
-### 2.1 本地开发与验收
+### 2.1 云端开发与验收
 
-本地环境必须尽量等价于云端运行环境：
+开发阶段直接使用受控的 Supabase 开发项目，Web/PWA 与生产使用同一套云端运行模型：
 
-- Supabase CLI/Docker 启动 PostgreSQL、Auth、Storage、Realtime（如需要）和 Edge Functions。
-- Web/PWA 通过 `packages/api-client` 访问本地 Supabase URL。
-- 使用本地 Auth 测试账号和合成数据，不导入真实客户资料。
-- RLS、复合外键、RPC、Storage 策略、备份恢复和迁移测试均在本地 PostgreSQL 执行。
-- 本地开发命令是唯一启动方式；不要求 `exe`、NSIS、托盘、开机自启或 Windows 系统通知。
+- PostgreSQL、Auth、Storage、Realtime（如需要）和 Edge Functions 均运行在 Supabase 开发项目。
+- Web/PWA 通过 `packages/api-client` 访问开发项目 URL；本机只运行 Vite 开发服务器，不运行第二套业务数据库。
+- 使用开发项目中的测试账号和合成数据，不导入真实客户资料。
+- RLS、复合外键、RPC、Storage 策略、备份恢复和迁移测试在开发项目和 CI 门禁中执行。
+- 不要求 Docker、Supabase CLI、`exe`、NSIS、托盘、开机自启或 Windows 系统通知。
 
 ### 2.2 云端发布
 
@@ -90,7 +90,7 @@
 - 唯一匹配显示客户摘要；多匹配必须人工确认；无稳定标识允许人工绑定。
 - 群组、频道和无法识别场景明确显示不支持。
 - 用户主动标记单条消息后才读取正文，不自动发送、修改、删除或批量抓取消息。
-- 本地开发通过配置连接本地 Supabase/API；正式配对方式、商店发布和平台合规另设发布门。
+- 开发通过配置连接 Supabase 开发项目/API；正式配对方式、商店发布和平台合规另设发布门。
 
 ## 5. 后端与数据架构
 
@@ -119,9 +119,9 @@
 
 ## 7. 验收门槛
 
-### 本地云端等价门槛
+### 云端开发门槛
 
-- 本地 Supabase 从空库执行 migration，并通过 RLS、复合外键、Storage 和 RPC 隔离测试。
+- Supabase 开发项目从空库执行 migration，并通过 RLS、复合外键、Storage 和 RPC 隔离测试。
 - Web Customer 全行为 E2E、关联详情、合并/删除/恢复和提醒联动通过。
 - API 客户端契约测试覆盖成功包络、字段错误、非 JSON 错误、网络/取消、过期会话和无法解析的 2xx。
 - 导入、备份恢复和 SQLite 迁移测试通过；确认前中断不得修改 SQLite 原库。

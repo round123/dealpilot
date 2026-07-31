@@ -27,13 +27,13 @@ flowchart LR
   MIG --> SNAP["Read-only SQLite snapshot"]
 ```
 
-### 2.1 本地开发环境
+### 2.1 云端开发环境
 
-- `supabase start` 启动本地 PostgreSQL、Auth、Storage 和 Functions 依赖。
-- Web/PWA 使用本地 Supabase URL 和本地测试账号。
-- 所有表、RLS、复合外键、RPC、Edge Function 和 Storage 策略从空库 migration 重建。
+- Supabase 开发项目提供 PostgreSQL、Auth、Storage 和 Functions 依赖。
+- Web/PWA 使用开发项目 URL 和测试账号；开发者电脑只运行 Vite 前端服务。
+- 所有表、RLS、复合外键、RPC、Edge Function 和 Storage 策略通过 CI migration 门禁重建并部署到开发项目。
 - 测试数据只能使用合成数据或不可逆匿名化数据。
-- 不启动桌面 exe、托盘、系统通知或安装器作为业务验收前置条件。
+- 不启动 Docker、本地 PostgreSQL、桌面 exe、托盘、系统通知或安装器作为业务验收前置条件。
 
 ### 2.2 云端环境
 

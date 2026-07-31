@@ -181,4 +181,48 @@ describe("API client React Admin adapter", () => {
       { signal: undefined },
     );
   });
+
+  it("normalizes cloud social account identities before create and update", async () => {
+    const client = createClient();
+    const provider = createApiDataProvider(client);
+
+    await provider.create("social_accounts", {
+      data: {
+        company_id: "customer-1",
+        platform: " WhatsApp ",
+        raw_identifier: "  +8613800000000  ",
+      },
+    });
+    await provider.update("social_accounts", {
+      id: "social-1",
+      data: {
+        platform: "Telegram",
+        raw_identifier: " @Buyer ",
+      },
+      previousData: { id: "social-1" },
+    });
+
+    expect(client.create).toHaveBeenCalledWith(
+      "social_accounts",
+      {
+        company_id: "customer-1",
+        platform: "whatsapp",
+        raw_identifier: "+8613800000000",
+        normalized_identifier: "+8613800000000",
+      },
+      expect.anything(),
+      { signal: undefined },
+    );
+    expect(client.update).toHaveBeenCalledWith(
+      "social_accounts",
+      "social-1",
+      {
+        platform: "telegram",
+        raw_identifier: "@Buyer",
+        normalized_identifier: "@buyer",
+      },
+      expect.anything(),
+      { signal: undefined },
+    );
+  });
 });

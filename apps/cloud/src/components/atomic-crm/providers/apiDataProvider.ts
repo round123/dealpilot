@@ -231,6 +231,39 @@ const toCustomerSort = (sort: GetListParams["sort"]): readonly ListSort[] => [
   { field: "id", order: "asc" },
 ];
 
+/**
+ * The cloud schema stores a stable, case-insensitive identity alongside the
+ * value shown to the user. Keep this normalization at the API adapter
+ * boundary so every cloud write (including React Admin forms) satisfies the
+ * database constraint and duplicate guard.
+ */
+const normalizeSocialAccountInput = (input: object) => {
+  const data = input as {
+    platform?: unknown;
+    raw_identifier?: unknown;
+    normalized_identifier?: unknown;
+  };
+  if (typeof data.raw_identifier !== "string") return input;
+
+  const rawIdentifier = data.raw_identifier.trim();
+  return {
+    ...data,
+    platform:
+      typeof data.platform === "string"
+        ? data.platform.trim().toLocaleLowerCase()
+        : data.platform,
+    raw_identifier: rawIdentifier,
+    normalized_identifier:
+      typeof data.normalized_identifier === "string" &&
+      data.normalized_identifier.trim()
+        ? data.normalized_identifier.trim().toLocaleLowerCase()
+        : rawIdentifier.toLocaleLowerCase(),
+  };
+};
+
+const normalizeResourceInput = (resource: string, input: object) =>
+  resource === "social_accounts" ? normalizeSocialAccountInput(input) : input;
+
 export const createApiDataProvider = (
   client = getCloudApiClient() as unknown as ApiDataClient,
 ): DataProvider => {
@@ -304,7 +337,7 @@ export const createApiDataProvider = (
     ) {
       const data = await client.create<RecordType>(
         resource,
-        params.data,
+        normalizeResourceInput(resource, params.data),
         resource === "companies" ? CustomerSchema : RecordSchema,
         { signal: signalOf(params) },
       );
@@ -317,7 +350,7 @@ export const createApiDataProvider = (
       const data = await client.update<RecordType>(
         resource,
         String(params.id),
-        params.data,
+        normalizeResourceInput(resource, params.data),
         resource === "companies" ? CustomerSchema : RecordSchema,
         { signal: signalOf(params) },
       );
@@ -332,7 +365,7 @@ export const createApiDataProvider = (
           client.update<RecordType>(
             resource,
             String(id),
-            params.data,
+            normalizeResourceInput(resource, params.data),
             resource === "companies" ? CustomerSchema : RecordSchema,
             { signal: signalOf(params) },
           ),

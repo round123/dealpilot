@@ -3,7 +3,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
-  DatabaseBackup,
+  CloudCheck,
   Download,
   FileDown,
   UploadCloud,
@@ -1072,16 +1072,10 @@ function ResultStep({
       ) : null}
       {result.success > 0 || result.duplicates > 0 ? (
         <Alert className="mt-6">
-          <DatabaseBackup />
-          <AlertTitle>请为本次导入创建加密备份</AlertTitle>
+          <CloudCheck />
+          <AlertTitle>客户数据已保存</AlertTitle>
           <AlertDescription>
-            客户数据已经写入本机 SQLite。
-            <Link
-              className="ml-1 font-medium text-primary underline underline-offset-4"
-              to="/settings/local-data"
-            >
-              前往备份与恢复
-            </Link>
+            可在客户列表中继续核对和编辑本次导入结果。
           </AlertDescription>
         </Alert>
       ) : null}

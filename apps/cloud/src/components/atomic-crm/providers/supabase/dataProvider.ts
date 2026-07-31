@@ -10,7 +10,7 @@ import type { ConfigurationContextValue } from "../../root/ConfigurationContext"
 import { fetchBlobSource } from "../../misc/mediaFetch";
 import { createApiDataProvider } from "../apiDataProvider";
 import { getCloudBusinessApi } from "../cloudBusinessApi";
-import { FULL_CRM_CAPABILITIES } from "../capabilities";
+import { SUPABASE_CRM_CAPABILITIES } from "../capabilities";
 
 const getBaseDataProvider = () => createApiDataProvider();
 
@@ -36,7 +36,7 @@ const getDataProviderWithCustomMethods = () => {
 
   return {
     ...baseDataProvider,
-    capabilities: FULL_CRM_CAPABILITIES,
+    capabilities: SUPABASE_CRM_CAPABILITIES,
     supportsPermanentDealDeletion: true as boolean,
     async getList(resource: string, params: GetListParams) {
       if (resource === "companies") {
@@ -222,7 +222,7 @@ export const getDataProvider = () => {
     getDataProviderWithCustomMethods(),
     lifeCycleCallbacks,
   ) as CrmDataProvider;
-  dataProvider.capabilities = FULL_CRM_CAPABILITIES;
+  dataProvider.capabilities = SUPABASE_CRM_CAPABILITIES;
   return dataProvider;
 };
 

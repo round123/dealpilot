@@ -2,6 +2,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 export interface CrmProviderCapabilities {
+  accountDeletion: boolean;
   contacts: {
     extendedProfile: boolean;
     status: boolean;
@@ -19,6 +20,7 @@ export interface CrmProviderCapabilities {
 }
 
 export const FULL_CRM_CAPABILITIES: CrmProviderCapabilities = Object.freeze({
+  accountDeletion: false,
   contacts: Object.freeze({
     extendedProfile: true,
     status: true,
@@ -34,6 +36,7 @@ export const FULL_CRM_CAPABILITIES: CrmProviderCapabilities = Object.freeze({
 });
 
 export const AGENT_CRM_CAPABILITIES: CrmProviderCapabilities = Object.freeze({
+  accountDeletion: false,
   contacts: Object.freeze({
     extendedProfile: false,
     status: false,
@@ -47,6 +50,13 @@ export const AGENT_CRM_CAPABILITIES: CrmProviderCapabilities = Object.freeze({
   }),
   deals: Object.freeze({ notes: false }),
 });
+
+export const SUPABASE_CRM_CAPABILITIES: CrmProviderCapabilities = Object.freeze(
+  {
+    ...FULL_CRM_CAPABILITIES,
+    accountDeletion: true,
+  },
+);
 
 const CrmProviderCapabilitiesContext = createContext(FULL_CRM_CAPABILITIES);
 

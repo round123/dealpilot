@@ -46,6 +46,8 @@ import { personalAccount } from "../providers/personalAccount";
 import { useLocalDataOperations } from "../providers/localDataOperations";
 import { LocalDataToolsPage } from "./LocalDataToolsPage";
 import { LocalBackupStatus } from "./LocalBackupStatus";
+import { DeleteAccountControl } from "./AccountDeletionSection";
+import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 const ChangePasswordButton = () => {
   const translate = useTranslate();
@@ -107,6 +109,7 @@ export const SettingsPageMobile = () => {
             <LocalDataSection />
             <McpServerSection />
             <AboutSection />
+            <AccountSection />
           </div>
 
           <div className="mt-auto pt-6 space-y-3 mb-4">
@@ -183,7 +186,9 @@ const LocalDataSection = () => {
           <Link to={LocalDataToolsPage.path}>
             <DatabaseBackup className="size-5 text-muted-foreground" />
             <ItemContent>
-              <ItemTitle className="font-normal">备份、恢复与全域导出</ItemTitle>
+              <ItemTitle className="font-normal">
+                备份、恢复与全域导出
+              </ItemTitle>
             </ItemContent>
             <ItemActions>
               <ChevronRight className="size-4 text-muted-foreground" />
@@ -316,6 +321,23 @@ const AboutSection = () => {
           </Link>
         </Item>
       </ItemGroup>
+    </div>
+  );
+};
+
+const AccountSection = () => {
+  const translate = useTranslate();
+  const capabilities = useCrmProviderCapabilities();
+
+  if (!capabilities.accountDeletion) return null;
+
+  return (
+    <div>
+      <SectionLabel>{translate("crm.profile.account_section")}</SectionLabel>
+      <p className="text-sm text-muted-foreground mb-2 px-1">
+        {translate("crm.profile.delete_description")}
+      </p>
+      <DeleteAccountControl compact />
     </div>
   );
 };

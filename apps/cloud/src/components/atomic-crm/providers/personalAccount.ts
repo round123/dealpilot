@@ -40,6 +40,7 @@ export interface PersonalAccountApi {
   resetPassword(email: string, redirectTo?: string): Promise<void>;
   exchangeCodeForSession(code: string, signal?: AbortSignal): Promise<void>;
   updatePassword(password: string, signal?: AbortSignal): Promise<void>;
+  deleteAccount(signal?: AbortSignal): Promise<void>;
 }
 
 const metadataText = (
@@ -130,5 +131,9 @@ export const personalAccount: PersonalAccountApi = {
 
   async updatePassword(password, signal) {
     await getCloudApiClient().auth.updatePassword(password, { signal });
+  },
+
+  async deleteAccount(signal) {
+    await getCloudApiClient().account.deleteCurrent({ signal });
   },
 };
