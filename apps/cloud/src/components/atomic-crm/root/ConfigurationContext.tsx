@@ -1,8 +1,12 @@
 import { useMemo } from "react";
 import { useStore, useTranslate } from "ra-core";
+import type { DealStage as DealStageValue } from "@dealpilot/api-client";
 
 import type { DealStage, LabeledValue, NoteStatus } from "../types";
-import { defaultConfiguration } from "./defaultConfiguration";
+import {
+  defaultConfiguration,
+  normalizeDealStageConfiguration,
+} from "./defaultConfiguration";
 import { localizeConfigurationChoices } from "./configurationLocalization";
 
 export const CONFIGURATION_STORE_KEY = "app.configuration";
@@ -11,7 +15,7 @@ export interface ConfigurationContextValue {
   companySectors: LabeledValue[];
   currency: string;
   dealCategories: LabeledValue[];
-  dealPipelineStatuses: string[];
+  dealPipelineStatuses: DealStageValue[];
   dealStages: DealStage[];
   noteStatuses: NoteStatus[];
   taskTypes: LabeledValue[];
@@ -27,7 +31,11 @@ export const useConfigurationContext = () => {
   );
   // Merge with defaults so that missing fields in stored config
   // fall back to default values (e.g. when new settings are added)
-  return useMemo(() => ({ ...defaultConfiguration, ...config }), [config]);
+  return useMemo(
+    () =>
+      normalizeDealStageConfiguration({ ...defaultConfiguration, ...config }),
+    [config],
+  );
 };
 
 /** Returns a display-only localized copy while preserving stored configuration. */

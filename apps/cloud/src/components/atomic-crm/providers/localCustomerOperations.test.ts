@@ -283,7 +283,7 @@ const deal = (id: number, companyId: number, name: string): Deal => ({
   company_id: companyId,
   contact_ids: [],
   category: "other",
-  stage: "opportunity",
+  stage: "lead",
   description: "",
   amount: 100,
   created_at: NOW,

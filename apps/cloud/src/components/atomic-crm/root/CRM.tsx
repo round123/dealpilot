@@ -32,7 +32,6 @@ import {
 import { SettingsPageMobile } from "../settings/SettingsPageMobile";
 import { SettingsPage } from "../settings/SettingsPage";
 import { CloudDataToolsPage } from "../settings/CloudDataToolsPage";
-import { LocalDataToolsPage } from "../settings/LocalDataToolsPage";
 import {
   CONFIGURATION_STORE_KEY,
   type ConfigurationContextValue,
@@ -289,12 +288,6 @@ const DesktopAdmin = (
 
       <CustomRoutes>
         <Route path={SettingsPage.path} element={<SettingsPage />} />
-        {import.meta.env.VITE_DATA_BACKEND === "agent" ? (
-          <Route
-            path={LocalDataToolsPage.path}
-            element={<LocalDataToolsPage />}
-          />
-        ) : null}
         <Route
           path={CloudDataToolsPage.path}
           element={<CloudDataToolsPage />}
@@ -361,12 +354,6 @@ const MobileAdmin = (
             path={SettingsPageMobile.path}
             element={<SettingsPageMobile />}
           />
-          {import.meta.env.VITE_DATA_BACKEND === "agent" ? (
-            <Route
-              path={LocalDataToolsPage.path}
-              element={<LocalDataToolsPage />}
-            />
-          ) : null}
           <Route
             path={CloudDataToolsPage.path}
             element={<CloudDataToolsPage />}

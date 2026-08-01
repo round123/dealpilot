@@ -1,0 +1,220 @@
+name: Roll back WebCloud application
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Previously verified commit SHA or tag
+        required: true
+        type: string
+      verified_sha:
+        description: Full 40-character SHA expected for release_ref
+        required: true
+        type: string
+      approval_evidence:
+        description: HTTPS URL to incident approval or rollback ticket
+        required: true
+        type: string
+      confirmation:
+        description: Type ROLLBACK V2 APP ONLY
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: webcloud-production
+  cancel-in-progress: false
+
+jobs:
+  verify-release:
+    name: Verify compatible previous release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate rollback authority and immutable release
+        id: release
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+          VERIFIED_SHA: ${{ inputs.verified_sha }}
+          APPROVAL_EVIDENCE: ${{ inputs.approval_evidence }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            echo "Rollback workflow must be dispatched from main." >&2
+            exit 1
+          fi
+          if [ "$CONFIRMATION" != "ROLLBACK V2 APP ONLY" ]; then
+            echo "Rollback confirmation does not match." >&2
+            exit 1
+          fi
+          if [[ ! "$VERIFIED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "verified_sha must be a full lowercase commit SHA." >&2
+            exit 1
+          fi
+          if [[ ! "$APPROVAL_EVIDENCE" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "approval_evidence must be a single HTTPS URL." >&2
+            exit 1
+          fi
+
+          git fetch origin main --tags --force
+          release_sha="$(git rev-parse --verify --end-of-options "$RELEASE_REF^{commit}")"
+          if [ "$release_sha" != "$VERIFIED_SHA" ]; then
+            echo "release_ref does not resolve to verified_sha." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$release_sha" origin/main; then
+            echo "Rollback release must be contained in main history." >&2
+            exit 1
+          fi
+          if [ "$release_sha" = "$(git rev-parse origin/main)" ]; then
+            echo "Rollback release must be older than the current main head." >&2
+            exit 1
+          fi
+
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Approved application rollback"
+            echo "- Target release: $release_sha"
+            echo "- Approval evidence: $APPROVAL_EVIDENCE"
+            echo "- Database action: none"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-edge:
+    name: Deploy previous compatible Edge version
+    needs: verify-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: cloud-production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-release.outputs.release_sha }}
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.110.0
+      - name: Enforce application-only rollback
+        shell: bash
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$SUPABASE_PROJECT_REF"
+          echo "PostgreSQL remains the fact source; no migration, reset, down, or SQLite action is permitted."
+      - name: Deploy Edge Functions from verified release
+        shell: bash
+        run: |
+          for function_path in supabase/functions/*; do
+            if [ ! -f "$function_path/index.ts" ]; then
+              continue
+            fi
+            function_name="$(basename "$function_path")"
+            supabase functions deploy "$function_name" \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              --use-api
+          done
+
+  build-web:
+    name: Build previous compatible Web/PWA
+    needs:
+      - verify-release
+      - deploy-edge
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_SHA: ${{ needs.verify-release.outputs.release_sha }}
+      VITE_IS_DEMO: "false"
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SB_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
+      VITE_ATTACHMENTS_BUCKET: attachments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-release.outputs.release_sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/configure-pages@v5
+      - name: Validate production public configuration
+        shell: bash
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SB_PUBLISHABLE_KEY"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dealpilot/cloud... build
+      - name: Record rollback release identity
+        shell: bash
+        run: |
+          built_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          printf '{"sha":"%s","channel":"rollback","built_at":"%s"}\n' \
+            "$RELEASE_SHA" "$built_at" \
+            > apps/cloud/dist/release.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/cloud/dist
+
+  deploy-web:
+    name: Deploy previous Web/PWA to production
+    needs:
+      - verify-release
+      - build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  smoke:
+    name: Verify previous app reads current PostgreSQL
+    needs:
+      - verify-release
+      - deploy-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: cloud-production
+      url: ${{ needs.deploy-web.outputs.page_url }}
+    env:
+      CLOUD_WEB_URL: ${{ needs.deploy-web.outputs.page_url }}
+      SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
+      RELEASE_SHA: ${{ needs.verify-release.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pre-login smoke against current PostgreSQL
+        run: node scripts/cloud-smoke.mjs
+      - name: Record rollback evidence
+        shell: bash
+        env:
+          APPROVAL_EVIDENCE: ${{ inputs.approval_evidence }}
+        run: |
+          {
+            echo "### WebCloud rollback completed"
+            echo "- Application release SHA: $RELEASE_SHA"
+            echo "- Approval evidence: $APPROVAL_EVIDENCE"
+            echo "- Web: $CLOUD_WEB_URL"
+            echo "- PostgreSQL: current production database, unchanged"
+            echo "- Pre-login smoke: passed"
+            echo "- Next action: prepare a forward fix from current main"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -13,8 +13,8 @@ const cleanContactArrayFields = (data: Contact) => {
     data.phone_jsonb?.filter((p) => p.number != null) || [];
   return {
     ...data,
-    phone_jsonb: cleanedPhoneJsonb.length > 0 ? cleanedPhoneJsonb : null,
-    email_jsonb: cleanedEmailJsonb.length > 0 ? cleanedEmailJsonb : null,
+    phone_jsonb: cleanedPhoneJsonb,
+    email_jsonb: cleanedEmailJsonb,
   };
 };
 

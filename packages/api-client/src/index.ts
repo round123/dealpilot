@@ -44,6 +44,8 @@ export { AccountDeletionResultSchema, createAccountApi } from "./account.js";
 export type { AccountApi, AccountDeletionResult } from "./account.js";
 export {
   BackupCreateInputSchema,
+  BackupExportSchema,
+  BackupPayloadRestoreInputSchema,
   BackupRestoreResultSchema,
   BackupSnapshotSchema,
   createBackupApi,
@@ -51,6 +53,8 @@ export {
 export type {
   BackupApi,
   BackupCreateInput,
+  BackupExport,
+  BackupPayloadRestoreInput,
   BackupRestoreResult,
   BackupSnapshot,
 } from "./backup.js";
@@ -68,6 +72,11 @@ export {
   createCustomerApi,
   resolveCustomerMergeFields,
   CustomerContactSchema,
+  CustomerCursorPageInputSchema,
+  CustomerCursorPageSchema,
+  CustomerCursorSortFieldSchema,
+  DEAL_STAGE_VALUES,
+  DealStageSchema,
   CustomerDealSchema,
   CustomerDetailSchema,
   CustomerFollowUpSchema,
@@ -84,10 +93,52 @@ export {
   CustomerSummarySchema,
   ResolvedCustomerMergeFieldsSchema,
 } from "./customer.js";
+export {
+  CloudImportCommitInputSchema,
+  CloudImportCommitResultSchema,
+  CloudImportResolutionSchema,
+  CloudImportRowSchema,
+  CloudImportWarningSchema,
+  createImportApi,
+} from "./import.js";
+export {
+  createMigrationApi,
+  V1_MIGRATION_COLLECTIONS,
+  V1MigrationBundleSchema,
+} from "./migration.js";
+export {
+  createReminderApi,
+  ReminderStatusMutationInputSchema,
+} from "./reminder.js";
+export type { ReminderApi, ReminderStatusMutationInput } from "./reminder.js";
+export type {
+  MigrationApi,
+  V1MigrationAbandonResult,
+  V1MigrationBeginResult,
+  V1MigrationBundle,
+  V1MigrationCollection,
+  V1MigrationConfirmResult,
+  V1MigrationReconcileResult,
+  V1MigrationStageResult,
+  V1MigrationUploadOptions,
+  V1MigrationUploadProgress,
+  V1MigrationUploadResult,
+} from "./migration.js";
+export type {
+  CloudImportCommitInput,
+  CloudImportCommitResult,
+  CloudImportResolution,
+  CloudImportRow,
+  ImportApi,
+} from "./import.js";
 export type {
   Customer,
   CustomerApi,
   CustomerContact,
+  CustomerCursorPage,
+  CustomerCursorPageInput,
+  CustomerCursorSortField,
+  DealStage,
   CustomerDeal,
   CustomerDetail,
   CustomerFollowUp,
@@ -139,3 +190,32 @@ export {
   milestoneReminderKey,
 } from "./deal-domain.js";
 export type { DealMilestone, DealRisk } from "./deal-domain.js";
+export {
+  CloudPrdResourceSchemas,
+  ContactCreateInputSchema,
+  ContactSummarySchema,
+  ContactTagIdsSchema,
+  ContactTagSchema,
+  ContactUpdateInputSchema,
+  DealContactIdsSchema,
+  DealContactSchema,
+  DealCreateInputSchema,
+  DealUpdateInputSchema,
+  LegacyAtomicRecordSchema,
+  cloudRecordSchemaFor,
+  isCloudPrdResource,
+  toContactCreateInput,
+  toContactUpdateInput,
+  toDealCreateInput,
+  toDealUpdateInput,
+} from "./resource-contracts.js";
+export type {
+  CloudPrdResourceName,
+  ContactCreateInput,
+  ContactSummary,
+  ContactTag,
+  ContactUpdateInput,
+  DealContact,
+  DealCreateInput,
+  DealUpdateInput,
+} from "./resource-contracts.js";

@@ -8,7 +8,7 @@ import {
   Loader2,
   MessageCircleReply,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   RecordContextProvider,
   useListContext,
@@ -33,6 +33,7 @@ import {
   isReminderOverdue,
   REMINDER_STATUSES,
 } from "./reminderContract";
+import { createReminderStatusAttemptStore } from "./reminderStatusAttempt";
 
 export const ReminderList = () => {
   const translate = useTranslate();
@@ -166,6 +167,9 @@ export const ReminderRow = ({
   const [customSnooze, setCustomSnooze] = useState(() =>
     toDateTimeLocalValue(new Date(now.getTime() + 24 * 60 * 60 * 1000)),
   );
+  const reminderAttempts = useRef(
+    createReminderStatusAttemptStore<Partial<CustomerReminder>>(),
+  ).current;
   const [update, { isPending }] = useUpdate<CustomerReminder>(
     "reminders",
     {},
@@ -180,6 +184,7 @@ export const ReminderRow = ({
           type: "error",
         }),
       onSuccess: () => {
+        reminderAttempts.complete();
         setShowCustomSnooze(false);
         notify("resources.reminders.notifications.updated", {
           _: "提醒已更新",
@@ -199,12 +204,18 @@ export const ReminderRow = ({
     reminder.status,
   );
   const overdue = isReminderOverdue(reminder, now);
-  const updateReminder = (data: Partial<CustomerReminder>) =>
+  const updateReminder = (
+    action: string,
+    data: Partial<CustomerReminder>,
+  ) => {
+    const attempt = reminderAttempts.get(action, () => data);
     update("reminders", {
       id: reminder.id,
-      data,
+      data: attempt.data,
       previousData: reminder,
+      meta: { idempotencyKey: attempt.idempotencyKey },
     });
+  };
 
   return (
     <article className="grid min-w-0 gap-3 py-4 lg:grid-cols-[minmax(14rem,1fr)_auto] lg:items-center">
@@ -262,7 +273,10 @@ export const ReminderRow = ({
             size="sm"
             disabled={isPending}
             onClick={() =>
-              updateReminder({ status: "completed", resolution: "completed" })
+              updateReminder("complete", {
+                status: "completed",
+                resolution: "completed",
+              })
             }
           >
             <Check className="size-4" />
@@ -277,7 +291,7 @@ export const ReminderRow = ({
               const snoozeUntil = new Date(
                 now.getTime() + 24 * 60 * 60 * 1000,
               ).toISOString();
-              updateReminder({
+              updateReminder("snooze-one-day", {
                 status: "snoozed",
                 snooze_until: snoozeUntil,
               });
@@ -304,7 +318,10 @@ export const ReminderRow = ({
             variant="ghost"
             disabled={isPending}
             onClick={() =>
-              updateReminder({ status: "ignored", resolution: "ignored" })
+              updateReminder("ignore", {
+                status: "ignored",
+                resolution: "ignored",
+              })
             }
           >
             <BellOff className="size-4" />
@@ -317,7 +334,7 @@ export const ReminderRow = ({
               variant="outline"
               disabled={isPending}
               onClick={() =>
-                updateReminder({
+                updateReminder("confirm-reply", {
                   status: "replied",
                   resolution: "reply_received",
                   snooze_until: null,
@@ -350,7 +367,7 @@ export const ReminderRow = ({
             type="button"
             disabled={isPending || !customSnooze}
             onClick={() =>
-              updateReminder({
+              updateReminder(`snooze-custom:${customSnooze}`, {
                 status: "snoozed",
                 snooze_until: new Date(customSnooze).toISOString(),
               })

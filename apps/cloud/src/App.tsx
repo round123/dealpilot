@@ -3,18 +3,16 @@ import {
   authProvider as demoAuthProvider,
   dataProvider as demoDataProvider,
 } from "@/components/atomic-crm/providers/fakerest";
-import { createAgentRuntime } from "@/components/atomic-crm/providers/agent";
 import { getCloudApiClient } from "@/components/atomic-crm/providers/apiClient";
 import { createCloudCustomerImportOperations } from "@/components/atomic-crm/providers/cloudImportOperations";
 
-const agentRuntime =
-  import.meta.env.VITE_DATA_BACKEND === "agent"
-    ? createAgentRuntime()
-    : undefined;
+const isDemoRuntime =
+  import.meta.env.DEV &&
+  import.meta.env.MODE === "demo" &&
+  import.meta.env.VITE_IS_DEMO === "true";
 
 const cloudImportOperations =
-  import.meta.env.VITE_DATA_BACKEND !== "agent" &&
-  import.meta.env.VITE_IS_DEMO !== "true"
+  !isDemoRuntime
     ? createCloudCustomerImportOperations(getCloudApiClient())
     : undefined;
 
@@ -50,20 +48,7 @@ const cloudImportOperations =
  * );
  */
 const App = () => {
-  if (agentRuntime) {
-    return (
-      <CRM
-        authProvider={agentRuntime.authProvider}
-        customerOperations={agentRuntime.customerOperations}
-        dataProvider={agentRuntime.dataProvider}
-        importOperations={agentRuntime.importOperations}
-        localDataOperations={agentRuntime.localDataOperations}
-        title="DealPilot"
-      />
-    );
-  }
-
-  if (import.meta.env.VITE_IS_DEMO === "true") {
+  if (isDemoRuntime) {
     return (
       <CRM
         authProvider={demoAuthProvider}

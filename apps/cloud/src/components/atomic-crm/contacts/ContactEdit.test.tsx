@@ -84,8 +84,8 @@ describe("ContactEdit", () => {
         expect.anything(),
         expect.objectContaining({
           data: expect.objectContaining({
-            email_jsonb: null,
-            phone_jsonb: null,
+            email_jsonb: [],
+            phone_jsonb: [],
           }),
         }),
       );
@@ -126,7 +126,7 @@ describe("ContactEdit", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             email_jsonb: [{ email: "ada@example.com", type: "Work" }],
-            phone_jsonb: null,
+            phone_jsonb: [],
           }),
         }),
       );
@@ -222,8 +222,8 @@ describe("ContactEdit", () => {
         expect.anything(),
         expect.objectContaining({
           data: expect.objectContaining({
-            email_jsonb: null,
-            phone_jsonb: null,
+            email_jsonb: [],
+            phone_jsonb: [],
           }),
         }),
       );
@@ -265,7 +265,7 @@ describe("ContactEdit", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             email_jsonb: [{ email: "ada@example.com", type: "Work" }],
-            phone_jsonb: null,
+            phone_jsonb: [],
           }),
         }),
       );

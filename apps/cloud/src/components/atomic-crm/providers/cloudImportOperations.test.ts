@@ -2,10 +2,11 @@ import {
   ApiError,
   CustomerContactSchema,
   CustomerSchema,
-  CustomerSocialAccountSchema,
   type ApiClient,
+  type CustomerSocialAccount,
 } from "@dealpilot/api-client";
 import { describe, expect, it, vi } from "vitest";
+import * as XLSX from "xlsx";
 
 import { createCloudCustomerImportOperations } from "./cloudImportOperations";
 
@@ -65,11 +66,9 @@ const existingContact = CustomerContactSchema.parse({
 });
 
 function createClient(withExisting = true) {
-  let sequence = 4;
   const customers = withExisting ? [existingCustomer] : [];
   const contacts = withExisting ? [existingContact] : [];
-  const socialAccounts: ReturnType<typeof CustomerSocialAccountSchema.parse>[] =
-    [];
+  const socialAccounts: CustomerSocialAccount[] = [];
 
   const list = vi.fn(async (resource: string) => {
     const data =
@@ -80,55 +79,84 @@ function createClient(withExisting = true) {
           : socialAccounts;
     return { data, total: data.length };
   });
-  const create = vi.fn(async (resource: string, input: Record<string, any>) => {
-    sequence += 1;
-    const id = `${String(sequence).padStart(8, "0")}-0000-4000-8000-${String(
-      sequence,
-    ).padStart(12, "0")}`;
-    if (resource === "companies") {
-      const result = CustomerSchema.parse({
-        ...existingCustomer,
-        ...input,
-        id,
-        company: input.company ?? null,
-        country: input.country ?? null,
-        source: input.source ?? null,
-      });
-      customers.push(result);
-      return result;
+  const results = new Map<
+    string,
+    {
+      success: number;
+      failed: number;
+      skipped: number;
+      duplicates: number;
+      warnings: never[];
     }
-    if (resource === "contacts") {
-      const result = CustomerContactSchema.parse({
-        ...existingContact,
-        ...input,
-        id,
-        owner_user_id: userId,
-      });
-      contacts.push(result);
-      return result;
-    }
-    const result = CustomerSocialAccountSchema.parse({
-      ...input,
-      id,
-      owner_user_id: userId,
-      created_at: now,
-      updated_at: now,
-    });
-    socialAccounts.push(result);
+  >();
+  async function commit(input: {
+    idempotencyKey: string;
+    rows: Array<{ row_index: number }>;
+    resolutions: Array<{ action: "merge" | "skip" | "new" }>;
+    invalidCount: number;
+  }) {
+    const replay = results.get(input.idempotencyKey);
+    if (replay) return replay;
+    const result = {
+      success:
+        input.rows.length -
+        input.resolutions.filter(({ action }) => action !== "new").length,
+      failed: input.invalidCount,
+      skipped: input.resolutions.filter(({ action }) => action === "skip")
+        .length,
+      duplicates: input.resolutions.filter(({ action }) => action === "merge")
+        .length,
+      warnings: [],
+    };
+    results.set(input.idempotencyKey, result);
     return result;
-  });
-  const update = vi.fn(async () => existingCustomer);
+  }
+  const commitMock = vi.fn(commit);
   return {
-    client: { list, create, update } as unknown as ApiClient,
+    client: { list, imports: { commit: commitMock } } as unknown as ApiClient,
     list,
-    create,
-    update,
+    commit: commitMock,
   };
 }
 
 describe("cloud customer import operations", () => {
-  it("maps CSV columns, previews duplicate candidates, and writes through the API client", async () => {
-    const { client, list, create } = createClient();
+  it.each(["csv", "xlsx"] as const)(
+    "parses and commits the 1000-row %s Cloud path",
+    async (format) => {
+      const { client, commit } = createClient(false);
+      const operations = createCloudCustomerImportOperations(client);
+      const file = createScaleImportFile(format);
+      const startedAt = performance.now();
+
+      const preview = await operations.parseFile(file);
+      expect(preview).toMatchObject({ total_rows: 1_000, valid_rows: 1_000 });
+      const result = await operations.commit({
+        job_id: preview.job_id,
+        resolutions: [],
+      });
+
+      expect(result).toMatchObject({ success: 1_000, failed: 0 });
+      expect(commit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rows: expect.arrayContaining([
+            expect.objectContaining({ row_index: 1, name: "规模客户 1" }),
+            expect.objectContaining({
+              row_index: 1_000,
+              name: "规模客户 1000",
+            }),
+          ]),
+          invalidCount: 0,
+        }),
+        expect.anything(),
+      );
+      expect(commit.mock.calls[0]?.[0].rows).toHaveLength(1_000);
+      expect(performance.now() - startedAt).toBeLessThan(30_000);
+    },
+    35_000,
+  );
+
+  it("maps CSV columns, previews duplicate candidates, and commits one RPC payload", async () => {
+    const { client, list, commit } = createClient();
     const operations = createCloudCustomerImportOperations(client);
     const file = new File(
       [
@@ -189,33 +217,33 @@ describe("cloud customer import operations", () => {
       duplicates: 0,
       warnings: [],
     });
-    expect(create).toHaveBeenCalledWith(
-      "companies",
+    expect(commit).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "华东贸易新记录",
-        country: "中国",
+        jobId: preview.job_id,
+        idempotencyKey: "customer-import-1",
+        payloadHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        rows: [
+          expect.objectContaining({
+            row_index: 1,
+            name: "华东贸易新记录",
+            country: "中国",
+            email: "buyer@example.com",
+          }),
+        ],
+        resolutions: request.resolutions,
+        invalidCount: 0,
       }),
-      expect.anything(),
-      expect.anything(),
-    );
-    expect(create).toHaveBeenCalledWith(
-      "contacts",
-      expect.objectContaining({
-        email_jsonb: [{ email: "buyer@example.com", type: "Work" }],
-      }),
-      expect.anything(),
-      expect.anything(),
+      { signal: undefined },
     );
 
-    const callCount = create.mock.calls.length;
     await expect(
       operations.commit(request, { idempotencyKey: "customer-import-1" }),
     ).resolves.toEqual(result);
-    expect(create).toHaveBeenCalledTimes(callCount);
+    expect(commit).toHaveBeenCalledTimes(2);
   });
 
   it("reports invalid and repeated identities per row and exports a CSV report", async () => {
-    const { client, create } = createClient(false);
+    const { client, commit } = createClient(false);
     const operations = createCloudCustomerImportOperations(client);
     const file = new File(
       [
@@ -250,11 +278,14 @@ describe("cloud customer import operations", () => {
       resolutions: [],
     });
     expect(result).toMatchObject({ success: 1, failed: 2 });
-    expect(create).toHaveBeenCalled();
+    expect(commit).toHaveBeenCalledWith(
+      expect.objectContaining({ invalidCount: 2, rows: [expect.anything()] }),
+      expect.anything(),
+    );
   });
 
-  it("does not copy an identity already present on a merge target", async () => {
-    const { client, create } = createClient();
+  it("sends the merge resolution and row identities to PostgreSQL", async () => {
+    const { client, commit } = createClient();
     const operations = createCloudCustomerImportOperations(client);
     const preview = await operations.parseFile(
       new File(
@@ -274,20 +305,29 @@ describe("cloud customer import operations", () => {
       ],
     });
 
-    expect(create).toHaveBeenCalledWith(
-      "contacts",
+    expect(commit).toHaveBeenCalledWith(
       expect.objectContaining({
-        email_jsonb: [],
-        phone_jsonb: [{ number: "+8613800000000", type: "Work" }],
+        rows: [
+          expect.objectContaining({
+            email: "buyer@example.com",
+            phone: "+8613800000000",
+          }),
+        ],
+        resolutions: [
+          {
+            row_index: 1,
+            action: "merge",
+            target_customer_id: existingCustomerId,
+          },
+        ],
       }),
-      expect.anything(),
       expect.anything(),
     );
   });
 
-  it("adds a stable row error when a cloud write fails", async () => {
-    const { client, create } = createClient(false);
-    create.mockRejectedValueOnce(
+  it("propagates a transactional RPC failure instead of reporting partial success", async () => {
+    const { client, commit } = createClient(false);
+    commit.mockRejectedValueOnce(
       new ApiError({
         code: "CONFLICT",
         status: 409,
@@ -301,10 +341,10 @@ describe("cloud customer import operations", () => {
 
     await expect(
       operations.commit({ job_id: preview.job_id, resolutions: [] }),
-    ).resolves.toMatchObject({ success: 0, failed: 1 });
+    ).rejects.toMatchObject({ code: "CONFLICT" });
     const report = await operations.downloadErrors(preview.job_id);
     const csv = await report.text();
-    expect(csv).toContain("云端数据发生冲突，请刷新客户数据后重新导入");
+    expect(csv).not.toContain("云端数据发生冲突");
     expect(csv).not.toContain("private backend detail");
   });
 
@@ -322,3 +362,33 @@ describe("cloud customer import operations", () => {
     expect(list).not.toHaveBeenCalled();
   });
 });
+
+function createScaleImportFile(format: "csv" | "xlsx") {
+  const rows = Array.from({ length: 1_000 }, (_, index) => [
+    `规模客户 ${index + 1}`,
+    index % 2 === 0 ? "中国" : "新加坡",
+    "批量导入验收",
+  ]);
+  if (format === "csv") {
+    return new File(
+      [
+        [["名称", "国家", "来源"], ...rows]
+          .map((row) => row.join(","))
+          .join("\n"),
+      ],
+      "cloud-scale-1000.csv",
+      { type: "text/csv" },
+    );
+  }
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([["名称", "国家", "来源"], ...rows]),
+    "客户",
+  );
+  const bytes = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  return new File([bytes], "cloud-scale-1000.xlsx", {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}

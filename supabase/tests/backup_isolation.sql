@@ -21,6 +21,15 @@ insert into public.audit_events (
   '{}'::jsonb
 );
 
+insert into public.migration_jobs (
+  id, owner_user_id, idempotency_key, source_fingerprint
+) values (
+  '31000000-0000-4000-8000-000000000030',
+  '31000000-0000-4000-8000-000000000001',
+  'backup-test-migration',
+  'backup-test-source'
+);
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -30,14 +39,6 @@ select set_config(
 
 insert into public.companies (id, name, grade)
 values ('31000000-0000-4000-8000-000000000010', 'Snapshot baseline', 'A');
-
-insert into public.migration_jobs (
-  id, idempotency_key, source_fingerprint
-) values (
-  '31000000-0000-4000-8000-000000000030',
-  'backup-test-migration',
-  'backup-test-source'
-);
 
 do $$
 declare
@@ -68,6 +69,25 @@ end;
 $$;
 
 do $$
+declare
+  exported jsonb;
+begin
+  select public.export_backup_snapshot(
+    current_setting('dealpilot_test.backup_id')::uuid
+  ) into exported;
+  if exported -> 'data' ->> 'id' <> current_setting('dealpilot_test.backup_id')
+    or exported -> 'data' ->> 'schema_version' <> '1'
+    or char_length(exported -> 'data' ->> 'checksum') <> 64
+    or jsonb_typeof(exported -> 'data' -> 'payload') is distinct from 'object'
+    or exported -> 'data' -> 'payload' -> 'companies' -> 0 ->> 'name'
+      <> 'Snapshot baseline' then
+    raise exception 'export backup response differs from contract: %', exported;
+  end if;
+  perform set_config('dealpilot_test.exported_backup', exported::text, true);
+end;
+$$;
+
+do $$
 begin
   begin
     insert into public.backup_snapshots (
@@ -83,13 +103,132 @@ end;
 $$;
 
 update public.companies
+set name = 'Changed before encrypted restore', grade = 'C'
+where id = '31000000-0000-4000-8000-000000000010';
+
+do $$
+declare
+  exported jsonb := current_setting('dealpilot_test.exported_backup')::jsonb;
+  result jsonb;
+  snapshot_count_before integer;
+begin
+  select count(*) into snapshot_count_before from public.backup_snapshots;
+  select public.restore_backup_payload(
+    (exported -> 'data' ->> 'schema_version')::integer,
+    exported -> 'data' ->> 'checksum',
+    exported -> 'data' -> 'payload'
+  ) into result;
+
+  if result -> 'data' ->> 'checksum' <> exported -> 'data' ->> 'checksum'
+    or result -> 'data' ->> 'safety_snapshot_id' is null
+    or (result -> 'data' -> 'restored_counts' ->> 'companies')::integer <> 1 then
+    raise exception 'portable payload restore response differs from contract: %', result;
+  end if;
+  if (select count(*) from public.backup_snapshots) <> snapshot_count_before + 1 then
+    raise exception 'portable restore did not retain exactly one safety snapshot';
+  end if;
+  if exists (
+    select 1 from public.backup_snapshots
+    where id = (result -> 'data' ->> 'id')::uuid
+  ) then
+    raise exception 'temporary portable restore snapshot was retained';
+  end if;
+  if not exists (
+    select 1 from public.companies
+    where id = '31000000-0000-4000-8000-000000000010'
+      and name = 'Snapshot baseline'
+      and grade = 'A'
+  ) then
+    raise exception 'portable payload restore did not replace current owner data';
+  end if;
+end;
+$$;
+
+update public.companies
+set name = 'Must survive invalid encrypted restore'
+where id = '31000000-0000-4000-8000-000000000010';
+
+do $$
+declare
+  exported jsonb := current_setting('dealpilot_test.exported_backup')::jsonb;
+  snapshot_count_before integer;
+begin
+  select count(*) into snapshot_count_before from public.backup_snapshots;
+  begin
+    perform public.restore_backup_payload(
+      1,
+      repeat('0', 64),
+      exported -> 'data' -> 'payload'
+    );
+    raise exception 'tampered portable backup unexpectedly restored';
+  exception
+    when invalid_parameter_value then null;
+  end;
+
+  if not exists (
+    select 1 from public.companies
+    where id = '31000000-0000-4000-8000-000000000010'
+      and name = 'Must survive invalid encrypted restore'
+  ) or (select count(*) from public.backup_snapshots) <> snapshot_count_before then
+    raise exception 'tampered portable restore changed current data or snapshots';
+  end if;
+end;
+$$;
+
+do $$
+declare
+  exported jsonb := current_setting('dealpilot_test.exported_backup')::jsonb;
+  malformed_payload jsonb;
+  malformed_checksum text;
+  snapshot_count_before integer;
+begin
+  malformed_payload := jsonb_set(
+    exported -> 'data' -> 'payload',
+    '{contacts}',
+    jsonb_build_array(jsonb_build_object(
+      'id', '31000000-0000-4000-8000-000000000099',
+      'owner_user_id', auth.uid(),
+      'company_id', '31000000-0000-4000-8000-000000000010',
+      'email_jsonb', '[]'::jsonb,
+      'phone_jsonb', '[]'::jsonb
+    ))
+  );
+  malformed_checksum := encode(
+    extensions.digest(malformed_payload::text, 'sha256'),
+    'hex'
+  );
+  select count(*) into snapshot_count_before from public.backup_snapshots;
+  begin
+    perform public.restore_backup_payload(
+      1,
+      malformed_checksum,
+      malformed_payload
+    );
+    raise exception 'malformed portable backup unexpectedly restored';
+  exception
+    when check_violation then null;
+  end;
+
+  if not exists (
+    select 1 from public.companies
+    where id = '31000000-0000-4000-8000-000000000010'
+      and name = 'Must survive invalid encrypted restore'
+  ) or (select count(*) from public.backup_snapshots) <> snapshot_count_before then
+    raise exception 'failed portable restore changed current data or snapshots';
+  end if;
+end;
+$$;
+
+update public.companies
 set name = 'Changed after snapshot', grade = 'C'
 where id = '31000000-0000-4000-8000-000000000010';
 
 do $$
 declare
   result jsonb;
+  snapshot_count_before integer;
 begin
+  select count(*) into snapshot_count_before from public.backup_snapshots;
   select public.restore_backup_snapshot(
     current_setting('dealpilot_test.backup_id')::uuid
   ) into result;
@@ -103,8 +242,8 @@ begin
     raise exception 'restore backup response differs from contract: %', result;
   end if;
 
-  if (select count(*) from public.backup_snapshots) <> 2 then
-    raise exception 'restore did not retain the original and safety snapshots';
+  if (select count(*) from public.backup_snapshots) <> snapshot_count_before + 1 then
+    raise exception 'restore did not retain exactly one additional safety snapshot';
   end if;
 
   if not exists (
@@ -174,6 +313,26 @@ begin
     raise exception 'cross-account backup restore unexpectedly succeeded';
   exception
     when no_data_found then null;
+  end;
+
+  begin
+    perform public.export_backup_snapshot(
+      current_setting('dealpilot_test.backup_id')::uuid
+    );
+    raise exception 'cross-account backup export unexpectedly succeeded';
+  exception
+    when no_data_found then null;
+  end;
+
+  begin
+    perform public.restore_backup_payload(
+      1,
+      current_setting('dealpilot_test.exported_backup')::jsonb -> 'data' ->> 'checksum',
+      current_setting('dealpilot_test.exported_backup')::jsonb -> 'data' -> 'payload'
+    );
+    raise exception 'cross-account portable restore unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
   end;
 end;
 $$;

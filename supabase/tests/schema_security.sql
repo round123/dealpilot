@@ -20,7 +20,9 @@ declare
     'deal_risks',
     'deals',
     'follow_ups',
+    'import_jobs',
     'migration_jobs',
+    'migration_staging_rows',
     'profiles',
     'reminders',
     'social_accounts',
@@ -72,6 +74,17 @@ declare
   backup_snapshot_fields constant text[] := array[
     'id', 'owner_user_id', 'schema_version', 'label', 'checksum', 'row_counts',
     'payload', 'created_at'
+  ];
+  migration_staging_fields constant text[] := array[
+    'owner_user_id', 'migration_job_id', 'collection', 'source_id',
+    'idempotency_key', 'payload_json', 'payload', 'payload_checksum',
+    'created_at'
+  ];
+  migration_job_fields constant text[] := array[
+    'id', 'owner_user_id', 'idempotency_key', 'source_fingerprint',
+    'snapshot_checksum', 'status', 'counts', 'checksums', 'user_preferences',
+    'error_code', 'started_at', 'completed_at', 'confirmed_at', 'abandoned_at',
+    'created_at', 'updated_at'
   ];
   actual_tables text[];
   actual_views text[];
@@ -251,6 +264,36 @@ begin
 
   if failures is not null then
     raise exception 'backup_snapshots is missing contract fields: %', failures;
+  end if;
+
+  select array_agg(required_field order by required_field)
+  into failures
+  from unnest(migration_staging_fields) as required_staging_field(required_field)
+  where not exists (
+    select 1
+    from information_schema.columns as column_info
+    where column_info.table_schema = 'public'
+      and column_info.table_name = 'migration_staging_rows'
+      and column_info.column_name = required_field
+  );
+
+  if failures is not null then
+    raise exception 'migration_staging_rows is missing contract fields: %', failures;
+  end if;
+
+  select array_agg(required_field order by required_field)
+  into failures
+  from unnest(migration_job_fields) as required_job_field(required_field)
+  where not exists (
+    select 1
+    from information_schema.columns as column_info
+    where column_info.table_schema = 'public'
+      and column_info.table_name = 'migration_jobs'
+      and column_info.column_name = required_field
+  );
+
+  if failures is not null then
+    raise exception 'migration_jobs is missing session state fields: %', failures;
   end if;
 
   select array_agg(e.enumlabel order by e.enumsortorder)
@@ -522,18 +565,125 @@ begin
   ) then
     raise exception 'migration_jobs is missing its owner-scoped idempotency unique index';
   end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_policies as p
+    where p.schemaname = 'public'
+      and p.tablename = 'migration_staging_rows'
+      and p.policyname = 'migration_staging_rows_owner_select'
+      and p.cmd = 'SELECT'
+      and 'authenticated' = any(p.roles)
+      and coalesce(p.qual, '') ~ 'owner_user_id.*auth\.uid\(\)'
+  ) or not pg_catalog.has_table_privilege(
+    'authenticated', 'public.migration_staging_rows', 'SELECT'
+  ) or pg_catalog.has_table_privilege(
+    'authenticated',
+    'public.migration_staging_rows',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) or pg_catalog.has_table_privilege(
+    'service_role',
+    'public.migration_staging_rows',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) then
+    raise exception 'migration staging must expose owner-only SELECT and no direct writes';
+  end if;
+
+  if not pg_catalog.has_table_privilege(
+    'authenticated', 'public.migration_jobs', 'SELECT'
+  ) or pg_catalog.has_table_privilege(
+    'authenticated',
+    'public.migration_jobs',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) or pg_catalog.has_table_privilege(
+    'service_role',
+    'public.migration_jobs',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) then
+    raise exception 'migration jobs must be mutated only through migration RPCs';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint as con
+    join pg_catalog.pg_class as child on child.oid = con.conrelid
+    join pg_catalog.pg_class as parent on parent.oid = con.confrelid
+    join pg_catalog.pg_namespace as child_ns on child_ns.oid = child.relnamespace
+    join pg_catalog.pg_namespace as parent_ns on parent_ns.oid = parent.relnamespace
+    where con.contype = 'f'
+      and child_ns.nspname = 'public'
+      and child.relname = 'migration_staging_rows'
+      and parent_ns.nspname = 'public'
+      and parent.relname = 'migration_jobs'
+      and con.confdeltype = 'c'
+      and (
+        select array_agg(a.attname::text order by key_column.ordinality)
+        from unnest(con.conkey) with ordinality as key_column(attnum, ordinality)
+        join pg_catalog.pg_attribute as a
+          on a.attrelid = con.conrelid and a.attnum = key_column.attnum
+      ) = array['owner_user_id', 'migration_job_id']
+  ) then
+    raise exception 'migration staging is missing its owner-scoped cascading job FK';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_index as i
+    join pg_catalog.pg_class as table_class on table_class.oid = i.indrelid
+    join pg_catalog.pg_namespace as n on n.oid = table_class.relnamespace
+    where n.nspname = 'public'
+      and table_class.relname = 'import_jobs'
+      and i.indisunique
+      and (
+        select array_agg(a.attname::text order by key_column.ordinality)
+        from unnest(i.indkey) with ordinality as key_column(attnum, ordinality)
+        join pg_catalog.pg_attribute as a
+          on a.attrelid = i.indrelid and a.attnum = key_column.attnum
+      ) = array['owner_user_id', 'idempotency_key']
+  ) then
+    raise exception 'import_jobs is missing its owner-scoped idempotency unique index';
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policies as p
+    where p.schemaname = 'public'
+      and p.tablename = 'import_jobs'
+      and p.policyname = 'import_jobs_owner_select'
+      and p.cmd = 'SELECT'
+      and 'authenticated' = any(p.roles)
+      and coalesce(p.qual, '') ~ 'owner_user_id.*auth\.uid\(\)'
+  ) or not pg_catalog.has_table_privilege('authenticated', 'public.import_jobs', 'SELECT')
+    or pg_catalog.has_table_privilege(
+      'authenticated',
+      'public.import_jobs',
+      'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) then
+    raise exception 'import_jobs must expose owner-only SELECT and no direct writes';
+  end if;
 end;
 $$;
 
 do $$
 declare
   expected_rpcs constant text[] := array[
+    'abandon_v1_migration',
+    'begin_v1_migration',
+    'commit_customer_import',
+    'confirm_v1_migration',
     'create_backup_snapshot',
+    'create_follow_up_idempotent',
+    'export_backup_snapshot',
     'get_customer_detail',
+    'list_customers_cursor',
+    'merge_contacts',
     'merge_customers',
+    'reconcile_v1_migration',
+    'restore_backup_payload',
     'restore_backup_snapshot',
     'restore_customer',
-    'soft_delete_customer'
+    'soft_delete_customer',
+    'stage_v1_migration_batch',
+    'update_reminder_status_idempotent'
   ];
   trigger_functions constant text[] := array[
     'clear_reminder_deletion_marker',
@@ -574,6 +724,8 @@ begin
   from (
     values
       ('public.create_backup_snapshot(text)'),
+      ('public.export_backup_snapshot(uuid)'),
+      ('public.restore_backup_payload(integer,text,jsonb)'),
       ('public.restore_backup_snapshot(uuid)')
   ) as expected(signature)
   where to_regprocedure(expected.signature) is null
@@ -590,6 +742,177 @@ begin
 
   if failures is not null then
     raise exception 'backup RPC security differs from baseline: %', failures;
+  end if;
+
+  select array_agg(expected.signature order by expected.signature)
+  into failures
+  from (
+    values
+      ('public.begin_v1_migration(text,text,text,jsonb,jsonb,jsonb)'),
+      ('public.stage_v1_migration_batch(uuid,text,jsonb)'),
+      ('public.reconcile_v1_migration(uuid)'),
+      ('public.confirm_v1_migration(uuid,text,jsonb,jsonb)'),
+      ('public.abandon_v1_migration(uuid)')
+  ) as expected(signature)
+  where to_regprocedure(expected.signature) is null
+    or not exists (
+      select 1
+      from pg_catalog.pg_proc as p
+      where p.oid = to_regprocedure(expected.signature)
+        and p.prosecdef
+        and p.prorettype = 'jsonb'::regtype
+        and p.proconfig = array['search_path=""']::text[]
+        and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+        and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+    );
+
+  if failures is not null then
+    raise exception 'V1 migration RPC security differs from baseline: %', failures;
+  end if;
+
+  select array_agg(expected.signature order by expected.signature)
+  into failures
+  from (
+    values
+      ('public.v1_migration_collections()'),
+      ('public.v1_migration_target_id(uuid,text,uuid)'),
+      ('public.validate_v1_migration_manifest(jsonb,jsonb)'),
+      ('public.v1_migration_actual_manifest(uuid,uuid)'),
+      ('public.v1_migration_deletion_metadata(uuid,jsonb)')
+  ) as expected(signature)
+  where to_regprocedure(expected.signature) is null
+    or exists (
+      select 1
+      from pg_catalog.pg_proc as p
+      where p.oid = to_regprocedure(expected.signature)
+        and (
+          pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          or pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+          or pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+        )
+    );
+
+  if failures is not null then
+    raise exception 'V1 migration internal helpers are missing or externally executable: %', failures;
+  end if;
+
+  if pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.backup_payload_row_counts(jsonb)',
+    'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'anon',
+    'public.backup_payload_row_counts(jsonb)',
+    'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'service_role',
+    'public.backup_payload_row_counts(jsonb)',
+    'EXECUTE'
+  ) then
+    raise exception 'internal backup payload validator is externally executable';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure(
+      'public.list_customers_cursor(text,integer,text,public.customer_grade,public.customer_status,text,text)'
+    )
+      and not p.prosecdef
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'Customer cursor RPC security differs from baseline';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure(
+      'public.commit_customer_import(uuid,text,text,jsonb,jsonb,integer)'
+    )
+      and p.prosecdef
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'customer import RPC security differs from baseline';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure(
+      'public.create_follow_up_idempotent(uuid,uuid,uuid,public.follow_up_type,text,text,public.message_direction,timestamptz)'
+    )
+      and p.prosecdef
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'idempotent follow-up RPC security differs from baseline';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure(
+      'public.update_reminder_status_idempotent(uuid,uuid,public.reminder_status,timestamptz,text)'
+    )
+      and p.prosecdef
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'idempotent reminder RPC security differs from baseline';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure('public.merge_contacts(uuid,uuid)')
+      and p.prosecdef
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'Contact merge RPC security differs from baseline';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.column_privileges
+    where table_schema = 'public'
+      and table_name = 'reminders'
+      and grantee = 'authenticated'
+      and privilege_type = 'UPDATE'
+      and column_name in ('status', 'snooze_until', 'resolution')
+  ) then
+    raise exception 'authenticated reminder writes must use the idempotent RPC';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.column_privileges
+    where table_schema = 'public'
+      and table_name = 'reminders'
+      and grantee = 'authenticated'
+      and privilege_type = 'UPDATE'
+      and column_name = 'priority'
+  ) then
+    raise exception 'ordinary reminder edits lost their direct column privilege';
   end if;
 
   if not exists (
@@ -713,3 +1036,6 @@ rollback;
 
 -- Keep the backup behavior gate in the existing database-test entrypoint.
 \ir backup_isolation.sql
+\ir v1_migration_sessions.sql
+\ir customer_cursor_pagination.sql
+\ir contact_merge.sql

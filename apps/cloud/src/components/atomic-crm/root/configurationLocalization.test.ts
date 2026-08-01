@@ -8,7 +8,7 @@ import {
 
 const translations: Record<string, string> = {
   "crm.configuration_defaults.noteStatuses.hot": "高意向",
-  "crm.configuration_defaults.dealStages.won": "已成交",
+  "crm.configuration_defaults.dealStages.closed_won": "已成交",
 };
 const translate = vi.fn(
   (key: string, options?: { _: string }) =>
@@ -73,18 +73,18 @@ describe("configuration label localization", () => {
     expect(
       parseLocalizedConfigurationLabel(
         "dealStages",
-        { value: "won", label: "Won" },
+        { value: "closed_won", label: "Closed won" },
         "已成交",
         translate,
       ),
-    ).toBe("Won");
+    ).toBe("Closed won");
   });
 
   it("returns an edited label verbatim", () => {
     expect(
       parseLocalizedConfigurationLabel(
         "dealStages",
-        { value: "won", label: "Won" },
+        { value: "closed_won", label: "Closed won" },
         "已签约",
         translate,
       ),

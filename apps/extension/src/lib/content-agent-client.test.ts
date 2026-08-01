@@ -3,7 +3,7 @@ import { API_ERROR_CODES } from "@dealpilot/api-client/error";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  CONTENT_AGENT_REQUEST,
+  CONTENT_CLOUD_REQUEST,
   createReminder,
   resolveMatch,
   searchCustomers,
@@ -61,7 +61,7 @@ describe("Content Script background API proxy", () => {
   });
 
   test("sends only a whitelisted operation and payload, never a token or URL", async () => {
-    const sendMessage = installRuntime({ ok: true, data: { status: "none", match_method: null } });
+    const sendMessage = installRuntime({ data: { status: "none", match_method: null } });
 
     await expect(resolveMatch({
       platform: "whatsapp",
@@ -70,7 +70,7 @@ describe("Content Script background API proxy", () => {
 
     const request = sendMessage.mock.calls[0][0];
     expect(request).toEqual({
-      type: CONTENT_AGENT_REQUEST,
+      type: CONTENT_CLOUD_REQUEST,
       operation: "resolve_match",
       payload: { platform: "whatsapp", raw_identifier: "+8613800001234" },
     });
@@ -80,7 +80,7 @@ describe("Content Script background API proxy", () => {
   });
 
   test("parses successful data again at the message boundary", async () => {
-    installRuntime({ ok: true, data: { items: [{ unexpected: true }], next_cursor: null } });
+    installRuntime({ data: { items: [{ unexpected: true }], next_cursor: null } });
     await expect(searchCustomers("客户")).rejects.toMatchObject({
       code: API_ERROR_CODES.invalidResponse,
     });
@@ -88,7 +88,6 @@ describe("Content Script background API proxy", () => {
 
   test("normalizes safe background errors without a server message", async () => {
     installRuntime({
-      ok: false,
       error: { code: API_ERROR_CODES.server, status: 500, request_id: "request-safe" },
     });
     try {
@@ -100,13 +99,13 @@ describe("Content Script background API proxy", () => {
         code: API_ERROR_CODES.server,
         status: 500,
         requestId: "request-safe",
-        message: "Background request failed",
+        message: "Cloud background request failed",
       });
     }
   });
 
   test("rejects an already-aborted request without messaging background", async () => {
-    const sendMessage = installRuntime({ ok: true, data: { status: "none", match_method: null } });
+    const sendMessage = installRuntime({ data: { status: "none", match_method: null } });
     const controller = new AbortController();
     controller.abort();
     await expect(resolveMatch({
@@ -117,7 +116,7 @@ describe("Content Script background API proxy", () => {
   });
 
   test("rejects an invalid paused reminder before messaging background", async () => {
-    const sendMessage = installRuntime({ ok: true, data: undefined });
+    const sendMessage = installRuntime({ data: undefined });
     await expect(createReminder({
       customer_id: "11111111-1111-4111-8111-111111111111",
       type: "paused",
@@ -128,21 +127,24 @@ describe("Content Script background API proxy", () => {
 
   test("sends reminder status updates through the background whitelist", async () => {
     const sendMessage = installRuntime({
-      ok: true,
       data: { ...reminder, status: "completed" },
     });
 
     await expect(updateContentReminderStatus(reminder.id, {
       status: "completed",
-    })).resolves.toMatchObject({ id: reminder.id, status: "completed" });
+    }, "44444444-4444-4444-8444-444444444444")).resolves.toMatchObject({
+      id: reminder.id,
+      status: "completed",
+    });
 
     const request = sendMessage.mock.calls[0][0];
     expect(request).toEqual({
-      type: CONTENT_AGENT_REQUEST,
+      type: CONTENT_CLOUD_REQUEST,
       operation: "update_reminder_status",
       payload: {
         reminder_id: reminder.id,
         data: { status: "completed" },
+        idempotency_key: "44444444-4444-4444-8444-444444444444",
       },
     });
     expect(JSON.stringify(request)).not.toContain("token");

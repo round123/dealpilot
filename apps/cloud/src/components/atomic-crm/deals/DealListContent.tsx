@@ -44,8 +44,8 @@ export const DealListContent = () => {
       return;
     }
 
-    const sourceStage = source.droppableId;
-    const destinationStage = destination.droppableId;
+    const sourceStage = source.droppableId as Deal["stage"];
+    const destinationStage = destination.droppableId as Deal["stage"];
     const sourceDeal = dealsByStage[sourceStage][source.index]!;
     const destinationDeal = dealsByStage[destinationStage][
       destination.index
@@ -89,9 +89,9 @@ export const DealListContent = () => {
 
 const updateDealStageLocal = (
   sourceDeal: Deal,
-  source: { stage: string; index: number },
+  source: { stage: Deal["stage"]; index: number },
   destination: {
-    stage: string;
+    stage: Deal["stage"];
     index?: number; // undefined if dropped after the last item
   },
   dealsByStage: DealsByStage,
@@ -126,7 +126,7 @@ const updateDealStageLocal = (
 const updateDealStage = async (
   source: Deal,
   destination: {
-    stage: string;
+    stage: Deal["stage"];
     index?: number; // undefined if dropped after the last item
   },
   dataProvider: DataProvider,

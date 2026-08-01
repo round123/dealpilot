@@ -7,13 +7,7 @@ import { memo, useMemo } from "react";
 import { findDealLabel } from "../deals/dealUtils";
 import { useLocalizedConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
-
-const multiplier = {
-  opportunity: 0.2,
-  "proposal-sent": 0.3,
-  "in-negociation": 0.5,
-  delayed: 0.8,
-};
+import { summarizeDealAmounts } from "./dealMetrics";
 
 const threeMonthsAgo = new Date(
   new Date().setMonth(new Date().getMonth() - 6),
@@ -27,8 +21,8 @@ export const DealsChart = memo(() => {
   const acceptedLanguages = navigator
     ? navigator.languages || [navigator.language]
     : [DEFAULT_LOCALE];
-  const wonLabel = findDealLabel(dealStages, "won") ?? "已成交";
-  const lostLabel = findDealLabel(dealStages, "lost") ?? "已流失";
+  const wonLabel = findDealLabel(dealStages, "closed_won") ?? "已成交";
+  const lostLabel = findDealLabel(dealStages, "closed_lost") ?? "未成交";
 
   const { data, isPending } = useGetList<Deal>("deals", {
     pagination: { perPage: 100, page: 1 },
@@ -54,25 +48,7 @@ export const DealsChart = memo(() => {
     const amountByMonth = Object.keys(dealsByMonth).map((month) => {
       return {
         date: format(month, "MMM"),
-        won: dealsByMonth[month]
-          .filter((deal: Deal) => deal.stage === "won")
-          .reduce((acc: number, deal: Deal) => {
-            acc += deal.amount;
-            return acc;
-          }, 0),
-        pending: dealsByMonth[month]
-          .filter((deal: Deal) => !["won", "lost"].includes(deal.stage))
-          .reduce((acc: number, deal: Deal) => {
-            // @ts-expect-error - multiplier type issue
-            acc += deal.amount * multiplier[deal.stage];
-            return acc;
-          }, 0),
-        lost: dealsByMonth[month]
-          .filter((deal: Deal) => deal.stage === "lost")
-          .reduce((acc: number, deal: Deal) => {
-            acc -= deal.amount;
-            return acc;
-          }, 0),
+        ...summarizeDealAmounts(dealsByMonth[month]),
       };
     });
 

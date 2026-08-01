@@ -17,6 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 
 import { getCloudApiClient } from "../providers/apiClient";
+import { EncryptedBackupSection } from "./EncryptedBackupSection";
+import { V1MigrationSection } from "./V1MigrationSection";
 
 const EXPORT_RESOURCES = [
   ["companies", "客户"],
@@ -172,6 +174,7 @@ export const CloudDataToolsPage = () => {
           </Button>
         </CardContent>
       </Card>
+      <V1MigrationSection />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -238,6 +241,14 @@ export const CloudDataToolsPage = () => {
               ))
             )}
           </div>
+          <EncryptedBackupSection
+            onSnapshotCreated={(snapshot) =>
+              setSnapshots((current) => [
+                snapshot,
+                ...current.filter((item) => item.id !== snapshot.id),
+              ])
+            }
+          />
         </CardContent>
       </Card>
       <Card>

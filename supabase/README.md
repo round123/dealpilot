@@ -100,13 +100,16 @@ The handler test uses an injected in-memory client and never sends a network
 request. It covers method and role rejection, invalid request input, sanitized
 internal failures, and request ID propagation.
 
-Create an hourly or daily Supabase Cron schedule that sends `POST` to
-`/functions/v1/purge-expired-customers`. Store the service-role token in the
-scheduler's Secret/Vault integration and send it only as the `Authorization:
-Bearer ...` header. Never place it in a migration, request body, response, or
-log. The function must retain `verify_jwt = true`: the Edge gateway verifies
-the signature, then the function rejects any JWT whose role is not
-`service_role` before constructing its service client.
+The production schedule is defined in
+`.github/workflows/purge-expired-customers.yml` and runs daily. Configure
+`SUPABASE_SERVICE_ROLE_KEY` only in the protected `cloud-production` GitHub
+environment; the workflow reads the existing `VITE_SUPABASE_URL` from the same
+environment. Never place the service-role token in a migration, request body,
+response, artifact, or log. The function must retain `verify_jwt = true`: the
+Edge gateway verifies the signature, then the function rejects any JWT whose
+role is not `service_role` before constructing its service client. A Supabase
+Cron/Vault schedule may replace GitHub Actions later, but both schedulers must
+not be enabled at the same time.
 
 The optional body accepts `cutoff`, `enqueue_limit` (1-500), and `claim_limit`
 (1-100). An empty JSON body uses the 30-day cutoff and bounded defaults. Cron

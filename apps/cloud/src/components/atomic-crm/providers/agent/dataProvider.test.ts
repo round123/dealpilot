@@ -170,7 +170,7 @@ describe("Agent data provider", () => {
     });
   });
 
-  it("uses the same Chinese six-stage pipeline as the local demo", async () => {
+  it("uses the canonical Chinese seven-stage pipeline", async () => {
     const provider = createAgentDataProvider({
       client: createClient(),
       configurationStorage: memoryStorage(),
@@ -185,6 +185,7 @@ describe("Agent data provider", () => {
       { value: "negotiation", label: "谈判" },
       { value: "closed_won", label: "成交" },
       { value: "closed_lost", label: "失单" },
+      { value: "archived", label: "已归档" },
     ]);
   });
 

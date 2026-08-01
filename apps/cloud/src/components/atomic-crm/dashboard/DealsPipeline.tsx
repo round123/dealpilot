@@ -24,7 +24,10 @@ export const DealsPipeline = () => {
     {
       pagination: { page: 1, perPage: 10 },
       sort: { field: "last_seen", order: "DESC" },
-      filter: { "stage@neq": "lost", sales_id: identity?.id },
+      filter: {
+        "stage@in": "(lead,qualified,proposal,negotiation)",
+        sales_id: identity?.id,
+      },
     },
     { enabled: Number.isInteger(identity?.id) },
   );

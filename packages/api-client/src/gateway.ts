@@ -6,6 +6,9 @@ import { createAuthApi, type AuthApi } from "./auth.js";
 import { createAccountApi, type AccountApi } from "./account.js";
 import { createBackupApi, type BackupApi } from "./backup.js";
 import { createCustomerApi, type CustomerApi } from "./customer.js";
+import { createImportApi, type ImportApi } from "./import.js";
+import { createMigrationApi, type MigrationApi } from "./migration.js";
+import { createReminderApi, type ReminderApi } from "./reminder.js";
 import { createPrivateStorageApi, type PrivateStorageApi } from "./storage.js";
 import { API_ERROR_CODES, ApiError } from "./error.js";
 import {
@@ -86,6 +89,9 @@ export interface ApiClient {
   readonly account: AccountApi;
   readonly backups: BackupApi;
   readonly customers: CustomerApi;
+  readonly imports: ImportApi;
+  readonly migrations: MigrationApi;
+  readonly reminders: ReminderApi;
   readonly storage: PrivateStorageApi;
   list<T>(
     resource: string,
@@ -117,6 +123,12 @@ export interface ApiClient {
     schema: z.ZodType<T>,
     options?: ByIdOptions,
   ): Promise<T>;
+  deleteWhere<T>(
+    resource: string,
+    filters: ResourceFilters,
+    schema: z.ZodType<T>,
+    options?: MutationOptions,
+  ): Promise<T[]>;
   rpc<T>(
     functionName: string,
     args: Record<string, unknown> | undefined,
@@ -232,6 +244,9 @@ class SupabaseResourceGateway implements ApiClient {
   readonly account: AccountApi;
   readonly backups: BackupApi;
   readonly customers: CustomerApi;
+  readonly imports: ImportApi;
+  readonly migrations: MigrationApi;
+  readonly reminders: ReminderApi;
   readonly storage: PrivateStorageApi;
 
   constructor(
@@ -243,6 +258,9 @@ class SupabaseResourceGateway implements ApiClient {
     this.account = createAccountApi(this);
     this.backups = createBackupApi(this);
     this.customers = createCustomerApi(this);
+    this.imports = createImportApi(this);
+    this.migrations = createMigrationApi(this);
+    this.reminders = createReminderApi(this);
     this.storage = createPrivateStorageApi(client);
   }
 
@@ -333,6 +351,26 @@ class SupabaseResourceGateway implements ApiClient {
       .select(options.select ?? "*")
       .single();
     return this.adapter.postgrest(query, schema, { signal: options.signal });
+  }
+
+  deleteWhere<T>(
+    resource: string,
+    filters: ResourceFilters,
+    schema: z.ZodType<T>,
+    options: MutationOptions = {},
+  ): Promise<T[]> {
+    if (Object.keys(filters).length === 0) {
+      throw new ApiError({
+        code: API_ERROR_CODES.validation,
+        message: "Filtered delete requires at least one filter",
+        fields: { filters: ["At least one filter is required"] },
+      });
+    }
+    let query = this.resources.from(resource).delete();
+    query = applyFilters(query, filters).select(options.select ?? "*");
+    return this.adapter.postgrest(query, z.array(schema), {
+      signal: options.signal,
+    });
   }
 
   rpc<T>(

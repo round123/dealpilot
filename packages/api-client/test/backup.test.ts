@@ -14,6 +14,15 @@ const snapshot = {
   row_counts: { companies: 3, contacts: 5 },
 };
 
+const exportedSnapshot = {
+  id: snapshot.id,
+  created_at: snapshot.created_at,
+  row_counts: snapshot.row_counts,
+  schema_version: 1 as const,
+  checksum: "a".repeat(64),
+  payload: { schema_version: 1, companies: [] },
+};
+
 describe("backup API", () => {
   it("lists snapshot metadata through the typed resource gateway", async () => {
     const list = vi.fn(async (_resource, schema, _options) => ({
@@ -85,6 +94,67 @@ describe("backup API", () => {
       "Backup snapshot id must be a UUID",
     );
     expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("exports an owner snapshot payload and restores a validated payload", async () => {
+    const rpc = vi.fn(async (name, _args, schema) =>
+      schema.parse(
+        name === "export_backup_snapshot"
+          ? exportedSnapshot
+          : {
+              id: snapshotId,
+              checksum: exportedSnapshot.checksum,
+              restored_counts: exportedSnapshot.row_counts,
+            },
+      ),
+    );
+    const backups = createBackupApi({ list: vi.fn(), rpc });
+
+    await expect(backups.exportPayload(snapshotId)).resolves.toEqual(
+      exportedSnapshot,
+    );
+    await expect(
+      backups.restorePayload({
+        schemaVersion: 1,
+        checksum: exportedSnapshot.checksum,
+        payload: exportedSnapshot.payload,
+      }),
+    ).resolves.toMatchObject({
+      id: snapshotId,
+      checksum: exportedSnapshot.checksum,
+    });
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "export_backup_snapshot",
+      { p_snapshot_id: snapshotId },
+      expect.anything(),
+      {},
+    );
+    expect(rpc).toHaveBeenNthCalledWith(
+      2,
+      "restore_backup_payload",
+      {
+        p_schema_version: 1,
+        p_checksum: exportedSnapshot.checksum,
+        p_payload: exportedSnapshot.payload,
+      },
+      expect.anything(),
+      {},
+    );
+  });
+
+  it("rejects an unsupported payload before calling restore", async () => {
+    const rpc = vi.fn();
+    const backups = createBackupApi({ list: vi.fn(), rpc });
+
+    await expect(
+      backups.restorePayload({
+        schemaVersion: 2,
+        checksum: "bad",
+        payload: {},
+      } as never),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("rejects malformed successful snapshot responses at the boundary", async () => {

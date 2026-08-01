@@ -1,14 +1,18 @@
-import type { ApiClient } from "@dealpilot/api-client";
+import { API_ERROR_CODES, type ApiClient } from "@dealpilot/api-client";
 import { describe, expect, it, vi } from "vitest";
 
 import { createCloudBusinessApi } from "./cloudBusinessApi";
 
 const userId = "3fef2a38-1c5b-4bb8-a8fd-50dc735e8751";
+const sourceContactId = "4fef2a38-1c5b-4bb8-a8fd-50dc735e8752";
+const targetContactId = "5fef2a38-1c5b-4bb8-a8fd-50dc735e8753";
 
-const createClient = () => {
+const createClient = (authenticated = true) => {
   const client = {
     auth: {
-      getSession: vi.fn().mockResolvedValue({ user: { id: userId } }),
+      getSession: vi
+        .fn()
+        .mockResolvedValue(authenticated ? { user: { id: userId } } : null),
     },
     getOne: vi.fn().mockResolvedValue({
       owner_user_id: userId,
@@ -18,7 +22,9 @@ const createClient = () => {
       owner_user_id: userId,
       config: { title: "Updated" },
     }),
-    invoke: vi.fn().mockResolvedValue({ merged: true }),
+    customers: {
+      mergeContacts: vi.fn().mockResolvedValue({ id: "target" }),
+    },
     storage: {
       upload: vi.fn().mockResolvedValue({ path: `${userId}/note.txt` }),
       createSignedUrl: vi.fn().mockResolvedValue({
@@ -58,15 +64,14 @@ describe("cloud business API", () => {
     const client = createClient();
     const api = createCloudBusinessApi(client as unknown as ApiClient);
 
-    await api.mergeContacts("source", "target");
+    await api.mergeContacts(sourceContactId, targetContactId);
     await expect(
       api.uploadAttachment("note.txt", new Blob(["note"]), "text/plain"),
     ).resolves.toBe("https://example.test/signed/note.txt");
 
-    expect(client.invoke).toHaveBeenCalledWith(
-      "merge_contacts",
-      expect.anything(),
-      { body: { loserId: "source", winnerId: "target" } },
+    expect(client.customers.mergeContacts).toHaveBeenCalledWith(
+      sourceContactId,
+      targetContactId,
     );
     expect(client.storage.upload).toHaveBeenCalledWith(
       "attachments",
@@ -74,5 +79,24 @@ describe("cloud business API", () => {
       expect.any(Blob),
       { contentType: "text/plain" },
     );
+  });
+
+  it("rejects attachment access without a current session", async () => {
+    const client = createClient(false);
+    const api = createCloudBusinessApi(client as unknown as ApiClient);
+
+    await expect(
+      api.uploadAttachment("note.txt", new Blob(["note"]), "text/plain"),
+    ).rejects.toMatchObject({
+      code: API_ERROR_CODES.unauthorized,
+      status: 401,
+    });
+    await expect(api.getAttachmentUrl("note.txt")).rejects.toMatchObject({
+      code: API_ERROR_CODES.unauthorized,
+      status: 401,
+    });
+
+    expect(client.storage.upload).not.toHaveBeenCalled();
+    expect(client.storage.createSignedUrl).not.toHaveBeenCalled();
   });
 });

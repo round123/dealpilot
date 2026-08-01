@@ -102,7 +102,7 @@ const getDataProviderWithCustomMethods = () => {
       );
     },
     async mergeContacts(sourceId: Identifier, targetId: Identifier) {
-      return businessApi.mergeContacts(String(sourceId), String(targetId));
+      await businessApi.mergeContacts(String(sourceId), String(targetId));
     },
     async getConfiguration(): Promise<ConfigurationContextValue> {
       return businessApi.getConfiguration();

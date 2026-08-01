@@ -38,9 +38,11 @@ import type { Customer, FollowUp, Reminder } from "@dealpilot/shared";
 import { isOverdue, formatRelativeTime } from "@dealpilot/shared";
 import { ReminderActions } from "../../src/components/reminder-actions";
 import {
-  buildReminderStatusUpdate,
+  createReminderActionAttemptStore,
   type ReminderAction,
 } from "../../src/lib/reminder-actions";
+import { AutomaticMatchConfirmation } from "../../src/components/match-confirmation";
+import { shouldAutoCollapseFloatPanel } from "../../src/lib/float-panel-layout";
 
 /** 提醒类型图标 */
 const REMINDER_ICON = <Clock size={12} />;
@@ -90,11 +92,13 @@ const ReminderList: React.FC<{
 );
 
 /** 唯一命中内容 */
-const UniqueMatchContent: React.FC<{
+export const UniqueMatchContent: React.FC<{
   customer: { id: string; name: string; company: string | null; country: string | null; source: string | null; grade: string };
   followUps: FollowUp[];
   reminders: Reminder[];
   onSetReminder: () => void;
+  automaticMatch: boolean;
+  onConfirmMatch: () => void;
   showRebind: boolean;
   onToggleRebind: () => void;
   onUnbind: () => void;
@@ -103,7 +107,7 @@ const UniqueMatchContent: React.FC<{
   busyReminderId: string | null;
   actionError: { id: string; message: string } | null;
   onReminderAction: (reminder: Reminder, action: ReminderAction) => void;
-}> = ({ customer, followUps, reminders, onSetReminder, showRebind, onToggleRebind, onUnbind, bindingBusy, searchPanel, busyReminderId, actionError, onReminderAction }) => {
+}> = ({ customer, followUps, reminders, onSetReminder, automaticMatch, onConfirmMatch, showRebind, onToggleRebind, onUnbind, bindingBusy, searchPanel, busyReminderId, actionError, onReminderAction }) => {
   const lastFu = followUps[0];
   return (
     <div>
@@ -122,6 +126,13 @@ const UniqueMatchContent: React.FC<{
         />
       )}
       <div style={{ padding: "var(--dp-space-2) var(--dp-space-3)", borderTop: "1px solid var(--dp-color-border-default)" }}>
+        {automaticMatch && (
+          <AutomaticMatchConfirmation
+            automaticMatch
+            bindingBusy={bindingBusy}
+            onConfirm={onConfirmMatch}
+          />
+        )}
         <div style={{ display: "flex", gap: "var(--dp-space-2)" }}>
           <button
             type="button"
@@ -176,7 +187,20 @@ export const FloatApp: React.FC = () => {
   const [showRebind, setShowRebind] = useState(false);
   const [busyReminderId, setBusyReminderId] = useState<string | null>(null);
   const [reminderActionError, setReminderActionError] = useState<{ id: string; message: string } | null>(null);
+  const reminderActionAttempts = useRef(createReminderActionAttemptStore());
   const matchRequestId = useRef(0);
+
+  useEffect(() => {
+    const collapseForNarrowConversation = () => {
+      if (shouldAutoCollapseFloatPanel(window.innerWidth)) {
+        useExtensionStore.getState().setExpanded(false);
+      }
+    };
+    collapseForNarrowConversation();
+    window.addEventListener("resize", collapseForNarrowConversation);
+    return () =>
+      window.removeEventListener("resize", collapseForNarrowConversation);
+  }, []);
 
   const doMatch = useCallback(async (conv: ConversationInfo) => {
     const requestId = ++matchRequestId.current;
@@ -301,14 +325,19 @@ export const FloatApp: React.FC = () => {
     action: ReminderAction,
   ) => {
     if (busyReminderId) return;
-    const update = buildReminderStatusUpdate(action);
+    const attempt = reminderActionAttempts.current.get(reminder.id, action);
     const snapshot = reminders;
     setBusyReminderId(reminder.id);
     setReminderActionError(null);
     setReminders((current) => current.filter((item) => item.id !== reminder.id));
 
     try {
-      await updateContentReminderStatus(reminder.id, update);
+      await updateContentReminderStatus(
+        reminder.id,
+        attempt.update,
+        attempt.idempotencyKey,
+      );
+      reminderActionAttempts.current.complete(reminder.id, action);
     } catch (error) {
       setReminders(snapshot);
       setReminderActionError({
@@ -405,6 +434,11 @@ export const FloatApp: React.FC = () => {
             followUps={followUps}
             reminders={reminders}
             onSetReminder={() => setShowReminder(true)}
+            automaticMatch={store.matchMethod === "phone" || store.matchMethod === "platform"}
+            onConfirmMatch={() => {
+              const customer = store.currentCustomer;
+              if (customer) void handleBind(customer.id);
+            }}
             showRebind={showRebind}
             onToggleRebind={() => setShowRebind((value) => !value)}
             onUnbind={() => void handleUnbind()}

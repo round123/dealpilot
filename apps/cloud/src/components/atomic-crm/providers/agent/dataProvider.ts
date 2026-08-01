@@ -665,6 +665,7 @@ const agentConfiguration: ConfigurationContextValue = {
     { value: "negotiation", label: "谈判" },
     { value: "closed_won", label: "成交" },
     { value: "closed_lost", label: "失单" },
+    { value: "archived", label: "已归档" },
   ],
   dealPipelineStatuses: ["closed_won"],
 };

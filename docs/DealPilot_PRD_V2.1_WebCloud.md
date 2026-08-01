@@ -1,7 +1,7 @@
 # DealPilot PRD V2.1：Web 与云端优先
 
 > 状态：当前产品需求基线，取代 V1 本地桌面方案
-> 日期：2026-07-31
+> 日期：2026-08-01
 > 产品形态：Web/PWA + 云端模块化单体 + PostgreSQL；浏览器扩展作为后续入口
 > 关联架构：[云端个人 CRM 重构计划](./cloud-multiplatform-refactor-plan.md)
 > 关联决策：[ADR-V2-002](./adr/ADR-V2-002-atomic-crm-personal-cloud.md)
@@ -20,6 +20,11 @@
 4. SQLite/Agent 只用于旧 V1 数据读取、预检、一次性迁移和取证，不参与云端业务读写，不与 PostgreSQL 长期双写。
 5. 首版是个人云 CRM：每个账号拥有自己的业务数据。不建设团队 workspace、成员、角色、邀请或企业 SSO。
 6. 用户确认迁移后，PostgreSQL 永久成为唯一事实源，不提供云端回写 SQLite 的运行模式。
+
+当前实现口径（2026-08-01）：Web/PWA、统一 API 客户端、Customer 与业务域界面、
+导入/导出、加密云备份、V1 一次性迁移、浏览器扩展及发布/回滚自动化已完成静态实现和
+本地门禁。托管 Supabase 的空库 migration、双账号隔离、真实 Auth、外部平台 DOM、
+迁移确认与生产回滚演练仍是发布前验收项；在这些证据产生前不得宣称云端发布完成。
 
 ## 2. 分阶段运行形态
 
@@ -112,6 +117,7 @@
 ## 6. 明确不做
 
 - 不做 `dealpilot-agent.exe`、NSIS 安装包、桌面快捷方式或桌面壳。
+- 首版不做 Capacitor 或原生移动应用；手机使用响应式 Web/PWA。
 - 不做系统托盘、开机自启、Explorer 重启恢复、Windows 系统通知或浏览器关闭后的通知承诺。
 - 不把 Agent/SQLite 作为正式业务后端，不做 PostgreSQL 与 SQLite 长期双写。
 - 不做团队 workspace、成员角色、邀请、共享客户或企业 SSO。

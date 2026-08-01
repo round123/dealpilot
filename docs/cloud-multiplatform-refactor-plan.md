@@ -11,7 +11,7 @@
 
 DealPilot V2 采用 [Atomic CRM](https://github.com/marmelab/atomic-crm) 作为云端 Web/PWA 和 PostgreSQL 数据模型的开源基线，不再新建 NestJS 云端 API。Atomic CRM 使用 MIT 许可证，技术栈为 React、Vite、Supabase/PostgreSQL、React Admin、TanStack Query、Zod 和 PWA，与 DealPilot 现有 React/Vite/TypeScript 工具链相近，并已提供联系人、公司、任务、提醒、笔记、交易、导入导出、联系人合并和活动历史等能力。
 
-V2 是个人云 CRM，不提供团队 workspace、成员、角色和邀请。每个账号只能访问自己的业务数据；同一账号可在 Web、PWA、移动端和浏览器扩展访问同一份 PostgreSQL 数据。这里取消的是团队型多租户产品结构，不取消公共云中不同用户之间必须具备的数据隔离。
+V2 是个人云 CRM，不提供团队 workspace、成员、角色和邀请。每个账号只能访问自己的业务数据；同一账号可在 Web、PWA 和浏览器扩展访问同一份 PostgreSQL 数据。这里取消的是团队型多租户产品结构，不取消公共云中不同用户之间必须具备的数据隔离。
 
 “云端优先”在当前阶段落实为直接连接受控 Supabase 开发项目。开发者电脑只运行 Web/PWA 的 Vite 服务，不再维护本地 PostgreSQL 或本地 Supabase 业务运行模式。代码、migration、RLS、RPC、Storage 和 Auth 契约只允许有一套；开发和生产只替换部署地址、密钥与环境配置，不保留 SQLite 业务运行分支。
 
@@ -33,7 +33,7 @@ V2 是个人云 CRM，不提供团队 workspace、成员、角色和邀请。每
 - 保持 Customer 列表、搜索、创建、详情、更新、软删除、恢复和合并与 V1 行为等价。
 - Customer 详情继续包含联系人、社媒账号、项目/商机、跟进和提醒摘要。
 - 保留 DealPilot 的项目、风险、里程碑、跟进、提醒和平台账号匹配能力。
-- Web/PWA、移动端和浏览器扩展通过同一个类型化客户端访问云端。
+- Web/PWA 和浏览器扩展通过同一个类型化客户端访问云端。
 - 迁移工具只负责 SQLite 读取、预检、分批导入和快照取证；不进入业务运行时。
 - 迁移可预检、可重试、可核对，确认前可撤销；确认后不建设 PostgreSQL 到 SQLite 的反向同步。
 
@@ -43,7 +43,7 @@ V2 是个人云 CRM，不提供团队 workspace、成员、角色和邀请。每
 - 不引入 NestJS、Keycloak、Drizzle PostgreSQL、微服务、Kubernetes 或长期双写。
 - 不把 Atomic CRM 原样上线；其默认全员共享数据策略必须先改造。
 - 不强制所有普通 CRUD 都经过自建代理 API；PostgREST 可作为受 RLS 保护的传输层。
-- 不在 P3 前启动 Capacitor、应用商店发布或其他领域的批量迁移。
+- P3 前不批量迁移其他领域；首版不建设 Capacitor 或原生移动应用。
 - 不追求与 Atomic CRM 上游持续无冲突同步；只按固定版本评估并选择性吸收上游更新。
 
 ## 3. 代码资产处理
@@ -67,7 +67,6 @@ apps/
   web/                   # V1 历史 Web，最终归档
   agent/                 # SQLite 一次性迁移与快照工具
   extension/             # WXT 浏览器扩展
-  mobile/                # P3 后增加的 Capacitor 壳
 packages/
   api-client/            # 唯一云端网络边界
   shared/                # 纯业务类型、schema、枚举和工具
@@ -84,7 +83,6 @@ Atomic CRM 上游代码进入仓库时必须记录仓库 URL、commit SHA、引�
 ```mermaid
 flowchart LR
     WEB["Atomic-derived Web / PWA"] --> CLIENT["packages/api-client"]
-    MOBILE["Capacitor App"] --> CLIENT
     EXT["WXT Extension"] --> CLIENT
     MIG["SQLite migration / evidence tool"] --> CLIENT
     MIG --> SNAP["Read-only SQLite snapshot"]
@@ -209,7 +207,7 @@ P3 不是完成 Atomic CRM 的 contacts CRUD，而是完成 V1 Customer 行为�
 - Web 云端页面使用 `packages/api-client`/DataProvider 适配器，不直接操作 Supabase。
 - V1 与 V2 对同一组固定数据执行行为对照，输出差异报告。
 
-P3 全部门禁通过前，不归档 V1 迁移夹具、不批量迁移其余领域、不启动移动端壳；当前业务开发统一以 `apps/cloud` 和 Supabase 开发项目为准。
+P3 全部门禁通过前，不归档 V1 迁移夹具、不批量迁移其余领域；当前业务开发统一以 `apps/cloud` 和 Supabase 开发项目为准。原生移动端不在首版范围内。
 
 ## 8. 分阶段实施
 
@@ -221,12 +219,12 @@ P3 全部门禁通过前，不归档 V1 迁移夹具、不批量迁移其余领�
 | P3 Customer 纵向切片  | 数据模型映射；类型化客户端；完整 Customer 行为；原子合并/删除/恢复；关联详情；V1/V2 对照 E2E     | 第 7 节全部通过并签字确认                                                           | 8-12 天 |
 | P4 DealPilot 领域补齐 | 项目/商机、风险、里程碑、跟进、提醒、Dashboard、导入导出；复用 Atomic UI                         | V1 适用业务验收项在 V2 全部通过                                                     | 7-10 天 |
 | P5 SQLite 一次性迁移  | 快照、预检、分批迁移、幂等、校验、确认；Agent 收敛为迁移工具；V1 Web 归档                        | 确认前可撤销；确认后 PostgreSQL 为唯一事实源；迁移演练通过；不保留 SQLite 运行模式  |  5-7 天 |
-| P6 扩展与多端         | 扩展云端登录和匹配；PWA 安装/更新；随后增加 Capacitor 壳和设备权限                               | Web/PWA/扩展共用客户端；至少一个移动平台完成核心流程                                |  4-6 天 |
+| P6 扩展与 PWA          | 扩展云端登录、会话匹配与单条消息跟进；PWA 安装、更新和离线应用壳                                | Web/PWA/扩展共用客户端；PWA 安装与离线应用壳、扩展核心流程通过                       |  3-5 天 |
 | P7 灰度发布与 V1 退役 | 监控、限流、备份恢复、账号删除、隐私告知、试点和回滚演练；删除 V1 活动运行代码                   | 生产发布门全部通过；试点迁移成功；只在 `v1-local-final` Git 标签和迁移夹具中保留 V1 |  3-4 天 |
 
-单人全职预计约 8-13 个开发周，规划基准为 10 周。该估算不包含真实用户试点等待、应用商店审核、跨境数据合规和上游重大升级。Supabase 开发项目或邮件测试服务不可用期间，P1/P2 数据库门禁不能验收。
+单人全职预计约 8-13 个开发周，规划基准为 10 周。该估算不包含真实用户试点等待、浏览器扩展商店审核、跨境数据合规和上游重大升级。Supabase 开发项目或邮件测试服务不可用期间，P1/P2 数据库门禁不能验收。
 
-### 8.1 当前实施进度（2026-07-31）
+### 8.1 当前实施进度（2026-08-01）
 
 | 阶段 | 状态                       | 已完成                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 尚未满足的退出条件                                                                                                                                                                                                                |
 | ---- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -234,11 +232,19 @@ P3 全部门禁通过前，不归档 V1 迁移夹具、不批量迁移其余领�
 | P1   | 代码基线完成，验收阻塞     | 固定并引入 Atomic CRM；保留 MIT 和来源；接入 pnpm/Turbo；Cloud、V1 与 API 客户端可构建和测试；增加隔离的合成数据 `dev:demo` 和 GitHub Actions 质量/数据库门禁                                                                                                                                                                                                                                                                                                                                                                                            | Supabase 开发项目、Auth、Storage 和邮件流程尚未完成远端运行验收；新增 CI 尚未在远端 Runner 实际执行                                                                                                                               |
 | P2   | 静态实现完成，运行门禁待验 | 个人 profile、团队入口移除、19 张表的 owner 隔离、RLS、复合外键、私有 Storage 和双用户 SQL 测试已入库                                                                                                                                                                                                                                                                                                                                                                                                                                                    | migration 尚未在开发项目执行；RLS、复合外键、Storage 和 RPC 隔离矩阵尚未产生真实数据库测试结果                                                                                                                                    |
 | P3   | 进行中                     | 单例 `packages/api-client`/React Admin DataProvider、严格 Customer 契约、结构化服务端过滤与稳定多字段排序、Customer 字段/表单/响应式列表、五类关联详情、删除/恢复/回收站/六字段合并 UI，以及合并/软删除/恢复 RPC 和提醒快照/CAS 已建立；Customer 操作已通过端口隔离 Cloud 与测试适配器，`dev:demo` 仅用于隔离 UI 回归；固定 Customer 行为夹具及纯 TypeScript V1/V2 对照基线已入库；Supabase 双用户 browser、REST、RPC、Edge、复合外键和 Storage E2E runner 及 CI 串联代码已就绪；30 天清理的 durable queue、受限 RPC、Edge Function 和授权测试已静态完成 | migration/RLS/Storage/RPC、双用户 browser/REST/RPC/Edge/FK/Storage E2E 与清理队列尚未在开发项目或远端 CI 执行；真实 Auth/PKCE 邮件流程、V1 与 Supabase 同 seed 差异报告，以及确认后旧 V2 API 继续读取 PostgreSQL 的回滚演练未通过 |
-| P4   | Web/Cloud 业务实现进行中   | 中文 Dashboard、Customer、项目、跟进、提醒、风险、里程碑、导入导出和备份恢复已接入 Atomic 前端；Supabase 开发项目的 API、RLS、RPC、Storage 和真实 Auth 仍需运行验收                                                                                                                                                                                                                                                                                                                                                                                      | 云端开发门禁、双账号隔离、迁移确认和回滚演练尚未完成；旧 Agent/SQLite 证据只作为迁移基线                                                                                                                                          |
+| P4   | 静态实现完成，运行门禁待验 | 中文 Dashboard、Customer、项目、跟进、提醒、风险、里程碑、导入导出和备份恢复已接入 Atomic 前端；项目阶段契约、Storage owner 路径、联系人合并和非 Customer wire schema 缺口均已修复                                                                                                                                                                                                                                                                                                                                                                         | Supabase 开发项目的 API、RLS、RPC、Storage、真实 Auth、双账号隔离、迁移确认和回滚演练尚未完成；旧 Agent/SQLite 证据只作为迁移基线                                                                                                   |
+
+2026-08-01 增量实施记录：
+
+- P3 已补 owner-scoped 稳定游标、前后翻页适配和写后游标失效；真实 Supabase E2E 定义已通过中文 UI 覆盖创建、更新、搜索、筛选、排序、分页、关联详情、合并、删除/恢复与提醒联动。
+- P4 已补提醒状态服务端幂等、CSV/XLSX 云端事务导入、加密云备份和原子恢复；项目阶段契约、Storage owner 路径、联系人合并及非 Customer wire schema 缺口均已修复，静态实现完成，真实 Supabase 运行门禁待验。
+- P5 的 SQLite 只读快照、11 表分类、预检、分批上传、核对、确认和放弃已静态实现；托管 Supabase 迁移演练仍未完成。
+- P6 的 PWA manifest、Service Worker 和离线应用壳已通过 Chromium 门禁；PWA 不承诺离线业务写入，扩展真实平台 DOM 与商店合规仍待验收。
+- P7 的 preview/canary/production 发布顺序、向前兼容 migration 检查、应用版本回滚、release marker/smoke 和每日清理 workflow 已实现；真实 canary 与回滚演练仍未完成。
 
 2026-07-31 已记录的历史本地验收证据（不替代 Web/Cloud 门禁）：
 
-- Cloud demo E2E 为 4/4，通过桌面和移动端的 Customer 及全领域合成数据流程。
+- Cloud demo E2E 为 4/4，通过桌面和移动视口的 Customer 及全领域合成数据流程。
 - 真实 Agent/SQLite E2E 为 5/5，通过旧本地迁移源的桌面/移动流程；该证据只用于行为基线和迁移核对。
 - Agent 提醒 AC-13～17 的服务、调度器和临时 SQLite 集成测试通过；覆盖精确 5 分钟窗口、启动立即补扫、`last_notified_at` 去重、稍后到期重入、单项失败隔离、3 天逾期排序权重和手动 `replied -> pending`。
 - Extension 为 38/38 测试、102 项断言；Content Script 只通过 Background 白名单 RPC，生产 bundle/source 的 token、Authorization、storage 和直接 `fetch` 扫描均为 0 命中。popup 与 Content 均可完成、稍后、忽略提醒，等待回复提醒可手动确认已收到回复。
@@ -333,7 +339,7 @@ V2 完成必须同时满足：
 1. 用户可以注册、验证、登录、重置密码和删除账号。
 2. 两个不同用户在同一 Supabase 项目中无法以任何受支持入口访问彼此数据。
 3. Customer、项目/商机、跟进、提醒、风险和里程碑达到 V1 行为等价。
-4. Web、PWA、浏览器扩展和至少一个移动平台使用同一类型化云端客户端。
+4. Web、PWA 和浏览器扩展使用同一类型化云端客户端；移动浏览器复用响应式 Web/PWA。
 5. 迁移工具退出或不存在不影响云端业务；它只负责一次性 SQLite 迁移、快照读取和取证。
 6. SQLite 迁移可校验、可重试，确认前可撤销，确认后 PostgreSQL 永久为事实源。
 7. 备份恢复、账号删除、日志脱敏、依赖扫描和部署回滚演练通过。
@@ -355,4 +361,4 @@ V2 完成必须同时满足：
 11. 将合并、软删除、恢复和提醒联动实现为原子数据库命令，并完成安全/失败回滚测试。
 12. 切换 V2 Customer 页面并运行 V1/V2 行为对照、两用户隔离、契约和回滚 E2E，签字确认 P3 硬门槛。
 
-第 12 项通过前，不开始其余领域批量迁移、移动端壳或生产 Cloud Beta。
+第 12 项通过前，不开始其余领域批量迁移或生产 Cloud Beta；原生移动端不在首版范围内。

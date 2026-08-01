@@ -23,7 +23,6 @@ import * as XLSX from "xlsx";
 
 import type {
   CustomerImportOperations,
-  ImportCommitResult,
   ImportFieldMapping,
   ImportParseResult,
 } from "./importOperations";
@@ -56,11 +55,9 @@ interface CachedImport {
   errors: ImportError[];
   duplicateTargets: Map<number, Set<string>>;
   existing: ExistingState;
-  committed?: ImportCommitResult;
-  idempotencyResults: Map<string, ImportCommitResult>;
 }
 
-type ImportClient = Pick<ApiClient, "list" | "create" | "update">;
+type ImportClient = Pick<ApiClient, "list" | "imports">;
 
 export function createCloudCustomerImportOperations(
   client: ImportClient,
@@ -113,7 +110,6 @@ export function createCloudCustomerImportOperations(
         errors,
         duplicateTargets,
         existing,
-        idempotencyResults: new Map(),
       });
 
       return ImportParseResponseSchema.parse({
@@ -140,32 +136,35 @@ export function createCloudCustomerImportOperations(
         );
       }
 
-      const idempotencyKey = options?.idempotencyKey?.trim();
-      if (idempotencyKey) {
-        const replay = job.idempotencyResults.get(idempotencyKey);
-        if (replay) return replay;
-      }
-      if (job.committed) {
-        throw apiError(
-          API_ERROR_CODES.conflict,
-          "Import job was already committed",
-          409,
-        );
-      }
-
       const resolutions = validateResolutions(request.resolutions, job);
-      const result = await commitRows(
-        client,
-        job,
-        resolutions,
-        options?.signal,
+      const rows = job.rows
+        .filter((row) => row.valid)
+        .map((row) => ({ row_index: row.rowIndex, ...row.customer }));
+      const resolutionList = Array.from(resolutions.values()).sort(
+        (left, right) => left.row_index - right.row_index,
       );
-      const parsedResult = ImportCommitResponseSchema.parse(result);
-      job.committed = parsedResult;
-      if (idempotencyKey) {
-        job.idempotencyResults.set(idempotencyKey, parsedResult);
-      }
-      return parsedResult;
+      const invalidCount = job.rows.length - rows.length;
+      const payloadHash = await hashImportPayload({
+        rows,
+        resolutions: resolutionList,
+        invalidCount,
+      });
+      assertNotAborted(options?.signal);
+
+      return ImportCommitResponseSchema.parse(
+        await client.imports.commit(
+          {
+            jobId: request.job_id,
+            idempotencyKey:
+              options?.idempotencyKey?.trim() || request.job_id,
+            payloadHash,
+            rows,
+            resolutions: resolutionList,
+            invalidCount,
+          },
+          { signal: options?.signal },
+        ),
+      );
     },
 
     async downloadErrors(jobId, options) {
@@ -561,197 +560,6 @@ function validateResolutions(
   return resolutions;
 }
 
-async function commitRows(
-  client: ImportClient,
-  job: CachedImport,
-  resolutions: Map<number, Resolution>,
-  signal?: AbortSignal,
-) {
-  let success = 0;
-  let failed = job.rows.filter((row) => !row.valid).length;
-  let skipped = 0;
-  let duplicates = 0;
-  const warnings: ImportCommitResult["warnings"] = [];
-
-  for (const row of job.rows) {
-    assertNotAborted(signal);
-    if (!row.valid) continue;
-    const resolution = resolutions.get(row.rowIndex);
-    if (resolution?.action === "skip") {
-      skipped += 1;
-      continue;
-    }
-    try {
-      const customer =
-        resolution?.action === "merge"
-          ? await mergeIntoCustomer(
-              client,
-              row.customer,
-              resolution.target_customer_id!,
-              job.existing,
-              signal,
-            )
-          : await createCustomer(client, row.customer, signal);
-      await createRelatedRecords(
-        client,
-        customer,
-        row,
-        job.existing,
-        warnings,
-        signal,
-      );
-      if (resolution?.action === "merge") duplicates += 1;
-      else success += 1;
-    } catch (error) {
-      if (error instanceof ApiError && error.isAborted) throw error;
-      failed += 1;
-      job.errors.push({
-        row: row.rowIndex,
-        message: commitFailureMessage(error),
-      });
-    }
-  }
-  return { success, failed, skipped, duplicates, warnings };
-}
-
-async function createCustomer(
-  client: ImportClient,
-  row: ImportRow,
-  signal?: AbortSignal,
-) {
-  return (await client.create(
-    "companies",
-    {
-      name: row.name,
-      company: row.company,
-      country: row.country,
-      source: row.source,
-      grade: row.grade,
-      status: "active",
-    },
-    CustomerSchema as never,
-    { signal },
-  )) as Customer;
-}
-
-async function mergeIntoCustomer(
-  client: ImportClient,
-  row: ImportRow,
-  targetId: string,
-  state: ExistingState,
-  signal?: AbortSignal,
-) {
-  const target = state.customers.find(({ id }) => id === targetId);
-  if (!target) {
-    throw apiError(API_ERROR_CODES.conflict, "Merge target changed", 409);
-  }
-  const patch = {
-    ...(target.company == null && row.company ? { company: row.company } : {}),
-    ...(target.country == null && row.country ? { country: row.country } : {}),
-    ...(target.source == null && row.source ? { source: row.source } : {}),
-  };
-  if (Object.keys(patch).length === 0) return target;
-  const updated = (await client.update(
-    "companies",
-    targetId,
-    patch,
-    CustomerSchema as never,
-    { signal },
-  )) as Customer;
-  Object.assign(target, updated);
-  return updated;
-}
-
-async function createRelatedRecords(
-  client: ImportClient,
-  customer: Customer,
-  parsedRow: ParsedRow,
-  state: ExistingState,
-  warnings: ImportCommitResult["warnings"],
-  signal?: AbortSignal,
-) {
-  const row = parsedRow.customer;
-  const customerContacts = state.contacts.filter(
-    (contact) => contact.company_id === customer.id,
-  );
-  const emailExists = customerContacts.some((contact) =>
-    contact.email_jsonb.some(
-      (item) =>
-        isRecord(item) && normalizeEmail(text(item.email)) === row.email,
-    ),
-  );
-  const phoneExists = customerContacts.some((contact) =>
-    contact.phone_jsonb.some(
-      (item) =>
-        isRecord(item) && normalizePhone(text(item.number)) === row.phone,
-    ),
-  );
-
-  let contact: CustomerContact | undefined;
-  if (
-    row.contact_name ||
-    (row.email && !emailExists) ||
-    (row.phone && !phoneExists)
-  ) {
-    contact = (await client.create(
-      "contacts",
-      {
-        company_id: customer.id,
-        name: row.contact_name ?? row.name,
-        email_jsonb:
-          row.email && !emailExists ? [{ email: row.email, type: "Work" }] : [],
-        phone_jsonb:
-          row.phone && !phoneExists
-            ? [{ number: row.phone, type: "Work" }]
-            : [],
-        has_newsletter: false,
-      },
-      CustomerContactSchema as never,
-      { signal },
-    )) as CustomerContact;
-    state.contacts.push(contact);
-  }
-
-  if (row.platform && row.platform_account) {
-    const normalized = normalizePlatformIdentifier(
-      row.platform,
-      row.platform_account,
-    );
-    const existingAccount = state.socialAccounts.find(
-      (account) =>
-        account.platform.toLocaleLowerCase() === row.platform &&
-        account.normalized_identifier === normalized,
-    );
-    if (existingAccount && existingAccount.company_id !== customer.id) {
-      warnings.push({
-        code: "PLATFORM_ACCOUNT_NOT_COPIED",
-        row_index: parsedRow.rowIndex,
-        field: "platform_account",
-        platform: row.platform,
-        platform_account: row.platform_account,
-        existing_customer_id: existingAccount.company_id,
-      });
-      return;
-    }
-    if (!existingAccount) {
-      const account = (await client.create(
-        "social_accounts",
-        {
-          company_id: customer.id,
-          contact_id: contact?.id ?? null,
-          platform: row.platform,
-          raw_identifier: row.platform_account,
-          normalized_identifier: normalized,
-          manually_bound: false,
-        },
-        CustomerSocialAccountSchema as never,
-        { signal },
-      )) as CustomerSocialAccount;
-      state.socialAccounts.push(account);
-    }
-  }
-}
-
 function parseMapping(mapping: ImportFieldMapping | undefined) {
   if (mapping === undefined) return undefined;
   const result = ImportFieldMappingSchema.safeParse(mapping);
@@ -851,18 +659,6 @@ function identityLabel(field: string) {
   );
 }
 
-function commitFailureMessage(error: unknown) {
-  if (error instanceof ApiError) {
-    if (error.code === API_ERROR_CODES.conflict) {
-      return "云端数据发生冲突，请刷新客户数据后重新导入";
-    }
-    if (error.code === API_ERROR_CODES.validation) {
-      return "云端拒绝该行数据，请检查字段后重新导入";
-    }
-  }
-  return "云端写入失败，请稍后重试";
-}
-
 function text(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
@@ -892,6 +688,14 @@ function cacheJob(
     if (!oldest) break;
     jobs.delete(oldest);
   }
+}
+
+async function hashImportPayload(payload: unknown) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 function assertNotAborted(signal?: AbortSignal) {

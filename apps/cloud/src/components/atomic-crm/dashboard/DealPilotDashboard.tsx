@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import type { Company, Deal, FollowUp } from "../types";
 import { isUnscheduledPausedReminder } from "../reminders/reminderContract";
+import { sortRemindersByPriority } from "./reminderPriority";
 
 const PAGE_SIZE = 10_000;
 const OPEN_REMINDER_STATUSES = new Set<CustomerReminder["status"]>([
@@ -63,8 +64,13 @@ export const DealPilotDashboard = () => {
       (reminder) =>
         OPEN_REMINDER_STATUSES.has(reminder.status) &&
         !isUnscheduledPausedReminder(reminder),
-    )
-    .sort((left, right) => getReminderTime(left) - getReminderTime(right));
+    );
+  const prioritizedReminders = sortRemindersByPriority(openReminders, {
+    companies,
+    deals,
+    risks,
+    now,
+  });
   const overdueReminders = openReminders.filter(
     (reminder) => getReminderTime(reminder) < now.getTime(),
   );
@@ -148,9 +154,9 @@ export const DealPilotDashboard = () => {
               <Link to="/reminders">查看全部</Link>
             </Button>
           </div>
-          {openReminders.length ? (
+          {prioritizedReminders.length ? (
             <div className="divide-y border-y">
-              {openReminders.slice(0, 5).map((reminder) => {
+              {prioritizedReminders.slice(0, 5).map((reminder) => {
                 const company = companyById.get(String(reminder.company_id));
                 const deal = reminder.deal_id
                   ? dealById.get(String(reminder.deal_id))

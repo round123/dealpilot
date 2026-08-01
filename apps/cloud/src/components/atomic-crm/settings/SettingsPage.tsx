@@ -392,7 +392,12 @@ const SettingsFormFields = () => {
               helperText={false}
               validate={validateDealStages}
             >
-              <SimpleFormIterator disableClear>
+              <SimpleFormIterator
+                disableAdd
+                disableClear
+                disableRemove
+                disableReordering
+              >
                 <LocalizedConfigurationLabelInput group="dealStages" />
               </SimpleFormIterator>
             </ArrayInput>

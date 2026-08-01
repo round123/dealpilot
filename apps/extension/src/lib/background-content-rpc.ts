@@ -20,8 +20,8 @@ import {
   updateReminderStatus,
 } from "./api-client";
 import {
-  CONTENT_AGENT_REQUEST,
-  type ContentAgentOperation,
+  CONTENT_CLOUD_REQUEST,
+  type ContentCloudOperation,
 } from "./content-agent-client";
 import { ApiError } from "./extension-errors";
 import { openWorkbench } from "./workbench-links";
@@ -37,9 +37,9 @@ const operationSchema = z.enum([
   "create_reminder",
   "update_reminder_status",
   "open_workbench",
-] satisfies [ContentAgentOperation, ...ContentAgentOperation[]]);
+] satisfies [ContentCloudOperation, ...ContentCloudOperation[]]);
 const requestSchema = z.object({
-  type: z.literal(CONTENT_AGENT_REQUEST),
+  type: z.literal(CONTENT_CLOUD_REQUEST),
   operation: operationSchema,
   payload: z.unknown(),
 });
@@ -50,11 +50,12 @@ const customerResourceQuerySchema = z.object({
 });
 const followUpCommandSchema = z.object({
   data: FollowUpCreateSchema,
-  idempotency_key: z.string().min(8).max(200),
+  idempotency_key: z.string().uuid(),
 });
 const reminderStatusCommandSchema = z.object({
   reminder_id: z.string().uuid(),
   data: ReminderStatusUpdateSchema,
+  idempotency_key: z.string().uuid(),
 });
 const destinationSchema = z.union([
   z.enum(["home", "customers", "new-customer", "reminders", "projects"]),
@@ -80,7 +81,7 @@ export function isAllowedContentSender(sender: ContentMessageSender): boolean {
   }
 }
 
-export async function handleContentAgentRequest(
+export async function handleContentCloudRequest(
   message: unknown,
   sender: ContentMessageSender,
 ) {
@@ -92,11 +93,10 @@ export async function handleContentAgentRequest(
   if (!parsed.success) return failure(API_ERROR_CODES.validation, 400);
 
   try {
-    return { ok: true as const, data: await dispatch(parsed.data.operation, parsed.data.payload) };
+    return { data: await dispatch(parsed.data.operation, parsed.data.payload) };
   } catch (error) {
     if (error instanceof ApiError) {
       return {
-        ok: false as const,
         error: {
           code: error.code,
           status: error.status,
@@ -112,7 +112,7 @@ export async function handleContentAgentRequest(
   }
 }
 
-async function dispatch(operation: ContentAgentOperation, payload: unknown) {
+async function dispatch(operation: ContentCloudOperation, payload: unknown) {
   switch (operation) {
     case "resolve_match":
       return resolveMatch(MatchResolveSchema.parse(payload));
@@ -136,7 +136,11 @@ async function dispatch(operation: ContentAgentOperation, payload: unknown) {
       return createReminder(ReminderCreateSchema.parse(payload));
     case "update_reminder_status": {
       const command = reminderStatusCommandSchema.parse(payload);
-      return updateReminderStatus(command.reminder_id, command.data);
+      return updateReminderStatus(
+        command.reminder_id,
+        command.data,
+        command.idempotency_key,
+      );
     }
     case "open_workbench":
       return openWorkbench(z.object({ destination: destinationSchema }).parse(payload).destination);
@@ -144,5 +148,5 @@ async function dispatch(operation: ContentAgentOperation, payload: unknown) {
 }
 
 function failure(code: string, status: number) {
-  return { ok: false as const, error: { code, status } };
+  return { error: { code, status } };
 }

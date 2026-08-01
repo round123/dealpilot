@@ -39,9 +39,32 @@ export const BackupRestoreResultSchema = z
   })
   .passthrough();
 
+export const BackupExportSchema = z
+  .object({
+    id: z.string().uuid(),
+    schema_version: z.literal(1),
+    checksum: z.string().regex(/^[0-9a-f]{64}$/),
+    row_counts: CountsSchema,
+    created_at: DateTimeSchema,
+    payload: z.record(z.unknown()),
+  })
+  .strict();
+
+export const BackupPayloadRestoreInputSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    checksum: z.string().regex(/^[0-9a-f]{64}$/),
+    payload: z.record(z.unknown()),
+  })
+  .strict();
+
 export type BackupSnapshot = z.infer<typeof BackupSnapshotSchema>;
 export type BackupCreateInput = z.infer<typeof BackupCreateInputSchema>;
 export type BackupRestoreResult = z.infer<typeof BackupRestoreResultSchema>;
+export type BackupExport = z.infer<typeof BackupExportSchema>;
+export type BackupPayloadRestoreInput = z.infer<
+  typeof BackupPayloadRestoreInputSchema
+>;
 
 export interface BackupApi {
   list(options?: ListOptions): Promise<ListResult<BackupSnapshot>>;
@@ -51,6 +74,14 @@ export interface BackupApi {
   ): Promise<BackupSnapshot>;
   restore(
     snapshotId: string,
+    options?: ApiRequestOptions,
+  ): Promise<BackupRestoreResult>;
+  exportPayload(
+    snapshotId: string,
+    options?: ApiRequestOptions,
+  ): Promise<BackupExport>;
+  restorePayload(
+    input: BackupPayloadRestoreInput,
     options?: ApiRequestOptions,
   ): Promise<BackupRestoreResult>;
 }
@@ -87,18 +118,63 @@ export function createBackupApi(gateway: BackupGateway): BackupApi {
       );
       return parseData(BackupRestoreResultSchema, raw);
     },
+
+    async exportPayload(snapshotId, options = {}) {
+      const parsedId = parseSnapshotId(snapshotId);
+      const raw = await gateway.rpc(
+        "export_backup_snapshot",
+        { p_snapshot_id: parsedId },
+        z.unknown(),
+        options,
+      );
+      return parseData(BackupExportSchema, raw);
+    },
+
+    async restorePayload(input, options = {}) {
+      const parsed = BackupPayloadRestoreInputSchema.safeParse(input);
+      if (!parsed.success) {
+        throw validationError(
+          "Invalid backup payload restore input",
+          { backup: ["Backup payload is invalid or unsupported"] },
+          parsed.error.issues,
+        );
+      }
+      const raw = await gateway.rpc(
+        "restore_backup_payload",
+        {
+          p_schema_version: parsed.data.schemaVersion,
+          p_checksum: parsed.data.checksum,
+          p_payload: parsed.data.payload,
+        },
+        z.unknown(),
+        options,
+      );
+      return parseData(BackupRestoreResultSchema, raw);
+    },
   };
 }
 
 function parseInput(input: unknown): BackupCreateInput {
   const parsed = BackupCreateInputSchema.safeParse(input);
   if (parsed.success) return parsed.data;
-  throw new ApiError({
+  throw validationError(
+    "Invalid backup create input",
+    { label: ["Label must be between 1 and 200 characters"] },
+    parsed.error.issues,
+  );
+}
+
+function validationError(
+  message: string,
+  fields: Record<string, string[]>,
+  details?: unknown,
+) {
+  return new ApiError({
     code: API_ERROR_CODES.validation,
-    message: "Invalid backup create input",
+    message,
     status: 400,
-    fields: { label: ["Label must be between 1 and 200 characters"] },
-    details: parsed.error.issues,
+    fields,
+    details,
   });
 }
 

@@ -26,9 +26,9 @@ import { ApiError, extensionErrorMessage } from "./extension-errors";
 
 export { extensionErrorMessage };
 
-export const CONTENT_AGENT_REQUEST = "CONTENT_AGENT_REQUEST";
+export const CONTENT_CLOUD_REQUEST = "CONTENT_CLOUD_REQUEST";
 
-export type ContentAgentOperation =
+export type ContentCloudOperation =
   | "resolve_match"
   | "bind_match"
   | "unbind_match"
@@ -40,30 +40,29 @@ export type ContentAgentOperation =
   | "update_reminder_status"
   | "open_workbench";
 
-export interface ContentAgentRequest {
-  type: typeof CONTENT_AGENT_REQUEST;
-  operation: ContentAgentOperation;
+export interface ContentCloudRequest {
+  type: typeof CONTENT_CLOUD_REQUEST;
+  operation: ContentCloudOperation;
   payload: unknown;
 }
 
 const responseSchema = z.union([
-  z.object({ ok: z.literal(true), data: z.unknown().optional() }),
+  z.object({ data: z.unknown().optional() }).strict(),
   z.object({
-    ok: z.literal(false),
     error: z.object({
       code: z.string(),
       status: z.number().int().nonnegative(),
       fields: z.record(z.string(), z.array(z.string())).optional(),
       request_id: z.string().optional(),
     }),
-  }),
+  }).strict(),
 ]);
 const followUpPageSchema = paginatedResponse(FollowUpSchema);
 const reminderPageSchema = paginatedResponse(ReminderSchema);
 const customerPageSchema = paginatedResponse(CustomerSchema);
 
 async function sendContentRequest<T>(
-  operation: ContentAgentOperation,
+  operation: ContentCloudOperation,
   payload: unknown,
   parser: z.ZodType<T>,
   signal?: AbortSignal,
@@ -80,7 +79,7 @@ async function sendContentRequest<T>(
     signal?.addEventListener("abort", onAbort, { once: true });
 
     chrome.runtime.sendMessage(
-      { type: CONTENT_AGENT_REQUEST, operation, payload } satisfies ContentAgentRequest,
+      { type: CONTENT_CLOUD_REQUEST, operation, payload } satisfies ContentCloudRequest,
       (response) => {
         if (settled) return;
         settled = true;
@@ -88,7 +87,7 @@ async function sendContentRequest<T>(
         if (chrome.runtime.lastError) {
           reject(new ApiError({
             code: API_ERROR_CODES.network,
-            message: "Background request failed",
+            message: "Cloud background request failed",
           }));
           return;
         }
@@ -99,10 +98,10 @@ async function sendContentRequest<T>(
 
   const envelope = responseSchema.safeParse(raw);
   if (!envelope.success) throw invalidResponse(envelope.error);
-  if (!envelope.data.ok) {
+  if ("error" in envelope.data) {
     throw new ApiError({
       code: envelope.data.error.code,
-      message: "Background request failed",
+      message: "Cloud background request failed",
       status: envelope.data.error.status,
       fields: envelope.data.error.fields,
       requestId: envelope.data.error.request_id,
@@ -126,8 +125,7 @@ function invalidResponse(cause: unknown) {
 }
 
 export function generateIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return crypto.randomUUID();
 }
 
 export function resolveMatch(data: MatchResolve, signal?: AbortSignal): Promise<MatchResolveResponse> {
@@ -178,12 +176,14 @@ export async function createReminder(data: ReminderCreate): Promise<Reminder> {
 export async function updateContentReminderStatus(
   reminderId: string,
   data: ReminderStatusUpdate,
+  idempotencyKey = generateIdempotencyKey(),
 ): Promise<Reminder> {
   return sendContentRequest(
     "update_reminder_status",
     {
       reminder_id: reminderId,
       data: ReminderStatusUpdateSchema.parse(data),
+      idempotency_key: idempotencyKey,
     },
     ReminderSchema,
   );

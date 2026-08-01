@@ -19,6 +19,24 @@ jobs:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject backward-incompatible PostgreSQL migrations
+        shell: bash
+        run: |
+          base_sha="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+            base_sha="$(git rev-list --max-parents=0 HEAD)"
+          fi
+          node scripts/check-migration-compatibility.mjs \
+            --base "$base_sha" \
+            --head "${{ github.sha }}"
+      - name: Test release gates and smoke checks
+        run: >-
+          node --test
+          scripts/check-migration-compatibility.test.mjs
+          scripts/cloud-smoke.test.mjs
+          scripts/release-workflows.test.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 9.0.0
@@ -30,10 +48,11 @@ jobs:
         with:
           bun-version: 1.3.14
       - run: pnpm install --frozen-lockfile
-      - name: Test Edge handler without network access
+      - name: Test Edge handlers without network access
         run: >-
           node --experimental-strip-types --test
           supabase/functions/purge-expired-customers/handler.test.ts
+          supabase/functions/delete-account/handler.test.ts
       - run: pnpm type-check
       - run: pnpm lint
       - name: Install Chromium for browser tests
@@ -60,6 +79,8 @@ jobs:
         run: pnpm test:e2e:install
       - name: Run Cloud demo end-to-end tests
         run: pnpm --filter @dealpilot/cloud test:e2e:demo
+      - name: Verify production PWA install and offline application shell
+        run: pnpm --filter @dealpilot/cloud test:e2e:pwa
 
   database-security:
     runs-on: ubuntu-latest
@@ -91,6 +112,27 @@ jobs:
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres
           -v ON_ERROR_STOP=1
           -f supabase/tests/personal_isolation.sql
+      - name: Verify Customer cursor and contact merge contracts
+        run: |
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/customer_cursor_pagination.sql
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/contact_merge.sql
+      - name: Verify extension and reminder write idempotency
+        run: |
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/extension_follow_up_idempotency.sql
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/reminder_status_idempotency.sql
+      - name: Verify cloud import and query scale baseline
+        run: >-
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres
+          -v ON_ERROR_STOP=1
+          -f supabase/tests/cloud_scale_acceptance.sql
       - name: Export local Supabase public settings
         shell: bash
         run: |
@@ -121,20 +163,25 @@ jobs:
 
           cat /tmp/dealpilot-cloud.log
           exit 1
-      - name: Start Customer purge Edge Function with JWT verification
+      - name: Start Edge Functions with JWT verification
         shell: bash
         run: |
-          nohup supabase functions serve purge-expired-customers \
+          nohup supabase functions serve \
             > /tmp/dealpilot-edge.log 2>&1 &
 
           for attempt in {1..60}; do
-            status_code="$(curl --silent --output /dev/null \
+            purge_status="$(curl --silent --output /dev/null \
               --write-out '%{http_code}' \
               --request POST \
               --header "apikey: $SUPABASE_ANON_KEY" \
               --header "Authorization: Bearer $SUPABASE_ANON_KEY" \
               "$SUPABASE_URL/functions/v1/purge-expired-customers")"
-            if [ "$status_code" = "403" ]; then
+            delete_status="$(curl --silent --output /dev/null \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "apikey: $SUPABASE_ANON_KEY" \
+              "$SUPABASE_URL/functions/v1/delete-account")"
+            if [ "$purge_status" = "403" ] && [ "$delete_status" = "401" ]; then
               exit 0
             fi
             sleep 1
