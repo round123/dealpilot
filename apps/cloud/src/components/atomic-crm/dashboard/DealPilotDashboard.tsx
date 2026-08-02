@@ -1,4 +1,4 @@
-import type { DashboardPriorityReminder } from "@dealpilot/api-client";
+import type { CustomerReminder, DealRisk } from "@dealpilot/api-client";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   MessageSquareText,
   Plus,
 } from "lucide-react";
+import { useGetList } from "ra-core";
 import { Link } from "react-router";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,10 +16,40 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { getCloudApiClient } from "../providers/apiClient";
+import { isUnscheduledPausedReminder } from "../reminders/reminderContract";
+import type { Company, Deal, FollowUp } from "../types";
+import { sortRemindersByPriority } from "./reminderPriority";
 
 const DASHBOARD_SUMMARY_QUERY_KEY = ["dashboard", "summary"] as const;
+const DEMO_PAGE_SIZE = 10_000;
+const OPEN_REMINDER_STATUSES = new Set<CustomerReminder["status"]>([
+  "pending",
+  "snoozed",
+  "overdue",
+]);
+const isDemoRuntime = () =>
+  import.meta.env.MODE === "demo" && import.meta.env.VITE_IS_DEMO === "true";
 
-export const DealPilotDashboard = () => {
+type DashboardReminderView = Pick<
+  CustomerReminder,
+  "id" | "due_at" | "snooze_until"
+> & {
+  company_name: string;
+  deal_name: string | null;
+};
+
+type DashboardViewSummary = {
+  open_reminder_count: number;
+  overdue_reminder_count: number;
+  high_risk_deal_count: number;
+  follow_up_count: number;
+  priority_reminders: DashboardReminderView[];
+};
+
+export const DealPilotDashboard = () =>
+  isDemoRuntime() ? <DemoDashboard /> : <CloudDashboard />;
+
+const CloudDashboard = () => {
   const summaryQuery = useQuery({
     queryKey: DASHBOARD_SUMMARY_QUERY_KEY,
     queryFn: ({ signal }) =>
@@ -29,7 +60,100 @@ export const DealPilotDashboard = () => {
   if (summaryQuery.isError) return <DashboardError />;
   if (summaryQuery.isPending) return <DashboardLoading />;
 
-  const summary = summaryQuery.data;
+  return <DashboardContent summary={summaryQuery.data} />;
+};
+
+const DemoDashboard = () => {
+  const companiesQuery = useGetList<Company>(
+    "companies",
+    demoListParams("name"),
+  );
+  const dealsQuery = useGetList<Deal>(
+    "deals",
+    demoListParams("updated_at", "DESC"),
+  );
+  const followUpsQuery = useGetList<FollowUp>(
+    "follow_ups",
+    demoListParams("occurred_at", "DESC"),
+  );
+  const remindersQuery = useGetList<CustomerReminder>(
+    "reminders",
+    demoListParams("due_at"),
+  );
+  const risksQuery = useGetList<DealRisk>(
+    "deal_risks",
+    demoListParams("created_at", "DESC"),
+  );
+
+  const queries = [
+    companiesQuery,
+    dealsQuery,
+    followUpsQuery,
+    remindersQuery,
+    risksQuery,
+  ];
+  if (queries.some((query) => query.isError)) return <DashboardError />;
+  if (queries.some((query) => query.isPending)) return <DashboardLoading />;
+
+  const companies = companiesQuery.data ?? [];
+  const deals = dealsQuery.data ?? [];
+  const followUps = followUpsQuery.data ?? [];
+  const reminders = remindersQuery.data ?? [];
+  const risks = risksQuery.data ?? [];
+  const now = new Date();
+  const openReminders = reminders.filter(
+    (reminder) =>
+      OPEN_REMINDER_STATUSES.has(reminder.status) &&
+      !isUnscheduledPausedReminder(reminder),
+  );
+  const prioritizedReminders = sortRemindersByPriority(openReminders, {
+    companies,
+    deals,
+    risks,
+    now,
+  });
+  const companyById = new Map(
+    companies.map((company) => [String(company.id), company]),
+  );
+  const dealById = new Map(deals.map((deal) => [String(deal.id), deal]));
+  const highRiskDealIds = new Set(
+    risks
+      .filter(
+        (risk) =>
+          ["open", "handling"].includes(risk.status) &&
+          ["high", "critical"].includes(risk.severity),
+      )
+      .map((risk) => String(risk.deal_id)),
+  );
+
+  return (
+    <DashboardContent
+      summary={{
+        open_reminder_count: openReminders.length,
+        overdue_reminder_count: openReminders.filter(
+          (reminder) => getReminderTime(reminder) < now.getTime(),
+        ).length,
+        high_risk_deal_count: highRiskDealIds.size,
+        follow_up_count: followUps.length,
+        priority_reminders: prioritizedReminders
+          .slice(0, 5)
+          .map((reminder) => ({
+            id: reminder.id,
+            due_at: reminder.due_at,
+            snooze_until: reminder.snooze_until,
+            company_name:
+              companyById.get(String(reminder.company_id))?.name ??
+              `客户 ${reminder.company_id}`,
+            deal_name: reminder.deal_id
+              ? (dealById.get(String(reminder.deal_id))?.name ?? null)
+              : null,
+          })),
+      }}
+    />
+  );
+};
+
+const DashboardContent = ({ summary }: { summary: DashboardViewSummary }) => {
   const now = new Date();
 
   return (
@@ -241,8 +365,15 @@ const DashboardError = () => (
   </Alert>
 );
 
-const getReminderTime = (reminder: DashboardPriorityReminder) =>
-  new Date(reminder.snooze_until ?? reminder.due_at).getTime();
+const demoListParams = (field: string, order: "ASC" | "DESC" = "ASC") => ({
+  filter: {},
+  pagination: { page: 1, perPage: DEMO_PAGE_SIZE },
+  sort: { field, order },
+});
+
+const getReminderTime = (
+  reminder: Pick<CustomerReminder, "due_at" | "snooze_until">,
+) => new Date(reminder.snooze_until ?? reminder.due_at).getTime();
 
 const formatDateTime = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", {

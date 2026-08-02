@@ -1,16 +1,23 @@
 import type { DashboardSummary } from "@dealpilot/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type * as RaCore from "ra-core";
 import { MemoryRouter } from "react-router";
 import { render } from "vitest-browser-react";
 
 const mocks = vi.hoisted(() => ({
   getSummary: vi.fn(),
+  useGetList: vi.fn(),
 }));
 
 vi.mock("../providers/apiClient", () => ({
   getCloudApiClient: () => ({
     dashboard: { getSummary: mocks.getSummary },
   }),
+}));
+
+vi.mock("ra-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof RaCore>()),
+  useGetList: mocks.useGetList,
 }));
 
 import { DealPilotDashboard } from "./DealPilotDashboard";
@@ -51,8 +58,13 @@ const renderDashboard = () => {
 
 describe("DealPilotDashboard", () => {
   beforeEach(() => {
+    vi.stubEnv("MODE", "test");
+    vi.stubEnv("VITE_IS_DEMO", "false");
     mocks.getSummary.mockReset();
+    mocks.useGetList.mockReset();
   });
+
+  afterEach(() => vi.unstubAllEnvs());
 
   it("renders exact server aggregates and prioritized reminder labels", async () => {
     mocks.getSummary.mockResolvedValue(summary);
@@ -69,6 +81,68 @@ describe("DealPilotDashboard", () => {
     expect(mocks.getSummary).toHaveBeenCalledWith({
       signal: expect.any(AbortSignal),
     });
+    expect(mocks.useGetList).not.toHaveBeenCalled();
+  });
+
+  it("uses the in-memory data provider in demo mode without calling Cloud API", async () => {
+    vi.stubEnv("MODE", "demo");
+    vi.stubEnv("VITE_IS_DEMO", "true");
+    const demoData = {
+      companies: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          name: "演示客户",
+          grade: "A",
+        },
+      ],
+      deals: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          company_id: "22222222-2222-4222-8222-222222222222",
+          name: "演示项目",
+          grade: "S",
+        },
+      ],
+      follow_ups: [{ id: "follow-up-1" }, { id: "follow-up-2" }],
+      reminders: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          company_id: "22222222-2222-4222-8222-222222222222",
+          deal_id: "33333333-3333-4333-8333-333333333333",
+          type: "fixed_time",
+          status: "pending",
+          due_at: "2099-08-02T08:00:00.000Z",
+          snooze_until: null,
+        },
+      ],
+      deal_risks: [
+        {
+          deal_id: "33333333-3333-4333-8333-333333333333",
+          severity: "high",
+          status: "open",
+          handled_at: null,
+          created_at: "2026-07-01T08:00:00.000Z",
+        },
+      ],
+    } as const;
+    mocks.useGetList.mockImplementation((resource: keyof typeof demoData) => ({
+      data: demoData[resource],
+      isPending: false,
+      isError: false,
+    }));
+
+    const screen = await renderDashboard();
+
+    await expect.element(screen.getByText("演示客户")).toBeVisible();
+    await expect.element(screen.getByText(/演示项目/)).toBeVisible();
+    expect(mocks.getSummary).not.toHaveBeenCalled();
+    expect(mocks.useGetList.mock.calls.map(([resource]) => resource)).toEqual([
+      "companies",
+      "deals",
+      "follow_ups",
+      "reminders",
+      "deal_risks",
+    ]);
   });
 
   it("shows a stable error instead of misleading zero metrics", async () => {
