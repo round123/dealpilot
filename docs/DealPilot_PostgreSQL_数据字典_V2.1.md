@@ -10,7 +10,7 @@
 
 本文记录 V2 WebCloud 当前 PostgreSQL、RLS、RPC 和 Storage 的实际实现，供开发、测试、安全审计、迁移核对和故障恢复使用。字段、约束或权限与本文不一致时，以仓库中按文件名顺序执行后的 migration 为准，并应在同一变更中更新本文。
 
-本版本共包含 13 个枚举、22 张 `public` 表、2 个视图、19 个认证用户可执行 RPC、4 个仅后台服务可执行 RPC，以及 10 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
+本版本共包含 13 个枚举、22 张 `public` 表、2 个视图、20 个认证用户可执行 RPC、4 个仅后台服务可执行 RPC，以及 10 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
 
 ## 2. 敏感级别
 
@@ -437,6 +437,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `update_reminder_status_idempotent(...)`          | 最终定义来自 `20260802000600`；通过期望旧状态/更新时间防并发覆盖，并支持幂等重试。                                    |
 | `merge_contacts(uuid, uuid)`                      | 在同一账号、同一 Customer 内合并联系人及其标签、任务、笔记、项目和社媒关联。                                          |
 | `get_dashboard_summary()`                         | 返回当前账号的 Dashboard 聚合摘要。                                                                                   |
+| `update_deal_with_contacts(...)`                  | 字段白名单和 `updated_at` CAS；单事务更新项目及联系人；`NULL` 不改关联，空数组清空。                                  |
 
 ### 7.2 仅 `service_role` 的后台 RPC
 
@@ -509,3 +510,4 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 12. `20260802000500_fix_migration_reconcile_status.sql`
 13. `20260802000600_reminder_delete_concurrency.sql`
 14. `20260802000700_dashboard_summary.sql`
+15. `20260802000800_deal_update_atomic.sql`

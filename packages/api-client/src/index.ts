@@ -111,6 +111,16 @@ export {
   ReminderStatusMutationInputSchema,
 } from "./reminder.js";
 export type { ReminderApi, ReminderStatusMutationInput } from "./reminder.js";
+export {
+  createDealApi,
+  DealUpdateWithContactsInputSchema,
+  DealWithContactsRpcDataSchema,
+} from "./deal.js";
+export type {
+  DealApi,
+  DealUpdateWithContactsInput,
+  DealWithContacts,
+} from "./deal.js";
 export type {
   MigrationApi,
   V1MigrationAbandonResult,

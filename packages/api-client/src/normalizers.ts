@@ -36,6 +36,7 @@ export interface FunctionResponseLike {
 
 function postgrestErrorCode(error: PostgrestErrorLike, status: number): string {
   if (error.code === "23505") return API_ERROR_CODES.conflict;
+  if (error.code === "40001") return API_ERROR_CODES.conflict;
   if (error.code === "42501") return API_ERROR_CODES.forbidden;
   if (error.code === "PGRST116") return API_ERROR_CODES.notFound;
   return error.code || errorCodeForStatus(status);

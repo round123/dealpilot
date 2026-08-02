@@ -9,6 +9,7 @@ import {
   CustomerReminderSchema,
   DealContactIdsSchema,
   DealContactSchema,
+  DealIdSchema,
   ReminderStatusMutationInputSchema,
   cloudRecordSchemaFor,
   toContactCreateInput,
@@ -24,6 +25,8 @@ import {
   type CustomerCursorPage,
   type CustomerCursorPageInput,
   type CustomerDeal,
+  type DealApi,
+  type DealUpdateWithContactsInput,
   type ListSort,
   type DealContact,
   type ReminderStatusMutationInput,
@@ -60,6 +63,7 @@ type ListOptions = {
 };
 
 export type ApiDataClient = {
+  deals: Pick<DealApi, "updateWithContacts">;
   reminders: {
     updateStatus(
       input: ReminderStatusMutationInput,
@@ -398,18 +402,14 @@ const syncContactTags = async (
   }
 };
 
-const dealContactIdsOf = (input: object): string[] | undefined => {
+const dealContactIdsOf = (
+  input: object,
+): DealUpdateWithContactsInput["contactIds"] | undefined => {
   const data = input as Record<string, unknown>;
   if (!Object.prototype.hasOwnProperty.call(data, "contact_ids")) {
     return undefined;
   }
-  return [
-    ...new Set(
-      DealContactIdsSchema.parse(
-        Array.isArray(data.contact_ids) ? data.contact_ids : [],
-      ),
-    ),
-  ];
+  return [...new Set(DealContactIdsSchema.parse(data.contact_ids))];
 };
 
 const toReactAdminDeal = (
@@ -460,24 +460,6 @@ const insertDealContacts = async (
       (result): result is PromiseRejectedResult => result.status === "rejected",
     )?.reason,
   };
-};
-
-const deleteDealContacts = (
-  client: ApiDataClient,
-  dealId: string,
-  contactIds: readonly string[],
-  signal?: AbortSignal,
-) => {
-  if (contactIds.length === 0) return Promise.resolve([]);
-  return client.deleteWhere<DealContact>(
-    "deal_contacts",
-    {
-      deal_id: { operator: "eq", value: dealId },
-      contact_id: { operator: "in", value: contactIds },
-    },
-    DealContactSchema,
-    { signal },
-  );
 };
 
 const failAfterDealRollback = async (
@@ -606,85 +588,21 @@ export const createApiDataProvider = (
     previousData: object | undefined,
     signal?: AbortSignal,
   ) => {
-    const payload = toDealUpdateInput(input as Record<string, unknown>);
-    const desiredContactIds = dealContactIdsOf(input);
-    const previousContactIds = dealContactIdsOf(previousData ?? {}) ?? [];
-    let previousDeal: CustomerDeal | undefined;
-    let currentContactIds = previousContactIds;
-
-    if (desiredContactIds !== undefined) {
-      const [deal, links] = await Promise.all([
-        client.getOne<CustomerDeal>("deals", dealId, CustomerDealSchema, {
-          signal,
-        }),
-        listDealContacts(client, dealId, signal),
-      ]);
-      previousDeal = deal;
-      currentContactIds = links.data.map(({ contact_id }) => contact_id);
-    }
-
-    const updatedDeal =
-      Object.keys(payload).length > 0
-        ? await client.update<CustomerDeal>(
-            "deals",
-            dealId,
-            payload,
-            CustomerDealSchema,
-            { signal },
-          )
-        : (previousDeal ??
-          (await client.getOne<CustomerDeal>(
-            "deals",
-            dealId,
-            CustomerDealSchema,
-            { signal },
-          )));
-
-    if (desiredContactIds === undefined) {
-      return toReactAdminDeal(updatedDeal, currentContactIds);
-    }
-
-    const desired = new Set(desiredContactIds);
-    const current = new Set(currentContactIds);
-    const added = desiredContactIds.filter((id) => !current.has(id));
-    const removed = currentContactIds.filter((id) => !desired.has(id));
-    const insertResult = await insertDealContacts(
-      client,
-      dealId,
-      added,
-      signal,
+    const result = await client.deals.updateWithContacts(
+      {
+        dealId: DealIdSchema.parse(dealId),
+        patch: toDealUpdateInput(input as Record<string, unknown>),
+        contactIds: dealContactIdsOf(input),
+        expectedUpdatedAt:
+          typeof (previousData as Record<string, unknown> | undefined)
+            ?.updated_at === "string"
+            ? ((previousData as Record<string, unknown>).updated_at as string)
+            : undefined,
+      },
+      { signal },
     );
-    const restoreDeal = () =>
-      client.update<CustomerDeal>(
-        "deals",
-        dealId,
-        toDealUpdateInput(
-          previousDeal as unknown as Readonly<Record<string, unknown>>,
-        ),
-        CustomerDealSchema,
-      );
 
-    if (insertResult.error !== undefined) {
-      const rollbackSteps: Array<() => Promise<unknown>> = [restoreDeal];
-      if (insertResult.insertedIds.length > 0) {
-        rollbackSteps.push(() =>
-          deleteDealContacts(client, dealId, insertResult.insertedIds),
-        );
-      }
-      return failAfterDealRollback(insertResult.error, rollbackSteps);
-    }
-
-    try {
-      await deleteDealContacts(client, dealId, removed, signal);
-    } catch (error) {
-      const rollbackSteps: Array<() => Promise<unknown>> = [restoreDeal];
-      if (added.length > 0) {
-        rollbackSteps.push(() => deleteDealContacts(client, dealId, added));
-      }
-      return failAfterDealRollback(error, rollbackSteps);
-    }
-
-    return toReactAdminDeal(updatedDeal, desiredContactIds);
+    return toReactAdminDeal(result.deal, result.contactIds);
   };
 
   const fetchCustomerPage = async <RecordType extends RaRecord>(

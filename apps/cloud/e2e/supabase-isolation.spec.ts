@@ -838,6 +838,99 @@ test("Customer behavior remains complete on the real Supabase provider", async (
       contact_id: targetContactId,
     },
   ]);
+
+  const atomicDealId = crypto.randomUUID();
+  const atomicContactA = crypto.randomUUID();
+  const atomicContactB = crypto.randomUUID();
+  const atomicContactC = crypto.randomUUID();
+  const expectedAtomicContactIds = [atomicContactB, atomicContactC].sort();
+  await insert("contacts", [
+    {
+      id: atomicContactA,
+      company_id: targetId,
+      name: `Atomic A ${suffix}`,
+    },
+    {
+      id: atomicContactB,
+      company_id: targetId,
+      name: `Atomic B ${suffix}`,
+    },
+    {
+      id: atomicContactC,
+      company_id: targetId,
+      name: `Atomic C ${suffix}`,
+    },
+  ]);
+  const [atomicDeal] = await insert<
+    Array<{ id: string; name: string; updated_at: string }>
+  >("deals", {
+    id: atomicDealId,
+    company_id: targetId,
+    name: `Atomic original ${suffix}`,
+    probability: 10,
+  });
+  await insert("deal_contacts", [
+    { deal_id: atomicDealId, contact_id: atomicContactA },
+    { deal_id: atomicDealId, contact_id: atomicContactB },
+  ]);
+
+  const atomicName = `Atomic updated ${suffix}`;
+  const atomicUpdate = await rpc<{
+    data: {
+      id: string;
+      name: string;
+      probability: number;
+      updated_at: string;
+      contact_ids: string[];
+    };
+  }>("update_deal_with_contacts", {
+    p_deal_id: atomicDealId,
+    p_patch: { name: atomicName, probability: 75 },
+    p_contact_ids: [atomicContactB, atomicContactC],
+    p_expected_updated_at: atomicDeal.updated_at,
+  });
+  expect(atomicUpdate.data).toMatchObject({
+    id: atomicDealId,
+    name: atomicName,
+    probability: 75,
+  });
+  expect(atomicUpdate.data.contact_ids).toEqual(expectedAtomicContactIds);
+
+  const staleUpdateResponse = await asAlpha(
+    "/rest/v1/rpc/update_deal_with_contacts",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_deal_id: atomicDealId,
+        p_patch: { name: `Must roll back ${suffix}`, probability: 5 },
+        p_contact_ids: [atomicContactA],
+        p_expected_updated_at: atomicDeal.updated_at,
+      }),
+    },
+  );
+  expect(staleUpdateResponse.ok).toBe(false);
+  expect((await staleUpdateResponse.json()) as { code?: string }).toMatchObject(
+    {
+      code: "40001",
+    },
+  );
+
+  expect(
+    await expectJson<Array<{ id: string; name: string; probability: number }>>(
+      await asAlpha(
+        `/rest/v1/deals?id=eq.${atomicDealId}&select=id,name,probability`,
+      ),
+      200,
+    ),
+  ).toEqual([{ id: atomicDealId, name: atomicName, probability: 75 }]);
+  expect(
+    await expectJson<Array<{ contact_id: string }>>(
+      await asAlpha(
+        `/rest/v1/deal_contacts?deal_id=eq.${atomicDealId}&select=contact_id&order=contact_id.asc`,
+      ),
+      200,
+    ),
+  ).toEqual(expectedAtomicContactIds.map((contact_id) => ({ contact_id })));
 });
 
 test("account deletion removes the authenticated user and all owned data", async () => {

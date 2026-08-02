@@ -688,6 +688,7 @@ declare
     'restore_customer',
     'soft_delete_customer',
     'stage_v1_migration_batch',
+    'update_deal_with_contacts',
     'update_reminder_status_idempotent'
   ];
   trigger_functions constant text[] := array[
@@ -816,6 +817,22 @@ begin
     'EXECUTE'
   ) then
     raise exception 'internal backup payload validator is externally executable';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure(
+      'public.update_deal_with_contacts(uuid,jsonb,uuid[],timestamptz)'
+    )
+      and p.prosecdef
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'atomic Deal RPC security differs from baseline';
   end if;
 
   if not exists (
@@ -1060,3 +1077,4 @@ rollback;
 \ir customer_cursor_pagination.sql
 \ir contact_merge.sql
 \ir dashboard_summary.sql
+\ir deal_update_atomic.sql

@@ -7,6 +7,7 @@ import {
   CustomerContactSchema,
   CustomerSchema,
   CustomerSummarySchema,
+  DealContactIdsSchema,
   LegacyAtomicRecordSchema,
 } from "@dealpilot/api-client";
 import { describe, expect, it, vi } from "vitest";
@@ -95,6 +96,12 @@ const dealContact = (contactId: string) => ({
 });
 
 const createClient = (): ApiDataClient => ({
+  deals: {
+    updateWithContacts: vi.fn().mockResolvedValue({
+      deal: wireDeal,
+      contactIds: [],
+    }),
+  },
   reminders: {
     updateStatus: vi.fn().mockResolvedValue({
       id: "33333333-3333-4333-8333-333333333333",
@@ -561,18 +568,12 @@ describe("API client React Admin adapter", () => {
     );
   });
 
-  it("updates Deal columns and synchronizes additions and removals", async () => {
+  it("updates Deal fields and contacts through one transactional command", async () => {
     const client = createClient();
-    vi.mocked(client.getOne).mockResolvedValue(wireDeal as never);
-    vi.mocked(client.list).mockResolvedValue({
-      data: [dealContact(CONTACT_A), dealContact(CONTACT_B)],
-      total: 2,
-    } as never);
-    vi.mocked(client.update).mockResolvedValue({
-      ...wireDeal,
-      sort_index: 3,
-    } as never);
-    vi.mocked(client.create).mockResolvedValue(dealContact(CONTACT_C) as never);
+    vi.mocked(client.deals.updateWithContacts).mockResolvedValue({
+      deal: { ...wireDeal, sort_index: 3 } as never,
+      contactIds: DealContactIdsSchema.parse([CONTACT_B, CONTACT_C]),
+    });
     const provider = createApiDataProvider(client);
 
     await expect(
@@ -594,28 +595,19 @@ describe("API client React Admin adapter", () => {
       data: { index: 3, contact_ids: [CONTACT_B, CONTACT_C] },
     });
 
-    expect(client.update).toHaveBeenCalledWith(
-      "deals",
-      DEAL_ID,
-      { sort_index: 3 },
-      expect.anything(),
-      { signal: undefined },
-    );
-    expect(client.create).toHaveBeenCalledWith(
-      "deal_contacts",
-      { deal_id: DEAL_ID, contact_id: CONTACT_C },
-      expect.anything(),
-      { signal: undefined },
-    );
-    expect(client.deleteWhere).toHaveBeenCalledWith(
-      "deal_contacts",
+    expect(client.deals.updateWithContacts).toHaveBeenCalledTimes(1);
+    expect(client.deals.updateWithContacts).toHaveBeenCalledWith(
       {
-        deal_id: { operator: "eq", value: DEAL_ID },
-        contact_id: { operator: "in", value: [CONTACT_A] },
+        dealId: DEAL_ID,
+        patch: { sort_index: 3 },
+        contactIds: [CONTACT_B, CONTACT_C],
+        expectedUpdatedAt: NOW,
       },
-      expect.anything(),
       { signal: undefined },
     );
+    expect(client.update).not.toHaveBeenCalled();
+    expect(client.create).not.toHaveBeenCalled();
+    expect(client.deleteWhere).not.toHaveBeenCalled();
   });
 
   it("deletes a newly created Deal when a contact relation fails", async () => {
@@ -648,30 +640,31 @@ describe("API client React Admin adapter", () => {
     );
   });
 
-  it("restores Deal fields and removes successful additions after relation failure", async () => {
+  it.each([
+    {
+      label: "omits contacts when contact_ids is absent",
+      data: { index: 4 },
+      contactIds: undefined,
+      returnedContactIds: [CONTACT_A],
+    },
+    {
+      label: "preserves an explicit empty contact_ids array",
+      data: { contact_ids: [] },
+      contactIds: [],
+      returnedContactIds: [],
+    },
+  ])("$label", async ({ data, contactIds, returnedContactIds }) => {
     const client = createClient();
-    const relationError = new ApiError({
-      code: API_ERROR_CODES.conflict,
-      message: "Contact relation rejected",
+    vi.mocked(client.deals.updateWithContacts).mockResolvedValue({
+      deal: { ...wireDeal, sort_index: 4 } as never,
+      contactIds: DealContactIdsSchema.parse(returnedContactIds),
     });
-    vi.mocked(client.getOne).mockResolvedValue(wireDeal as never);
-    vi.mocked(client.list).mockResolvedValue({
-      data: [dealContact(CONTACT_A)],
-      total: 1,
-    } as never);
-    vi.mocked(client.update).mockResolvedValue({
-      ...wireDeal,
-      sort_index: 4,
-    } as never);
-    vi.mocked(client.create)
-      .mockResolvedValueOnce(dealContact(CONTACT_B) as never)
-      .mockRejectedValueOnce(relationError);
     const provider = createApiDataProvider(client);
 
     await expect(
       provider.update("deals", {
         id: DEAL_ID,
-        data: { index: 4, contact_ids: [CONTACT_A, CONTACT_B, CONTACT_C] },
+        data,
         previousData: {
           ...wireDeal,
           index: 1,
@@ -679,28 +672,42 @@ describe("API client React Admin adapter", () => {
           sales_id: USER_ID,
         },
       }),
-    ).rejects.toBe(relationError);
-
-    expect(client.update).toHaveBeenNthCalledWith(
-      2,
-      "deals",
-      DEAL_ID,
-      expect.objectContaining({
-        company_id: CUSTOMER_ID,
-        name: "Cloud migration",
-        sort_index: 1,
-      }),
-      expect.anything(),
-    );
-    expect(client.deleteWhere).toHaveBeenCalledWith(
-      "deal_contacts",
-      {
-        deal_id: { operator: "eq", value: DEAL_ID },
-        contact_id: { operator: "in", value: [CONTACT_B] },
+    ).resolves.toMatchObject({
+      data: {
+        id: DEAL_ID,
+        index: 4,
+        contact_ids: returnedContactIds,
       },
-      expect.anything(),
+    });
+
+    expect(client.deals.updateWithContacts).toHaveBeenCalledTimes(1);
+    expect(client.deals.updateWithContacts).toHaveBeenCalledWith(
+      {
+        dealId: DEAL_ID,
+        patch: data.contact_ids === undefined ? { sort_index: 4 } : {},
+        contactIds,
+        expectedUpdatedAt: NOW,
+      },
       { signal: undefined },
     );
+    expect(client.update).not.toHaveBeenCalled();
+    expect(client.create).not.toHaveBeenCalled();
+    expect(client.deleteWhere).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed Deal contact_ids instead of clearing relations", async () => {
+    const client = createClient();
+    const provider = createApiDataProvider(client);
+
+    await expect(
+      provider.update("deals", {
+        id: DEAL_ID,
+        data: { contact_ids: null },
+        previousData: wireDeal,
+      }),
+    ).rejects.toThrow();
+
+    expect(client.deals.updateWithContacts).not.toHaveBeenCalled();
   });
 
   it("writes only real Contact columns, defaults JSONB arrays, and creates tag links", async () => {

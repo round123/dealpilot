@@ -157,7 +157,7 @@ jobs:
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres
           -v ON_ERROR_STOP=1
           -f supabase/tests/personal_isolation.sql
-      - name: Verify Customer cursor and contact merge contracts
+      - name: Verify Customer cursor, contact merge, and Deal write contracts
         run: |
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
             -v ON_ERROR_STOP=1 \
@@ -165,6 +165,9 @@ jobs:
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
             -v ON_ERROR_STOP=1 \
             -f supabase/tests/contact_merge.sql
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/deal_update_atomic.sql
       - name: Verify extension and reminder write idempotency
         run: |
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres \

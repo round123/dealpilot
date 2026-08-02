@@ -60,6 +60,25 @@ describe("Supabase response normalizers", () => {
     );
   });
 
+  it("maps PostgreSQL serialization failures to a stable conflict code", () => {
+    expect(() =>
+      normalizeRpcResponse(
+        {
+          data: null,
+          error: { code: "40001", message: "concurrent update" },
+          status: 500,
+        },
+        z.unknown(),
+      ),
+    ).toThrowError(
+      expect.objectContaining({
+        code: API_ERROR_CODES.conflict,
+        status: 500,
+        details: expect.objectContaining({ postgresCode: "40001" }),
+      }),
+    );
+  });
+
   it("preserves a native PostgREST request ID", () => {
     expect(() =>
       normalizePostgrestResponse(
