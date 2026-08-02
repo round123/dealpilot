@@ -699,7 +699,7 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   await expect(
     page.getByRole("heading", { name: "已删除客户", exact: true }),
   ).toBeVisible();
-  const deletedRow = page.locator("tr").filter({ hasText: targetName });
+  const deletedRow = page.getByRole("listitem").filter({ hasText: targetName });
   await expect(deletedRow).toHaveCount(1);
   await deletedRow.getByRole("button", { name: "恢复", exact: true }).click();
   await expect(deletedRow).toHaveCount(0);
