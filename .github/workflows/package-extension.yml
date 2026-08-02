@@ -1,0 +1,77 @@
+name: Package Browser Extension
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/package-extension.yml"
+      - "apps/extension/**"
+      - "packages/api-client/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+
+permissions:
+  contents: read
+  pages: read
+
+concurrency:
+  group: extension-production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package production Chrome and Edge extension
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SB_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Resolve deployed DealPilot Web URL
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          web_url="$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)"
+          test -n "$web_url"
+          echo "VITE_DEALPILOT_WEB_URL=$web_url" >> "$GITHUB_ENV"
+      - name: Validate public extension configuration
+        shell: bash
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SB_PUBLISHABLE_KEY"
+          test -n "$VITE_DEALPILOT_WEB_URL"
+      - run: pnpm install --frozen-lockfile
+      - name: Build and verify store-ready extension archive
+        run: pnpm --filter @dealpilot/extension package:chrome
+      - name: Upload production extension archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: dealpilot-extension-production-${{ github.sha }}
+          path: apps/extension/.output/*-chrome.zip
+          include-hidden-files: true
+          retention-days: 30
+      - name: Record extension package evidence
+        shell: bash
+        run: |
+          {
+            echo "### Production browser extension package"
+            echo "- Release SHA: $GITHUB_SHA"
+            echo "- Browsers: Chrome and Edge (Manifest V3)"
+            echo "- Web: $VITE_DEALPILOT_WEB_URL"
+            echo "- Artifact: dealpilot-extension-production-$GITHUB_SHA"
+            echo "- Store upload: manual approval required"
+          } >> "$GITHUB_STEP_SUMMARY"
