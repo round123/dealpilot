@@ -13,6 +13,7 @@ values
 insert into public.companies (id, owner_user_id, name)
 values
   ('51000000-0000-4000-8000-000000000010', '51000000-0000-4000-8000-000000000001', 'Owner A customer'),
+  ('51000000-0000-4000-8000-000000000011', '51000000-0000-4000-8000-000000000001', 'Owner A deleted customer'),
   ('52000000-0000-4000-8000-000000000010', '52000000-0000-4000-8000-000000000002', 'Owner B customer');
 
 insert into public.reminders (
@@ -23,6 +24,8 @@ values
   ('51000000-0000-4000-8000-000000000021', '51000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000010', 'fixed_time', 'pending', '2026-08-02T10:00:00Z', 'normal'),
   ('51000000-0000-4000-8000-000000000022', '51000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000010', 'fixed_time', 'pending', '2026-08-02T11:00:00Z', 'normal'),
   ('51000000-0000-4000-8000-000000000023', '51000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000010', 'waiting_reply', 'pending', '2026-08-02T12:00:00Z', 'high'),
+  ('51000000-0000-4000-8000-000000000025', '51000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000011', 'fixed_time', 'pending', '2026-08-02T13:00:00Z', 'normal'),
+  ('51000000-0000-4000-8000-000000000026', '51000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000010', 'fixed_time', 'ignored', '2026-08-02T14:00:00Z', 'normal'),
   ('52000000-0000-4000-8000-000000000020', '52000000-0000-4000-8000-000000000002', '52000000-0000-4000-8000-000000000010', 'fixed_time', 'pending', '2026-08-02T09:00:00Z', 'normal');
 
 set local role authenticated;
@@ -107,6 +110,48 @@ begin
     raise exception 'cross-owner reminder update unexpectedly succeeded';
   exception
     when no_data_found then null;
+  end;
+
+  perform public.soft_delete_customer(
+    '51000000-0000-4000-8000-000000000011'
+  );
+  if not exists (
+    select 1 from public.reminders
+    where id = '51000000-0000-4000-8000-000000000025'
+      and status = 'ignored'
+      and deletion_event_id is not null
+  ) then
+    raise exception 'customer deletion did not mark the reminder for restore CAS';
+  end if;
+
+  select public.update_reminder_status_idempotent(
+    '51000000-0000-4000-8000-000000000105',
+    '51000000-0000-4000-8000-000000000025',
+    'completed', null, 'Handled after customer deletion'
+  ) into action_response;
+  if action_response -> 'data' ->> 'status' <> 'completed'
+    or action_response -> 'data' ->> 'resolution' <> 'Handled after customer deletion'
+    or action_response -> 'data' ->> 'deletion_event_id' is not null
+    or not exists (
+      select 1 from public.reminders
+      where id = '51000000-0000-4000-8000-000000000025'
+        and status = 'completed'
+        and resolution = 'Handled after customer deletion'
+        and deletion_event_id is null
+    ) then
+    raise exception 'delete-concurrent reminder command did not win restore CAS: %',
+      action_response;
+  end if;
+
+  begin
+    perform public.update_reminder_status_idempotent(
+      '51000000-0000-4000-8000-000000000106',
+      '51000000-0000-4000-8000-000000000026',
+      'completed', null, null
+    );
+    raise exception 'ordinary ignored reminder unexpectedly changed state';
+  exception
+    when invalid_parameter_value then null;
   end;
 
   begin
