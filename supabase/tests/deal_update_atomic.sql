@@ -170,7 +170,7 @@ begin
     );
     raise exception 'stale Deal update unexpectedly succeeded';
   exception
-    when serialization_failure then null;
+    when sqlstate 'PT409' then null;
   end;
 
   begin

@@ -57,7 +57,7 @@ begin
   end if;
   if p_expected_updated_at is not null
     and current_deal.updated_at is distinct from p_expected_updated_at then
-    raise exception using errcode = '40001', message = 'Deal was modified by another request';
+    raise exception using errcode = 'PT409', message = 'Deal was modified by another request';
   end if;
 
   select * into patched_deal

@@ -909,9 +909,10 @@ test("Customer behavior remains complete on the real Supabase provider", async (
     },
   );
   expect(staleUpdateResponse.ok).toBe(false);
+  expect(staleUpdateResponse.status).toBe(409);
   expect((await staleUpdateResponse.json()) as { code?: string }).toMatchObject(
     {
-      code: "40001",
+      code: "PT409",
     },
   );
 
