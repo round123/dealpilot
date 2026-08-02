@@ -8,6 +8,7 @@ import { FormToolbar } from "../layout/FormToolbar";
 export const CompanyEdit = () => (
   <EditBase
     actions={false}
+    mutationMode="pessimistic"
     redirect="show"
     transform={(values) => {
       // add https:// before website if not present
