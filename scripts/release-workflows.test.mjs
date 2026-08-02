@@ -67,6 +67,14 @@ test("both release paths publish and verify an immutable release marker", () => 
   }
 });
 
+test("rollback requires an authenticated Customer baseline from current PostgreSQL", () => {
+  assert.match(rollback, /CLOUD_SMOKE_REQUIRE_AUTHENTICATED: "true"/);
+  assert.match(rollback, /secrets\.CLOUD_SMOKE_EMAIL/);
+  assert.match(rollback, /secrets\.CLOUD_SMOKE_PASSWORD/);
+  assert.match(rollback, /secrets\.CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON/);
+  assert.match(rollback, /Authenticated Customer count and related summary/);
+});
+
 test("customer retention cleanup is scheduled without embedding its secret", () => {
   assert.match(customerPurge, /cron: "17 2 \* \* \*"/);
   assert.match(customerPurge, /environment:\s+name: cloud-production/);

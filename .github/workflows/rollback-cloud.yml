@@ -200,9 +200,13 @@ jobs:
       SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
       RELEASE_SHA: ${{ needs.verify-release.outputs.release_sha }}
+      CLOUD_SMOKE_REQUIRE_AUTHENTICATED: "true"
+      CLOUD_SMOKE_EMAIL: ${{ secrets.CLOUD_SMOKE_EMAIL }}
+      CLOUD_SMOKE_PASSWORD: ${{ secrets.CLOUD_SMOKE_PASSWORD }}
+      CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON: ${{ secrets.CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run pre-login smoke against current PostgreSQL
+      - name: Verify authenticated Customer reads from current PostgreSQL
         run: node scripts/cloud-smoke.mjs
       - name: Record rollback evidence
         shell: bash
@@ -215,6 +219,6 @@ jobs:
             echo "- Approval evidence: $APPROVAL_EVIDENCE"
             echo "- Web: $CLOUD_WEB_URL"
             echo "- PostgreSQL: current production database, unchanged"
-            echo "- Pre-login smoke: passed"
+            echo "- Authenticated Customer count and related summary: passed"
             echo "- Next action: prepare a forward fix from current main"
           } >> "$GITHUB_STEP_SUMMARY"

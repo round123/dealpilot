@@ -22,11 +22,17 @@ Preview 和 canary 不部署 GitHub Pages，因为公开 Pages 的 PR preview �
 
 仓库或对应环境需提供：
 
-- Production：`SUPABASE_ACCESS_TOKEN`、`SUPABASE_DB_PASSWORD`、`SUPABASE_PROJECT_REF`、`VITE_SUPABASE_URL`、`VITE_SB_PUBLISHABLE_KEY`。
+- Production：`SUPABASE_ACCESS_TOKEN`、`SUPABASE_DB_PASSWORD`、`SUPABASE_PROJECT_REF`、`VITE_SUPABASE_URL`、`VITE_SB_PUBLISHABLE_KEY`，以及回滚业务 smoke 使用的 `CLOUD_SMOKE_EMAIL`、`CLOUD_SMOKE_PASSWORD`、`CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON`。
 - Preview：同名字段加 `PREVIEW_` 前缀。
 - Canary：同名字段加 `CANARY_` 前缀。
 
 Preview/canary project ref 与 production 相同会被工作流拒绝。
+
+生产 smoke 账号只用于读取一条稳定的合成 Customer，不得使用真实客户数据。`CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON` 固定该账号可见的活动 Customer 总数和样本关联摘要，例如：
+
+```json
+{"id":"00000000-0000-4000-8000-000000000001","name":"Release Smoke Customer","active_customer_count":1,"contacts":1,"social_accounts":1,"deals":1,"recent_follow_ups":1,"open_reminders":1}
+```
 
 ## 3. Migration 兼容门禁
 
@@ -94,7 +100,7 @@ Canary 不分流生产用户；它是在独立、生产等价环境执行的人�
 - `approval_evidence`：HTTPS incident/审批 URL；
 - `confirmation`：`ROLLBACK V2 APP ONLY`。
 
-工作流验证 ref/SHA 和 `main` 祖先关系，然后只从该 SHA 部署 Edge Functions 与 Web/PWA。它不会 link 数据库，也不会执行 migration。最后用旧应用的 `release.json` 对照 SHA，并验证它仍连接当前生产 Auth/PostgREST；未登录 Edge 请求必须继续被拒绝。
+工作流验证 ref/SHA 和 `main` 祖先关系，然后只从该 SHA 部署 Edge Functions 与 Web/PWA。它不会 link 数据库，也不会执行 migration。最后用旧应用的 `release.json` 对照 SHA，验证它仍连接当前生产 Auth/PostgREST，未登录 Edge 请求继续被拒绝，并用受控账号核对活动 Customer 总数及 Customer 关联摘要。
 
 ### 成功条件
 
