@@ -100,7 +100,7 @@ export const StoryWrapper = ({
   const store = useMemo(() => memoryStore(), []);
 
   useEffect(() => {
-    // Clear localStorage on mount to prevent data pollution from previous story / test, since we persist react-query cache in localStorage.
+    // Isolate React Admin settings and fakerest demo state between stories/tests.
     localStorage.clear();
   }, []);
 

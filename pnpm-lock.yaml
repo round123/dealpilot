@@ -173,15 +173,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.3.3(vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0))
-      '@tanstack/query-async-storage-persister':
-        specifier: ^5.90.22
-        version: 5.101.4
       '@tanstack/react-query':
         specifier: ^5.101.0
         version: 5.101.4(@types/react@19.2.17)(react@19.2.8)
-      '@tanstack/react-query-persist-client':
-        specifier: ^5.90.22
-        version: 5.101.4(@tanstack/react-query@5.101.4(@types/react@19.2.17)(react@19.2.8))(react@19.2.8)
       '@types/qs':
         specifier: ^6.14.0
         version: 6.15.1
@@ -3513,20 +3507,8 @@ packages:
     resolution: {integrity: sha512-79pf/RkhteYZTRgcR4F9kbk84P2N8rugQJswxfIqovlbRiT3yI7eBE+5QorIrZaOKktsgzRlXh1l/du/xpl4iA==, tarball: https://mirrors.huaweicloud.com/repository/npm/@tanstack/history/-/history-1.162.0.tgz}
     engines: {node: '>=20.19'}
 
-  '@tanstack/query-async-storage-persister@5.101.4':
-    resolution: {integrity: sha512-ROenNOVvxIZ1zKsBAiIvvslLo2xD8Me/vFz/tChdmuI7ciU+ET63yRrQ01W899Tx1ayQXdsGQJqYqjjVZk+OBQ==, tarball: https://mirrors.huaweicloud.com/repository/npm/@tanstack/query-async-storage-persister/-/query-async-storage-persister-5.101.4.tgz}
-
   '@tanstack/query-core@5.101.4':
     resolution: {integrity: sha512-gNwcvOJcRbLWPOLG/2OBm+zM+Yv+MKsXKEOWC57USuZDEsI71hEErQsiEGx5wX9rzWWkfwM0fVSPoiIFSsxfiw==, tarball: https://mirrors.huaweicloud.com/repository/npm/@tanstack/query-core/-/query-core-5.101.4.tgz}
-
-  '@tanstack/query-persist-client-core@5.101.4':
-    resolution: {integrity: sha512-Bmu+RfWhwYEyYZEwSeKC0gX4+KTkiEB3yO8oz9BfAY/Jfe3ndz9EnYVhihIZPmWIr8NXayF7JuraNQcrXQQCCg==, tarball: https://mirrors.huaweicloud.com/repository/npm/@tanstack/query-persist-client-core/-/query-persist-client-core-5.101.4.tgz}
-
-  '@tanstack/react-query-persist-client@5.101.4':
-    resolution: {integrity: sha512-CY5i7PPKS/5B8OR2zAs9nCbLpgqI4jN8eBhtAxKRMNHyGcQhmyOy4PkkJrAAXT+ecGj++fBJTgQw6OpyCt/2SQ==, tarball: https://mirrors.huaweicloud.com/repository/npm/@tanstack/react-query-persist-client/-/react-query-persist-client-5.101.4.tgz}
-    peerDependencies:
-      '@tanstack/react-query': ^5.101.4
-      react: ^18 || ^19
 
   '@tanstack/react-query@5.101.4':
     resolution: {integrity: sha512-yRg2pfOCxIs4ZJW3XYYHU/WgtD04FHSnfHlpRT7h7pR77hwkdRG4wxbKe4aq6P0RvXUTBSQpQeadS1SUYUe+KA==, tarball: https://mirrors.huaweicloud.com/repository/npm/@tanstack/react-query/-/react-query-5.101.4.tgz}
@@ -11481,22 +11463,7 @@ snapshots:
 
   '@tanstack/history@1.162.0': {}
 
-  '@tanstack/query-async-storage-persister@5.101.4':
-    dependencies:
-      '@tanstack/query-core': 5.101.4
-      '@tanstack/query-persist-client-core': 5.101.4
-
   '@tanstack/query-core@5.101.4': {}
-
-  '@tanstack/query-persist-client-core@5.101.4':
-    dependencies:
-      '@tanstack/query-core': 5.101.4
-
-  '@tanstack/react-query-persist-client@5.101.4(@tanstack/react-query@5.101.4(@types/react@19.2.17)(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@tanstack/query-persist-client-core': 5.101.4
-      '@tanstack/react-query': 5.101.4(@types/react@19.2.17)(react@19.2.8)
-      react: 19.2.8
 
   '@tanstack/react-query@5.101.4(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
