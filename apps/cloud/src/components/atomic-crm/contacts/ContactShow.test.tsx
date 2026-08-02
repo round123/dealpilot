@@ -16,6 +16,19 @@ vi.mock("@/hooks/use-mobile", () => ({
   useIsMobile: mockIsMobile,
 }));
 
+const renderContactAside = async (link?: "edit" | "show") => {
+  const contact = buildContact();
+  return render(
+    <StoryWrapper data={{ contacts: [contact] }}>
+      <ResourceContextProvider value="contacts">
+        <ShowBase id={contact.id}>
+          <ContactAside link={link} />
+        </ShowBase>
+      </ResourceContextProvider>
+    </StoryWrapper>,
+  );
+};
+
 describe("ContactShow", () => {
   beforeEach(() => {
     mockIsMobile.mockReturnValue(true);
@@ -100,5 +113,31 @@ describe("ContactShow", () => {
       .toBe("hot");
 
     await expect.element(screen.getByRole("combobox")).toHaveTextContent("Hot");
+  });
+
+  it("shows merge and delete actions in the default Show aside", async () => {
+    const screen = await renderContactAside();
+
+    await expect
+      .element(
+        screen.getByRole("button", { name: /merge with another contact/i }),
+      )
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: /delete/i }))
+      .toBeVisible();
+  });
+
+  it('hides merge and delete actions when link is "show"', async () => {
+    const screen = await renderContactAside("show");
+
+    await expect
+      .element(
+        screen.getByRole("button", { name: /merge with another contact/i }),
+      )
+      .not.toBeInTheDocument();
+    await expect
+      .element(screen.getByRole("button", { name: /delete/i }))
+      .not.toBeInTheDocument();
   });
 });

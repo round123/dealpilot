@@ -79,7 +79,7 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         </AsideSection>
       ) : null}
 
-      {link !== "edit" && (
+      {link === "edit" && (
         <>
           <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
             <ExportVCardButton />
