@@ -113,11 +113,13 @@ export {
 export type { ReminderApi, ReminderStatusMutationInput } from "./reminder.js";
 export {
   createDealApi,
+  DealCreateWithContactsInputSchema,
   DealUpdateWithContactsInputSchema,
   DealWithContactsRpcDataSchema,
 } from "./deal.js";
 export type {
   DealApi,
+  DealCreateWithContactsInput,
   DealUpdateWithContactsInput,
   DealWithContacts,
 } from "./deal.js";

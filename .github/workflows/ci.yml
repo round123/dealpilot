@@ -168,6 +168,9 @@ jobs:
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
             -v ON_ERROR_STOP=1 \
             -f supabase/tests/deal_update_atomic.sql
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/deal_create_atomic.sql
       - name: Verify extension and reminder write idempotency
         run: |
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres \

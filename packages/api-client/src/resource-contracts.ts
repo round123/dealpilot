@@ -246,18 +246,18 @@ export const DealContactSchema = z
 
 const DealWriteShape = z.object({
   company_id: CustomerIdSchema,
-  name: z.string().min(1),
+  name: CustomerDealSchema.shape.name,
   category: NullableTextSchema,
   stage: CustomerDealSchema.shape.stage,
   grade: CustomerDealSchema.shape.grade,
   description: NullableTextSchema,
-  currency: z.string().length(3),
+  currency: CustomerDealSchema.shape.currency,
   amount: z.number().nonnegative().nullable(),
   probability: z.number().int().min(0).max(100).nullable(),
   expected_closing_date: z.string().date().nullable(),
   closed_reason: NullableTextSchema,
   archived_at: DateTimeSchema.nullable(),
-  sort_index: z.number().int().nullable(),
+  sort_index: CustomerDealSchema.shape.sort_index,
 });
 
 export const DealCreateInputSchema = DealWriteShape.partial({

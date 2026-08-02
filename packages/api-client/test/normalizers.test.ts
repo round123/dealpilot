@@ -79,6 +79,31 @@ describe("Supabase response normalizers", () => {
     );
   });
 
+  it.each([
+    ["PT404", 404, API_ERROR_CODES.notFound],
+    ["PT422", 422, API_ERROR_CODES.validation],
+  ])(
+    "maps PostgreSQL business error %s to a stable API code",
+    (postgresCode, status, code) => {
+      expect(() =>
+        normalizeRpcResponse(
+          {
+            data: null,
+            error: { code: postgresCode, message: "business rule rejected" },
+            status,
+          },
+          z.unknown(),
+        ),
+      ).toThrowError(
+        expect.objectContaining({
+          code,
+          status,
+          details: expect.objectContaining({ postgresCode }),
+        }),
+      );
+    },
+  );
+
   it("preserves a native PostgREST request ID", () => {
     expect(() =>
       normalizePostgrestResponse(

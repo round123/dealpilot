@@ -63,7 +63,7 @@ type ListOptions = {
 };
 
 export type ApiDataClient = {
-  deals: Pick<DealApi, "updateWithContacts">;
+  deals: Pick<DealApi, "createWithContacts" | "updateWithContacts">;
   reminders: {
     updateStatus(
       input: ReminderStatusMutationInput,
@@ -409,7 +409,56 @@ const dealContactIdsOf = (
   if (!Object.prototype.hasOwnProperty.call(data, "contact_ids")) {
     return undefined;
   }
-  return [...new Set(DealContactIdsSchema.parse(data.contact_ids))];
+  const parsed = DealContactIdsSchema.safeParse(data.contact_ids);
+  if (!parsed.success) {
+    const fields: Record<string, string[]> = {};
+    for (const issue of parsed.error.issues) {
+      const suffix = issue.path.join(".");
+      const field = suffix ? `contact_ids.${suffix}` : "contact_ids";
+      (fields[field] ??= []).push(issue.message);
+    }
+    throw new ApiError({
+      code: API_ERROR_CODES.validation,
+      message: "Invalid Deal contacts",
+      fields,
+      details: parsed.error.issues,
+      cause: parsed.error,
+    });
+  }
+  return [...new Set(parsed.data)];
+};
+
+const parseDealCommand = <Command>(
+  message: string,
+  factory: () => Command,
+): Command => {
+  try {
+    return factory();
+  } catch (error) {
+    if (
+      !error ||
+      typeof error !== "object" ||
+      !("issues" in error) ||
+      !Array.isArray(error.issues)
+    ) {
+      throw error;
+    }
+    const fields: Record<string, string[]> = {};
+    for (const issue of error.issues as Array<{
+      path: Array<string | number>;
+      message: string;
+    }>) {
+      const field = issue.path.join(".") || "request";
+      (fields[field] ??= []).push(issue.message);
+    }
+    throw new ApiError({
+      code: API_ERROR_CODES.validation,
+      message,
+      fields,
+      details: error.issues,
+      cause: error,
+    });
+  }
 };
 
 const toReactAdminDeal = (
@@ -435,59 +484,6 @@ const listDealContacts = (
     filters: { deal_id: { operator: "eq", value: dealId } },
     pagination: { page: 1, perPage: PAGE_SIZE },
   });
-
-const insertDealContacts = async (
-  client: ApiDataClient,
-  dealId: string,
-  contactIds: readonly string[],
-  signal?: AbortSignal,
-) => {
-  const results = await Promise.allSettled(
-    contactIds.map((contactId) =>
-      client.create<DealContact>(
-        "deal_contacts",
-        { deal_id: dealId, contact_id: contactId },
-        DealContactSchema,
-        { signal },
-      ),
-    ),
-  );
-  return {
-    insertedIds: contactIds.filter(
-      (_, index) => results[index]?.status === "fulfilled",
-    ),
-    error: results.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    )?.reason,
-  };
-};
-
-const failAfterDealRollback = async (
-  originalError: unknown,
-  rollbackSteps: ReadonlyArray<() => Promise<unknown>>,
-): Promise<never> => {
-  const rollback = await Promise.allSettled(
-    rollbackSteps.map((step) => step()),
-  );
-  const failures = rollback.flatMap((result) =>
-    result.status === "rejected"
-      ? [
-          result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason),
-        ]
-      : [],
-  );
-  if (failures.length > 0) {
-    throw new ApiError({
-      code: API_ERROR_CODES.server,
-      message: "Deal write failed and automatic rollback was incomplete",
-      details: { rollback_failures: failures },
-      cause: originalError,
-    });
-  }
-  throw originalError;
-};
 
 export const createApiDataProvider = (
   client = getCloudApiClient() as unknown as ApiDataClient,
@@ -556,30 +552,12 @@ export const createApiDataProvider = (
   };
 
   const createDeal = async (input: object, signal?: AbortSignal) => {
-    const contactIds = dealContactIdsOf(input) ?? [];
-    const deal = await client.create<CustomerDeal>(
-      "deals",
-      toDealCreateInput(input as Record<string, unknown>),
-      CustomerDealSchema,
-      { signal },
-    );
-    const links = await insertDealContacts(
-      client,
-      String(deal.id),
-      contactIds,
-      signal,
-    );
-    if (links.error !== undefined) {
-      return failAfterDealRollback(links.error, [
-        () =>
-          client.delete<CustomerDeal>(
-            "deals",
-            String(deal.id),
-            CustomerDealSchema,
-          ),
-      ]);
-    }
-    return toReactAdminDeal(deal, contactIds);
+    const command = parseDealCommand("Invalid Deal create command", () => ({
+      input: toDealCreateInput(input as Record<string, unknown>),
+      contactIds: dealContactIdsOf(input) ?? [],
+    }));
+    const result = await client.deals.createWithContacts(command, { signal });
+    return toReactAdminDeal(result.deal, result.contactIds);
   };
 
   const updateDeal = async (
@@ -588,19 +566,17 @@ export const createApiDataProvider = (
     previousData: object | undefined,
     signal?: AbortSignal,
   ) => {
-    const result = await client.deals.updateWithContacts(
-      {
-        dealId: DealIdSchema.parse(dealId),
-        patch: toDealUpdateInput(input as Record<string, unknown>),
-        contactIds: dealContactIdsOf(input),
-        expectedUpdatedAt:
-          typeof (previousData as Record<string, unknown> | undefined)
-            ?.updated_at === "string"
-            ? ((previousData as Record<string, unknown>).updated_at as string)
-            : undefined,
-      },
-      { signal },
-    );
+    const command = parseDealCommand("Invalid Deal update command", () => ({
+      dealId: DealIdSchema.parse(dealId),
+      patch: toDealUpdateInput(input as Record<string, unknown>),
+      contactIds: dealContactIdsOf(input),
+      expectedUpdatedAt:
+        typeof (previousData as Record<string, unknown> | undefined)
+          ?.updated_at === "string"
+          ? ((previousData as Record<string, unknown>).updated_at as string)
+          : undefined,
+    }));
+    const result = await client.deals.updateWithContacts(command, { signal });
 
     return toReactAdminDeal(result.deal, result.contactIds);
   };

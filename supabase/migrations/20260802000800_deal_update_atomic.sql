@@ -25,10 +25,10 @@ begin
     raise exception using errcode = '42501', message = 'Authentication required';
   end if;
   if p_deal_id is null then
-    raise exception using errcode = '22023', message = 'Deal ID is required';
+    raise exception using errcode = 'PT422', message = 'Deal ID is required';
   end if;
   if p_patch is null or pg_catalog.jsonb_typeof(p_patch) <> 'object' then
-    raise exception using errcode = '22023', message = 'Deal patch must be an object';
+    raise exception using errcode = 'PT422', message = 'Deal patch must be an object';
   end if;
   if exists (
     select 1
@@ -39,11 +39,11 @@ begin
       'closed_reason', 'archived_at', 'sort_index'
     )
   ) then
-    raise exception using errcode = '22023', message = 'Deal patch contains read-only or unknown fields';
+    raise exception using errcode = 'PT422', message = 'Deal patch contains read-only or unknown fields';
   end if;
   if p_contact_ids is not null
     and pg_catalog.array_position(p_contact_ids, null::uuid) is not null then
-    raise exception using errcode = '22023', message = 'Contact IDs cannot contain null';
+    raise exception using errcode = 'PT422', message = 'Contact IDs cannot contain null';
   end if;
 
   select deal_record.* into current_deal
@@ -53,7 +53,7 @@ begin
   for update;
 
   if not found then
-    raise exception using errcode = 'P0002', message = 'Deal not found';
+    raise exception using errcode = 'PT404', message = 'Deal not found';
   end if;
   if p_expected_updated_at is not null
     and current_deal.updated_at is distinct from p_expected_updated_at then
@@ -69,7 +69,7 @@ begin
     where company_record.owner_user_id = current_user_id
       and company_record.id = patched_deal.company_id
   ) then
-    raise exception using errcode = 'P0002', message = 'Deal customer not found';
+    raise exception using errcode = 'PT404', message = 'Deal customer not found';
   end if;
 
   if p_contact_ids is not null then
@@ -87,7 +87,7 @@ begin
       and contact_record.id = any(desired_contact_ids);
 
     if owned_contact_count <> desired_contact_count then
-      raise exception using errcode = 'P0002', message = 'Contact not found';
+      raise exception using errcode = 'PT404', message = 'Contact not found';
     end if;
   end if;
 
@@ -134,6 +134,13 @@ begin
       'contact_ids', pg_catalog.to_jsonb(final_contact_ids)
     )
   );
+exception
+  when invalid_text_representation
+    or not_null_violation
+    or check_violation
+    or numeric_value_out_of_range
+    or string_data_right_truncation then
+    raise exception using errcode = 'PT422', message = 'Invalid Deal patch';
 end;
 $$;
 

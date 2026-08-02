@@ -10,7 +10,7 @@
 
 本文记录 V2 WebCloud 当前 PostgreSQL、RLS、RPC 和 Storage 的实际实现，供开发、测试、安全审计、迁移核对和故障恢复使用。字段、约束或权限与本文不一致时，以仓库中按文件名顺序执行后的 migration 为准，并应在同一变更中更新本文。
 
-本版本共包含 13 个枚举、22 张 `public` 表、2 个视图、20 个认证用户可执行 RPC、4 个仅后台服务可执行 RPC，以及 10 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
+本版本共包含 13 个枚举、22 张 `public` 表、2 个视图、21 个认证用户可执行 RPC、4 个仅后台服务可执行 RPC，以及 10 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
 
 ## 2. 敏感级别
 
@@ -32,6 +32,7 @@
 - `anon` 对 `public` schema 的表、序列和函数无业务权限。客户端只能持有公开 anon key 和用户会话，严禁持有 `service_role`。
 - 所有 `SECURITY DEFINER` 函数固定 `search_path = ''`，并在函数内使用带 schema 的对象名。
 - RPC 成功值统一包含 `{ "data": ... }`；失败由数据库/PostgREST/Edge 层转换为统一 API 错误。
+- Deal 创建/更新 RPC 的业务失败使用 `PT404/PT409/PT422` 对应不存在、并发冲突和校验失败；API Client 分别归一化为 `NOT_FOUND/CONFLICT/VALIDATION_ERROR`。
 
 ## 4. 枚举字典
 
@@ -438,6 +439,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `merge_contacts(uuid, uuid)`                      | 在同一账号、同一 Customer 内合并联系人及其标签、任务、笔记、项目和社媒关联。                                          |
 | `get_dashboard_summary()`                         | 返回当前账号的 Dashboard 聚合摘要。                                                                                   |
 | `update_deal_with_contacts(...)`                  | 字段白名单和 `updated_at` CAS；单事务更新项目及联系人；`NULL` 不改关联，空数组清空。                                  |
+| `create_deal_with_contacts(...)`                  | 字段白名单与账号级关联校验；单事务创建项目及联系人关联，失败不残留项目。                                              |
 
 ### 7.2 仅 `service_role` 的后台 RPC
 
@@ -511,3 +513,4 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 13. `20260802000600_reminder_delete_concurrency.sql`
 14. `20260802000700_dashboard_summary.sql`
 15. `20260802000800_deal_update_atomic.sql`
+16. `20260802000900_deal_create_atomic.sql`

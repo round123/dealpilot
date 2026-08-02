@@ -116,18 +116,23 @@ export const CustomerDealSchema = z
     id: DealIdSchema,
     owner_user_id: UserIdSchema,
     company_id: CustomerIdSchema,
-    name: z.string().min(1),
+    name: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0, {
+        message: "Deal name cannot be blank",
+      }),
     category: NullableTextSchema,
     stage: DealStageSchema,
     grade: z.enum(["S", "A", "B", "C"]),
     description: NullableTextSchema,
-    currency: z.string().length(3),
+    currency: z.string().regex(/^[A-Z]{3}$/),
     amount: z.number().nonnegative().nullable(),
     probability: z.number().int().min(0).max(100).nullable(),
     expected_closing_date: z.string().date().nullable(),
     closed_reason: NullableTextSchema,
     archived_at: DateTimeSchema.nullable(),
-    sort_index: z.number().int().nullable(),
+    sort_index: z.number().int().min(-32_768).max(32_767).nullable(),
     created_at: DateTimeSchema,
     updated_at: DateTimeSchema,
   })

@@ -675,6 +675,7 @@ declare
     'commit_customer_import',
     'confirm_v1_migration',
     'create_backup_snapshot',
+    'create_deal_with_contacts',
     'create_follow_up_idempotent',
     'export_backup_snapshot',
     'get_customer_detail',
@@ -817,6 +818,22 @@ begin
     'EXECUTE'
   ) then
     raise exception 'internal backup payload validator is externally executable';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure(
+      'public.create_deal_with_contacts(jsonb,uuid[])'
+    )
+      and p.prosecdef
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'atomic Deal create RPC security differs from baseline';
   end if;
 
   if not exists (
@@ -1078,3 +1095,4 @@ rollback;
 \ir contact_merge.sql
 \ir dashboard_summary.sql
 \ir deal_update_atomic.sql
+\ir deal_create_atomic.sql

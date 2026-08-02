@@ -839,7 +839,6 @@ test("Customer behavior remains complete on the real Supabase provider", async (
     },
   ]);
 
-  const atomicDealId = crypto.randomUUID();
   const atomicContactA = crypto.randomUUID();
   const atomicContactB = crypto.randomUUID();
   const atomicContactC = crypto.randomUUID();
@@ -861,18 +860,57 @@ test("Customer behavior remains complete on the real Supabase provider", async (
       name: `Atomic C ${suffix}`,
     },
   ]);
-  const [atomicDeal] = await insert<
-    Array<{ id: string; name: string; updated_at: string }>
-  >("deals", {
-    id: atomicDealId,
-    company_id: targetId,
-    name: `Atomic original ${suffix}`,
+  const atomicOriginalName = `Atomic original ${suffix}`;
+  const atomicCreate = await rpc<{
+    data: {
+      id: string;
+      name: string;
+      probability: number;
+      updated_at: string;
+      contact_ids: string[];
+    };
+  }>("create_deal_with_contacts", {
+    p_input: {
+      company_id: targetId,
+      name: atomicOriginalName,
+      probability: 10,
+    },
+    p_contact_ids: [atomicContactA, atomicContactB],
+  });
+  const atomicDeal = atomicCreate.data;
+  const atomicDealId = atomicDeal.id;
+  expect(atomicDeal).toMatchObject({
+    name: atomicOriginalName,
     probability: 10,
   });
-  await insert("deal_contacts", [
-    { deal_id: atomicDealId, contact_id: atomicContactA },
-    { deal_id: atomicDealId, contact_id: atomicContactB },
-  ]);
+  expect(atomicDeal.contact_ids).toEqual(
+    [atomicContactA, atomicContactB].sort(),
+  );
+
+  const failedCreateName = `Atomic failed ${suffix}`;
+  const failedCreateResponse = await asAlpha(
+    "/rest/v1/rpc/create_deal_with_contacts",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_input: { company_id: targetId, name: failedCreateName },
+        p_contact_ids: [crypto.randomUUID()],
+      }),
+    },
+  );
+  expect(failedCreateResponse.ok).toBe(false);
+  expect(failedCreateResponse.status).toBe(404);
+  expect(
+    (await failedCreateResponse.json()) as { code?: string },
+  ).toMatchObject({ code: "PT404" });
+  expect(
+    await expectJson<Array<{ id: string }>>(
+      await asAlpha(
+        `/rest/v1/deals?name=eq.${encodeURIComponent(failedCreateName)}&select=id`,
+      ),
+      200,
+    ),
+  ).toEqual([]);
 
   const atomicName = `Atomic updated ${suffix}`;
   const atomicUpdate = await rpc<{

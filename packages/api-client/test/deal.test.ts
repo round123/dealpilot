@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   API_ERROR_CODES,
   ContactIdSchema,
+  CustomerIdSchema,
   DealIdSchema,
   createDealApi,
   type ApiClient,
@@ -42,6 +43,151 @@ const createHarness = () => {
 };
 
 describe("Deal API facade", () => {
+  it("maps a projected create input, contacts, and cancellation", async () => {
+    const { api, rpc } = createHarness();
+    const signal = new AbortController().signal;
+    rpc.mockResolvedValue({ ...dealRecord, contact_ids: [CONTACT_A] });
+
+    await expect(
+      api.createWithContacts(
+        {
+          input: {
+            company_id: CustomerIdSchema.parse(CUSTOMER_ID),
+            name: "Cloud migration",
+            probability: 60,
+            sort_index: 2,
+          },
+          contactIds: [ContactIdSchema.parse(CONTACT_A)],
+        },
+        { signal },
+      ),
+    ).resolves.toEqual({
+      deal: dealRecord,
+      contactIds: [ContactIdSchema.parse(CONTACT_A)],
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      "create_deal_with_contacts",
+      {
+        p_input: {
+          company_id: CUSTOMER_ID,
+          name: "Cloud migration",
+          probability: 60,
+          sort_index: 2,
+        },
+        p_contact_ids: [CONTACT_A],
+      },
+      expect.anything(),
+      { signal },
+    );
+  });
+
+  it.each([undefined, []] as const)(
+    "maps an omitted or empty create contact list to an empty RPC array",
+    async (contactIds) => {
+      const { api, rpc } = createHarness();
+      rpc.mockResolvedValue({ ...dealRecord, contact_ids: [] });
+
+      await expect(
+        api.createWithContacts({
+          input: {
+            company_id: CustomerIdSchema.parse(CUSTOMER_ID),
+            name: "Cloud migration",
+          },
+          ...(contactIds === undefined ? {} : { contactIds }),
+        }),
+      ).resolves.toEqual({ deal: dealRecord, contactIds: [] });
+
+      expect(rpc.mock.calls[0]?.[1]).toMatchObject({ p_contact_ids: [] });
+    },
+  );
+
+  it("passes repeated create contact IDs and trusts the normalized server result", async () => {
+    const { api, rpc } = createHarness();
+    rpc.mockResolvedValue({
+      ...dealRecord,
+      contact_ids: [CONTACT_A, CONTACT_B],
+    });
+
+    await expect(
+      api.createWithContacts({
+        input: {
+          company_id: CustomerIdSchema.parse(CUSTOMER_ID),
+          name: "Cloud migration",
+        },
+        contactIds: [
+          ContactIdSchema.parse(CONTACT_A),
+          ContactIdSchema.parse(CONTACT_A),
+          ContactIdSchema.parse(CONTACT_B),
+        ],
+      }),
+    ).resolves.toMatchObject({ contactIds: [CONTACT_A, CONTACT_B] });
+    expect(rpc.mock.calls[0]?.[1]).toMatchObject({
+      p_contact_ids: [CONTACT_A, CONTACT_A, CONTACT_B],
+    });
+  });
+
+  it("normalizes invalid create command input to a validation ApiError", async () => {
+    const { api, rpc } = createHarness();
+
+    await expect(
+      api.createWithContacts({
+        input: {
+          company_id: "not-a-customer-id",
+          name: "Invalid fields",
+          currency: "usd",
+          sort_index: 40_000,
+        },
+      } as never),
+    ).rejects.toMatchObject({
+      code: API_ERROR_CODES.validation,
+      fields: expect.objectContaining({
+        "input.company_id": expect.any(Array),
+        "input.currency": expect.any(Array),
+        "input.sort_index": expect.any(Array),
+      }),
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("rejects a whitespace-only Deal name at the client boundary", async () => {
+    const { api, rpc } = createHarness();
+
+    await expect(
+      api.createWithContacts({
+        input: {
+          company_id: CustomerIdSchema.parse(CUSTOMER_ID),
+          name: "   ",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: API_ERROR_CODES.validation,
+      fields: expect.objectContaining({
+        "input.name": expect.any(Array),
+      }),
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ...dealRecord },
+    { ...dealRecord, contact_ids: ["not-a-uuid"] },
+    { ...dealRecord, contact_ids: [CONTACT_A, CONTACT_A] },
+    { ...dealRecord, contact_ids: [], unexpected: true },
+  ])("rejects a malformed successful create RPC payload", async (payload) => {
+    const { api, rpc } = createHarness();
+    rpc.mockResolvedValue(payload);
+
+    await expect(
+      api.createWithContacts({
+        input: {
+          company_id: CustomerIdSchema.parse(CUSTOMER_ID),
+          name: "Cloud migration",
+        },
+      }),
+    ).rejects.toMatchObject({ code: API_ERROR_CODES.invalidResponse });
+  });
+
   it("maps a projected patch, contacts, concurrency token, and cancellation", async () => {
     const { api, rpc } = createHarness();
     const signal = new AbortController().signal;

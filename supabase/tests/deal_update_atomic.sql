@@ -146,7 +146,7 @@ begin
     );
     raise exception 'cross-owner contact unexpectedly succeeded';
   exception
-    when no_data_found then null;
+    when sqlstate 'PT404' then null;
   end;
 
   begin
@@ -158,7 +158,7 @@ begin
     );
     raise exception 'missing contact unexpectedly succeeded';
   exception
-    when no_data_found then null;
+    when sqlstate 'PT404' then null;
   end;
 
   begin
@@ -182,7 +182,7 @@ begin
     );
     raise exception 'read-only Deal patch unexpectedly succeeded';
   exception
-    when invalid_parameter_value then null;
+    when sqlstate 'PT422' then null;
   end;
 
   if not exists (
@@ -279,7 +279,7 @@ begin
     );
     raise exception 'cross-owner Deal update unexpectedly succeeded';
   exception
-    when no_data_found then null;
+    when sqlstate 'PT404' then null;
   end;
 end;
 $$;

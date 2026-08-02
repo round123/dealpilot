@@ -6,8 +6,11 @@ import { DealIdSchema, type ContactId } from "./ids.js";
 import { API_ERROR_CODES, ApiError } from "./error.js";
 import {
   DealContactIdsSchema,
+  DealCreateInputSchema,
   DealUpdateInputSchema,
+  toDealCreateInput,
   toDealUpdateInput,
+  type DealCreateInput,
   type DealUpdateInput,
 } from "./resource-contracts.js";
 import { parseData } from "./contracts.js";
@@ -20,6 +23,13 @@ export const DealUpdateWithContactsInputSchema = z
     patch: DealUpdateInputSchema,
     contactIds: DealContactIdsSchema.optional(),
     expectedUpdatedAt: DateTimeSchema.optional(),
+  })
+  .strict();
+
+export const DealCreateWithContactsInputSchema = z
+  .object({
+    input: DealCreateInputSchema,
+    contactIds: DealContactIdsSchema.optional(),
   })
   .strict();
 
@@ -39,12 +49,21 @@ export interface DealUpdateWithContactsInput {
   expectedUpdatedAt?: string;
 }
 
+export interface DealCreateWithContactsInput {
+  input: DealCreateInput;
+  contactIds?: readonly ContactId[];
+}
+
 export interface DealWithContacts {
   deal: CustomerDeal;
   contactIds: z.infer<typeof DealContactIdsSchema>;
 }
 
 export interface DealApi {
+  createWithContacts(
+    input: DealCreateWithContactsInput,
+    options?: ApiRequestOptions,
+  ): Promise<DealWithContacts>;
   updateWithContacts(
     input: DealUpdateWithContactsInput,
     options?: ApiRequestOptions,
@@ -53,23 +72,55 @@ export interface DealApi {
 
 type DealRpcClient = Pick<ApiClient, "rpc">;
 
+function invalidDealCommand(message: string, error: z.ZodError): ApiError {
+  const fields: Record<string, string[]> = {};
+  for (const issue of error.issues) {
+    const field = issue.path.join(".") || "request";
+    (fields[field] ??= []).push(issue.message);
+  }
+  return new ApiError({
+    code: API_ERROR_CODES.validation,
+    message,
+    fields,
+    details: error.issues,
+    cause: error,
+  });
+}
+
+function parseDealWithContacts(value: unknown): DealWithContacts {
+  const { contact_ids: contactIds, ...deal } = parseData(
+    DealWithContactsRpcDataSchema,
+    value,
+  );
+  return {
+    deal: CustomerDealSchema.parse(deal),
+    contactIds: DealContactIdsSchema.parse(contactIds),
+  };
+}
+
 export function createDealApi(client: DealRpcClient): DealApi {
   return {
+    async createWithContacts(input, options) {
+      const parsed = DealCreateWithContactsInputSchema.safeParse(input);
+      if (!parsed.success) {
+        throw invalidDealCommand("Invalid Deal create command", parsed.error);
+      }
+      const command = parsed.data;
+      const value = await client.rpc(
+        "create_deal_with_contacts",
+        {
+          p_input: toDealCreateInput(command.input),
+          p_contact_ids: command.contactIds ?? [],
+        },
+        z.unknown(),
+        options,
+      );
+      return parseDealWithContacts(value);
+    },
     async updateWithContacts(input, options) {
       const parsed = DealUpdateWithContactsInputSchema.safeParse(input);
       if (!parsed.success) {
-        const fields: Record<string, string[]> = {};
-        for (const issue of parsed.error.issues) {
-          const field = issue.path.join(".") || "request";
-          (fields[field] ??= []).push(issue.message);
-        }
-        throw new ApiError({
-          code: API_ERROR_CODES.validation,
-          message: "Invalid Deal update command",
-          fields,
-          details: parsed.error.issues,
-          cause: parsed.error,
-        });
+        throw invalidDealCommand("Invalid Deal update command", parsed.error);
       }
       const command = parsed.data;
       const value = await client.rpc(
@@ -83,14 +134,7 @@ export function createDealApi(client: DealRpcClient): DealApi {
         z.unknown(),
         options,
       );
-      const { contact_ids: contactIds, ...deal } = parseData(
-        DealWithContactsRpcDataSchema,
-        value,
-      );
-      return {
-        deal: CustomerDealSchema.parse(deal),
-        contactIds: DealContactIdsSchema.parse(contactIds),
-      };
+      return parseDealWithContacts(value);
     },
   };
 }
