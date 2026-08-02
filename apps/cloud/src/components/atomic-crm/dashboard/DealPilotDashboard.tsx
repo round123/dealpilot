@@ -10,6 +10,7 @@ import {
 import { useGetList } from "ra-core";
 import { Link } from "react-router";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -44,6 +45,16 @@ export const DealPilotDashboard = () => {
   );
 
   if (
+    companiesQuery.isError ||
+    dealsQuery.isError ||
+    followUpsQuery.isError ||
+    remindersQuery.isError ||
+    risksQuery.isError
+  ) {
+    return <DashboardError />;
+  }
+
+  if (
     companiesQuery.isPending ||
     dealsQuery.isPending ||
     followUpsQuery.isPending ||
@@ -59,12 +70,11 @@ export const DealPilotDashboard = () => {
   const reminders = remindersQuery.data ?? [];
   const risks = risksQuery.data ?? [];
   const now = new Date();
-  const openReminders = reminders
-    .filter(
-      (reminder) =>
-        OPEN_REMINDER_STATUSES.has(reminder.status) &&
-        !isUnscheduledPausedReminder(reminder),
-    );
+  const openReminders = reminders.filter(
+    (reminder) =>
+      OPEN_REMINDER_STATUSES.has(reminder.status) &&
+      !isUnscheduledPausedReminder(reminder),
+  );
   const prioritizedReminders = sortRemindersByPriority(openReminders, {
     companies,
     deals,
@@ -289,6 +299,16 @@ const DashboardLoading = () => (
     </div>
     <Skeleton className="h-64 w-full" />
   </div>
+);
+
+const DashboardError = () => (
+  <Alert variant="destructive" role="alert" className="my-4">
+    <AlertTriangle />
+    <AlertTitle>工作台数据加载失败</AlertTitle>
+    <AlertDescription>
+      暂时无法从云服务获取业务数据，请检查网络后刷新页面重试。
+    </AlertDescription>
+  </Alert>
 );
 
 const listParams = (field: string, order: "ASC" | "DESC" = "ASC") => ({

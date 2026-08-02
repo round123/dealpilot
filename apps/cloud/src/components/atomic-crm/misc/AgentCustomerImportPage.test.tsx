@@ -4,9 +4,7 @@ import { render } from "vitest-browser-react";
 import { ApiError } from "@dealpilot/api-client";
 
 import type { CustomerImportOperations } from "../providers/importOperations";
-import {
-  AgentCustomerImportPage,
-} from "./AgentCustomerImportPage";
+import { AgentCustomerImportPage } from "./AgentCustomerImportPage";
 import { importErrorMessage } from "./importErrorMessage";
 
 const jobId = "11111111-1111-4111-8111-111111111111";
@@ -140,12 +138,26 @@ function createOperations() {
 }
 
 describe("Agent customer import page", () => {
-  it("shows actionable Chinese guidance for storage capacity failures", () => {
-    expect(importErrorMessage(new ApiError({
-      code: "STORAGE_ERROR",
-      status: 507,
-      message: "database or disk is full",
-    }))).toBe("本地存储空间不足，请释放空间，或先备份后重试。");
+  it("uses cloud service language for import infrastructure failures", () => {
+    expect(
+      importErrorMessage(
+        new ApiError({
+          code: "NETWORK_ERROR",
+          status: 0,
+          message: "Failed to fetch",
+        }),
+      ),
+    ).toBe("无法连接云服务，请检查网络后重试。");
+
+    expect(
+      importErrorMessage(
+        new ApiError({
+          code: "STORAGE_ERROR",
+          status: 507,
+          message: "database or disk is full",
+        }),
+      ),
+    ).toBe("云端存储暂时不可用或容量不足，请稍后重试。");
   });
 
   it("maps non-standard columns before duplicate resolution and commit", async () => {
