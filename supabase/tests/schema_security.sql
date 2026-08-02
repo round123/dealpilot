@@ -678,6 +678,7 @@ declare
     'create_follow_up_idempotent',
     'export_backup_snapshot',
     'get_customer_detail',
+    'get_dashboard_summary',
     'list_customers_cursor',
     'merge_contacts',
     'merge_customers',
@@ -831,6 +832,21 @@ begin
       and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
   ) then
     raise exception 'Customer cursor RPC security differs from baseline';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as p
+    where p.oid = to_regprocedure('public.get_dashboard_summary()')
+      and not p.prosecdef
+      and p.provolatile = 's'
+      and p.prorettype = 'jsonb'::regtype
+      and p.proconfig = array['search_path=""']::text[]
+      and pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+      and not pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
+  ) then
+    raise exception 'Dashboard summary RPC security differs from baseline';
   end if;
 
   if not exists (
@@ -1043,3 +1059,4 @@ rollback;
 \ir v1_migration_sessions.sql
 \ir customer_cursor_pagination.sql
 \ir contact_merge.sql
+\ir dashboard_summary.sql

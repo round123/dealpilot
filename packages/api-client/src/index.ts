@@ -157,6 +157,16 @@ export type {
   ResolvedCustomerMergeFields,
 } from "./customer.js";
 export {
+  createDashboardApi,
+  DashboardPriorityReminderSchema,
+  DashboardSummarySchema,
+} from "./dashboard.js";
+export type {
+  DashboardApi,
+  DashboardPriorityReminder,
+  DashboardSummary,
+} from "./dashboard.js";
+export {
   ContactIdSchema,
   CustomerIdSchema,
   DealIdSchema,
