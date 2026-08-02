@@ -596,6 +596,10 @@ begin
     'public.migration_jobs',
     'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
   ) or pg_catalog.has_table_privilege(
+    'anon',
+    'public.migration_jobs',
+    'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+  ) or pg_catalog.has_table_privilege(
     'service_role',
     'public.migration_jobs',
     'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'

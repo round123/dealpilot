@@ -53,12 +53,40 @@ jobs:
           node --experimental-strip-types --test
           supabase/functions/purge-expired-customers/handler.test.ts
           supabase/functions/delete-account/handler.test.ts
-      - run: pnpm type-check
-      - run: pnpm lint
+      - name: Type-check V2 packages
+        run: >-
+          pnpm exec turbo type-check
+          --filter=@dealpilot/shared
+          --filter=@dealpilot/api-client
+          --filter=@dealpilot/cloud
+          --filter=@dealpilot/extension
+          --filter=@dealpilot/migration
+      - name: Lint V2 packages
+        run: >-
+          pnpm exec turbo lint
+          --filter=@dealpilot/shared
+          --filter=@dealpilot/api-client
+          --filter=@dealpilot/cloud
+          --filter=@dealpilot/extension
+          --filter=@dealpilot/migration
       - name: Install Chromium for browser tests
         run: pnpm test:e2e:install
-      - run: pnpm test
-      - run: pnpm build
+      - name: Test V2 packages
+        run: >-
+          pnpm exec turbo test
+          --filter=@dealpilot/shared
+          --filter=@dealpilot/api-client
+          --filter=@dealpilot/cloud
+          --filter=@dealpilot/extension
+          --filter=@dealpilot/migration
+      - name: Build V2 packages
+        run: >-
+          pnpm exec turbo build
+          --filter=@dealpilot/shared
+          --filter=@dealpilot/api-client
+          --filter=@dealpilot/cloud
+          --filter=@dealpilot/extension
+          --filter=@dealpilot/migration
 
   cloud-demo-e2e:
     runs-on: ubuntu-latest
