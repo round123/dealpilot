@@ -4,10 +4,20 @@ import test from "node:test";
 
 const deploy = readFileSync(".github/workflows/deploy-cloud.yml", "utf8");
 const rollback = readFileSync(".github/workflows/rollback-cloud.yml", "utf8");
+const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const customerPurge = readFileSync(
   ".github/workflows/purge-expired-customers.yml",
   "utf8",
 );
+
+test("quality CI tests and runs the V2 production audit after install", () => {
+  const auditTest = ci.indexOf("scripts/audit-v2-production.test.mjs");
+  const install = ci.indexOf("pnpm install --frozen-lockfile");
+  const audit = ci.indexOf("pnpm audit:v2");
+  assert.ok(auditTest > 0);
+  assert.ok(install > auditTest);
+  assert.ok(audit > install);
+});
 
 test("normal release orders migrations, Edge, Web and smoke", () => {
   const migration = deploy.indexOf("Apply forward-only database migrations");
