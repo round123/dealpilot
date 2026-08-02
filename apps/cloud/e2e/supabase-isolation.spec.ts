@@ -403,7 +403,13 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   ).toBeVisible();
 
   await page.goto("/#/companies");
-  await page.getByPlaceholder(/搜索/i).fill(searchToken);
+  const updatedSearchInput = page.getByPlaceholder(/搜索/i);
+  await expect(updatedSearchInput).toHaveValue(cursorToken);
+  await expect(
+    page.getByText(`${cursorToken}-00`, { exact: true }),
+  ).toBeVisible();
+  await updatedSearchInput.fill(searchToken);
+  await expect(updatedSearchInput).toHaveValue(searchToken);
   await expect(
     page.getByText(targetName, { exact: true }).first(),
   ).toBeVisible();
