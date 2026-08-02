@@ -246,3 +246,11 @@ jobs:
         run: |
           cat /tmp/dealpilot-cloud.log 2>/dev/null || true
           cat /tmp/dealpilot-edge.log 2>/dev/null || true
+      - name: Upload Supabase browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-browser-failure-${{ github.sha }}
+          path: apps/cloud/test-results/supabase-e2e
+          if-no-files-found: ignore
+          retention-days: 7

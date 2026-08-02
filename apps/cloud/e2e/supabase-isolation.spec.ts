@@ -427,7 +427,14 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   });
   await updatedSearchInput.fill(searchToken);
   await expect(updatedSearchInput).toHaveValue(searchToken);
-  await expect((await updatedSearchResponse).ok()).toBe(true);
+  const updatedResponse = await updatedSearchResponse;
+  await expect(updatedResponse.ok()).toBe(true);
+  const updatedPayload = (await updatedResponse.json()) as {
+    data?: { items?: Array<{ id?: string; name?: string }> };
+  };
+  expect(updatedPayload.data?.items).toContainEqual(
+    expect.objectContaining({ id: targetId, name: targetName }),
+  );
   await expect(
     page.getByText(targetName, { exact: true }).first(),
   ).toBeVisible();
