@@ -522,6 +522,7 @@ test("Customer behavior remains complete on the real Supabase provider", async (
       type: "fixed_time",
       status: "pending",
       due_at: future,
+      snooze_until: null,
       priority: "high",
       resolution: pendingResolution,
     },
