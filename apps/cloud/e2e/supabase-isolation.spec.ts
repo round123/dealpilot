@@ -361,6 +361,9 @@ test("Customer behavior remains complete on the real Supabase provider", async (
     page.getByText(`${cursorToken}-01`, { exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "A", exact: true }).click();
+  await expect(
+    page.getByText(`${cursorToken}-01`, { exact: true }),
+  ).toBeVisible();
 
   await page
     .getByRole("button", {
