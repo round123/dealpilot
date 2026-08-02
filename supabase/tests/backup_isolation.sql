@@ -189,8 +189,11 @@ begin
       'id', '31000000-0000-4000-8000-000000000099',
       'owner_user_id', auth.uid(),
       'company_id', '31000000-0000-4000-8000-000000000010',
+      'has_newsletter', false,
       'email_jsonb', '[]'::jsonb,
-      'phone_jsonb', '[]'::jsonb
+      'phone_jsonb', '[]'::jsonb,
+      'created_at', now(),
+      'updated_at', now()
     ))
   );
   malformed_checksum := encode(
