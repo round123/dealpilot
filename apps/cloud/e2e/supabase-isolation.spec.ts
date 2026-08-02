@@ -760,7 +760,8 @@ test("Customer behavior remains complete on the real Supabase provider", async (
     exact: true,
   });
   const targetContactInput = contactMergeDialog.getByRole("combobox");
-  await targetContactInput.fill(targetName);
+  await targetContactInput.click();
+  await page.getByPlaceholder(/搜索/i).fill(targetName);
   await page.getByRole("option").filter({ hasText: targetName }).click();
   await contactMergeDialog
     .getByRole("button", { name: "确认合并", exact: true })
