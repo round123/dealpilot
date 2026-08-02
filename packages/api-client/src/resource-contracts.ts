@@ -21,6 +21,90 @@ import {
 const DateTimeSchema = z.string().datetime({ offset: true });
 const NullableTextSchema = z.string().nullable();
 
+const CustomerWriteShape = z.object({
+  name: z.string().min(1),
+  company: NullableTextSchema,
+  sector: NullableTextSchema,
+  size: z.number().int().nonnegative().nullable(),
+  linkedin_url: NullableTextSchema,
+  website: NullableTextSchema,
+  phone_number: NullableTextSchema,
+  address: NullableTextSchema,
+  zipcode: NullableTextSchema,
+  city: NullableTextSchema,
+  state_abbr: NullableTextSchema,
+  country: NullableTextSchema,
+  description: NullableTextSchema,
+  revenue: NullableTextSchema,
+  tax_identifier: NullableTextSchema,
+  logo: JsonValueSchema,
+  context_links: z.array(z.string()),
+  source: NullableTextSchema,
+  grade: CustomerSchema.shape.grade,
+  status: CustomerSchema.shape.status,
+});
+
+export const CustomerCreateInputSchema = CustomerWriteShape.partial({
+  company: true,
+  sector: true,
+  size: true,
+  linkedin_url: true,
+  website: true,
+  phone_number: true,
+  address: true,
+  zipcode: true,
+  city: true,
+  state_abbr: true,
+  country: true,
+  description: true,
+  revenue: true,
+  tax_identifier: true,
+  logo: true,
+  context_links: true,
+  source: true,
+  grade: true,
+  status: true,
+}).strict();
+export const CustomerUpdateInputSchema = CustomerWriteShape.partial().strict();
+
+const CUSTOMER_WRITE_FIELDS = Object.freeze([
+  "name",
+  "company",
+  "sector",
+  "size",
+  "linkedin_url",
+  "website",
+  "phone_number",
+  "address",
+  "zipcode",
+  "city",
+  "state_abbr",
+  "country",
+  "description",
+  "revenue",
+  "tax_identifier",
+  "logo",
+  "context_links",
+  "source",
+  "grade",
+  "status",
+] as const);
+
+const projectCustomerWriteFields = (input: Readonly<Record<string, unknown>>) =>
+  Object.fromEntries(
+    CUSTOMER_WRITE_FIELDS.filter((field) =>
+      Object.prototype.hasOwnProperty.call(input, field),
+    ).map((field) => [field, input[field]]),
+  );
+
+export const toCustomerCreateInput = (
+  input: Readonly<Record<string, unknown>>,
+) => CustomerCreateInputSchema.parse(projectCustomerWriteFields(input));
+
+export const toCustomerUpdateInput = (
+  input: Readonly<Record<string, unknown>>,
+) => CustomerUpdateInputSchema.parse(projectCustomerWriteFields(input));
+
 const ContactWriteShape = z.object({
   company_id: CustomerIdSchema,
   first_name: NullableTextSchema.optional(),
@@ -143,6 +227,8 @@ export const cloudRecordSchemaFor = (resource: string): z.ZodTypeAny =>
     : LegacyAtomicRecordSchema;
 
 export type ContactSummary = z.infer<typeof ContactSummarySchema>;
+export type CustomerCreateInput = z.infer<typeof CustomerCreateInputSchema>;
+export type CustomerUpdateInput = z.infer<typeof CustomerUpdateInputSchema>;
 export type ContactCreateInput = z.infer<typeof ContactCreateInputSchema>;
 export type ContactUpdateInput = z.infer<typeof ContactUpdateInputSchema>;
 export type ContactTag = z.infer<typeof ContactTagSchema>;

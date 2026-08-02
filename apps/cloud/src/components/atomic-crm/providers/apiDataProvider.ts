@@ -13,6 +13,8 @@ import {
   cloudRecordSchemaFor,
   toContactCreateInput,
   toContactUpdateInput,
+  toCustomerCreateInput,
+  toCustomerUpdateInput,
   toDealCreateInput,
   toDealUpdateInput,
   type ContactSummary,
@@ -903,7 +905,9 @@ export const createApiDataProvider = (
       }
       const data = await client.create<RecordType>(
         resource,
-        normalizeResourceInput(resource, params.data),
+        resource === "companies"
+          ? toCustomerCreateInput(params.data as Record<string, unknown>)
+          : normalizeResourceInput(resource, params.data),
         cloudRecordSchemaFor(resource),
         { signal: signalOf(params) },
       );
@@ -951,7 +955,9 @@ export const createApiDataProvider = (
       const data = await client.update<RecordType>(
         resource,
         String(params.id),
-        normalizeResourceInput(resource, params.data),
+        resource === "companies"
+          ? toCustomerUpdateInput(params.data as Record<string, unknown>)
+          : normalizeResourceInput(resource, params.data),
         cloudRecordSchemaFor(resource),
         { signal: signalOf(params) },
       );
@@ -981,7 +987,9 @@ export const createApiDataProvider = (
           client.update<RecordType>(
             resource,
             String(id),
-            normalizeResourceInput(resource, params.data),
+            resource === "companies"
+              ? toCustomerUpdateInput(params.data as Record<string, unknown>)
+              : normalizeResourceInput(resource, params.data),
             cloudRecordSchemaFor(resource),
             { signal: signalOf(params) },
           ),

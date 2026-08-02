@@ -31,6 +31,42 @@ const CONTACT_B = "77777777-7777-4777-8777-777777777777";
 const CONTACT_C = "88888888-8888-4888-8888-888888888888";
 const NOW = "2026-08-02T08:00:00.000Z";
 
+const customerWritePayload = {
+  name: "Acme China",
+  company: "Acme Holdings",
+  sector: "Software",
+  size: 120,
+  linkedin_url: "https://linkedin.com/company/acme",
+  website: "https://acme.example",
+  phone_number: "+86 21 5555 0100",
+  address: "100 Cloud Road",
+  zipcode: "200000",
+  city: "Shanghai",
+  state_abbr: "SH",
+  country: "CN",
+  description: "Enterprise account",
+  revenue: "CNY 10M",
+  tax_identifier: "91310000TEST",
+  logo: null,
+  context_links: ["https://acme.example/context"],
+  source: "referral",
+  grade: "A",
+  status: "active",
+} as const;
+
+const customerSummaryRecord = {
+  id: CUSTOMER_ID,
+  owner_user_id: USER_ID,
+  ...customerWritePayload,
+  deleted_at: null,
+  created_at: NOW,
+  updated_at: NOW,
+  sales_id: USER_ID,
+  nb_contacts: 12,
+  nb_deals: 3,
+  search_text: "Acme China Acme Holdings CN",
+} as const;
+
 const wireDeal = {
   id: DEAL_ID,
   owner_user_id: USER_ID,
@@ -299,44 +335,65 @@ describe("API client React Admin adapter", () => {
     expect(client.customers.listCustomers).toHaveBeenCalledTimes(1);
   });
 
-  it("uses strict Customer schemas for summary reads and company writes", async () => {
+  it("projects Customer summary records to writable company fields", async () => {
     const client = createClient();
     const provider = createApiDataProvider(client);
 
-    await provider.getOne("companies_summary", { id: "1" });
-    await provider.create("companies", { data: records[0] });
+    await provider.getOne("companies_summary", { id: CUSTOMER_ID });
+    await provider.create("companies", { data: customerSummaryRecord });
     await provider.update("companies", {
-      id: "1",
-      data: { name: "Updated" },
-      previousData: records[0],
+      id: CUSTOMER_ID,
+      data: customerSummaryRecord,
+      previousData: customerSummaryRecord,
+    });
+    await provider.updateMany("companies", {
+      ids: [CUSTOMER_ID, "33333333-3333-4333-8333-333333333333"],
+      data: customerSummaryRecord,
     });
     await provider.delete("companies", {
-      id: "1",
-      previousData: records[0],
+      id: CUSTOMER_ID,
+      previousData: customerSummaryRecord,
     });
 
     expect(client.getOne).toHaveBeenCalledWith(
       "companies_summary",
-      "1",
+      CUSTOMER_ID,
       CustomerSummarySchema,
       { signal: undefined },
     );
     expect(client.create).toHaveBeenCalledWith(
       "companies",
-      records[0],
+      customerWritePayload,
       CustomerSchema,
       { signal: undefined },
     );
-    expect(client.update).toHaveBeenCalledWith(
+    expect(client.update).toHaveBeenNthCalledWith(
+      1,
       "companies",
-      "1",
-      { name: "Updated" },
+      CUSTOMER_ID,
+      customerWritePayload,
+      CustomerSchema,
+      { signal: undefined },
+    );
+    expect(client.update).toHaveBeenNthCalledWith(
+      2,
+      "companies",
+      CUSTOMER_ID,
+      customerWritePayload,
+      CustomerSchema,
+      { signal: undefined },
+    );
+    expect(client.update).toHaveBeenNthCalledWith(
+      3,
+      "companies",
+      "33333333-3333-4333-8333-333333333333",
+      customerWritePayload,
       CustomerSchema,
       { signal: undefined },
     );
     expect(client.delete).toHaveBeenCalledWith(
       "companies",
-      "1",
+      CUSTOMER_ID,
       CustomerSchema,
       { signal: undefined },
     );
