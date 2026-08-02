@@ -358,7 +358,12 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   ).toHaveCount(0);
   await page.getByRole("button", { name: "A", exact: true }).click();
 
-  await page.getByRole("button", { name: /排序/ }).click();
+  await page
+    .getByRole("button", {
+      name: "按创建时间降序排列",
+      exact: true,
+    })
+    .click();
   await page.getByRole("menuitem", { name: /客户名称.*升序/ }).click();
   await expect(
     page.getByText(`${cursorToken}-00`, { exact: true }),
@@ -927,17 +932,15 @@ test("account deletion removes the authenticated user and all owned data", async
     );
     expect(deletedAuthUser.status).toBe(404);
 
-    for (const [resource, filter] of [
-      ["profiles", `id=eq.${createdUserId}`],
-      ["companies", `owner_user_id=eq.${createdUserId}`],
-      ["contacts", `owner_user_id=eq.${createdUserId}`],
-    ] as const) {
-      const rows = await expectJson<unknown[]>(
-        await adminFetch(`/rest/v1/${resource}?${filter}&select=id`),
-        200,
-      );
-      expect(rows).toEqual([]);
-    }
+    // The service role intentionally has no direct profile/contact table grants.
+    // Schema tests verify those cascades; this E2E checks the customer root.
+    const deletedCompanies = await expectJson<unknown[]>(
+      await adminFetch(
+        `/rest/v1/companies?owner_user_id=eq.${createdUserId}&select=id`,
+      ),
+      200,
+    );
+    expect(deletedCompanies).toEqual([]);
 
     expect(await listAttachmentObjects(adminFetch, createdUserId)).toEqual([]);
 
