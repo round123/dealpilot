@@ -5,6 +5,7 @@
 > 产品形态：Web/PWA + 云端模块化单体 + PostgreSQL；浏览器扩展作为后续入口
 > 关联架构：[云端个人 CRM 重构计划](./cloud-multiplatform-refactor-plan.md)
 > 关联决策：[ADR-V2-002](./adr/ADR-V2-002-atomic-crm-personal-cloud.md)
+> 数据字典：[PostgreSQL 数据字典 V2.1](./DealPilot_PostgreSQL_数据字典_V2.1.md)
 
 ## 1. 文档关系与决策
 

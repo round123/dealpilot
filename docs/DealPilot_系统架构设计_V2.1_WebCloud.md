@@ -4,6 +4,7 @@
 > 日期：2026-07-31
 > 产品需求：[DealPilot PRD V2.1](./DealPilot_PRD_V2.1_WebCloud.md)
 > 云端计划：[cloud-multiplatform-refactor-plan.md](./cloud-multiplatform-refactor-plan.md)
+> 数据字典：[PostgreSQL 数据字典 V2.1](./DealPilot_PostgreSQL_数据字典_V2.1.md)
 
 ## 1. 架构结论
 
