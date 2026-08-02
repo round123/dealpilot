@@ -412,8 +412,22 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   await expect(
     page.getByText(`${cursorToken}-00`, { exact: true }),
   ).toBeVisible();
+  const updatedSearchResponse = page.waitForResponse((response) => {
+    if (!response.url().endsWith("/rest/v1/rpc/list_customers_cursor")) {
+      return false;
+    }
+    try {
+      const body = response.request().postDataJSON() as {
+        p_search?: unknown;
+      };
+      return body.p_search === searchToken;
+    } catch {
+      return false;
+    }
+  });
   await updatedSearchInput.fill(searchToken);
   await expect(updatedSearchInput).toHaveValue(searchToken);
+  await expect((await updatedSearchResponse).ok()).toBe(true);
   await expect(
     page.getByText(targetName, { exact: true }).first(),
   ).toBeVisible();
