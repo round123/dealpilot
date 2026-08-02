@@ -344,14 +344,14 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   );
   await page.goto("/#/companies");
   const searchInput = page.getByPlaceholder(/搜索/i);
-  await expect(
-    page.getByText(SUPABASE_E2E_USERS.alpha.customerName, { exact: true }),
-  ).toBeVisible();
+  const cursorCustomerNames = page.getByText(
+    new RegExp(`^${cursorToken}-\\d{2}$`),
+  );
+  await expect(cursorCustomerNames.first()).toBeVisible();
   await expect(searchInput).toHaveValue("");
   await searchInput.fill(cursorToken);
-  await expect(
-    page.getByText(`${cursorToken}-00`, { exact: true }),
-  ).toBeVisible();
+  await expect(searchInput).toHaveValue(cursorToken);
+  await expect(cursorCustomerNames).toHaveCount(25);
 
   await page.getByRole("button", { name: "A", exact: true }).click();
   await expect(
