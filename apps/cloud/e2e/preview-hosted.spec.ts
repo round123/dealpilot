@@ -110,8 +110,13 @@ test("hosted Preview preserves account isolation and the Customer Web lifecycle"
       );
 
       await alphaPage.goto(`/#/companies/${createdTargetId}`);
-      await alphaPage.locator('input[name="name"]').fill(targetName);
-      await alphaPage.locator('input[name="company"]').fill(`Target ${suffix}`);
+      const customerNameInput = alphaPage.locator('input[name="name"]');
+      const customerCompanyInput = alphaPage.locator('input[name="company"]');
+      await customerNameInput.fill(targetName);
+      await customerCompanyInput.fill(`Target ${suffix}`);
+      await customerCompanyInput.blur();
+      await expect(customerNameInput).toHaveValue(targetName);
+      await expect(customerCompanyInput).toHaveValue(`Target ${suffix}`);
       const updateResponsePromise = waitForPostgrestResponse(
         alphaPage,
         "PATCH",
