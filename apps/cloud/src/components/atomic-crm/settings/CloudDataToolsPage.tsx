@@ -1,6 +1,11 @@
 import { ApiError, type BackupSnapshot } from "@dealpilot/api-client";
 import { DatabaseBackup, Download, RotateCcw, ShieldCheck } from "lucide-react";
-import { useDataProvider, useNotify, type RaRecord } from "ra-core";
+import {
+  useDataProvider,
+  useNotify,
+  type DataProvider,
+  type RaRecord,
+} from "ra-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
@@ -30,6 +35,7 @@ const EXPORT_RESOURCES = [
   ["deal_milestones", "项目里程碑"],
 ] as const;
 const EXPORT_LIMIT = 10_000;
+const CUSTOMER_EXPORT_PAGE_SIZE = 100;
 const EXPORT_TIMEOUT_MS = 30_000;
 
 type ExportRow = RaRecord & Record<string, unknown>;
@@ -103,11 +109,11 @@ export const CloudDataToolsPage = () => {
       const exports = await Promise.all(
         EXPORT_RESOURCES.map(async ([resource, label]) => ({
           label,
-          result: await dataProvider.getList<ExportRow>(resource, {
-            pagination: { page: 1, perPage: EXPORT_LIMIT },
-            sort: { field: "created_at", order: "ASC" },
-            signal: controller.signal,
-          }),
+          result: await loadExportResource(
+            dataProvider,
+            resource,
+            controller.signal,
+          ),
         })),
       );
 
@@ -144,6 +150,7 @@ export const CloudDataToolsPage = () => {
       );
       notify(`云端数据已导出：${counts.join("、")}`, { type: "success" });
     } catch (error) {
+      controller.abort();
       if (exportControllerRef.current === controller) {
         notify(
           error instanceof ApiError && error.isAborted
@@ -393,6 +400,36 @@ const toExportRow = (record: ExportRow): SpreadsheetRow =>
   );
 
 const fileTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+
+const loadExportResource = async (
+  dataProvider: DataProvider,
+  resource: (typeof EXPORT_RESOURCES)[number][0],
+  signal: AbortSignal,
+) => {
+  const perPage =
+    resource === "companies" ? CUSTOMER_EXPORT_PAGE_SIZE : EXPORT_LIMIT;
+  const first = await dataProvider.getList<ExportRow>(resource, {
+    pagination: { page: 1, perPage },
+    sort: { field: "created_at", order: "ASC" },
+    signal,
+  });
+  const total = first.total ?? first.data.length;
+  if (resource !== "companies" || total <= perPage || total > EXPORT_LIMIT) {
+    return { ...first, total };
+  }
+
+  const data = [...first.data];
+  const pageCount = Math.ceil(total / perPage);
+  for (let page = 2; page <= pageCount; page += 1) {
+    const result = await dataProvider.getList<ExportRow>(resource, {
+      pagination: { page, perPage },
+      sort: { field: "created_at", order: "ASC" },
+      signal,
+    });
+    data.push(...result.data);
+  }
+  return { data, total };
+};
 
 const formatSnapshotDate = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", {

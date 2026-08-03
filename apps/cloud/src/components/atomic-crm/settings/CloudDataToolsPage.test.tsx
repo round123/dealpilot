@@ -196,6 +196,35 @@ describe("CloudDataToolsPage", () => {
     expect(xlsxMocks.writeFile).toHaveBeenCalledOnce();
   });
 
+  it("exports customers through the cursor API's 100-row page limit", async () => {
+    const dataProvider = createFakeDataProvider();
+    const getList = vi
+      .spyOn(dataProvider, "getList")
+      .mockImplementation(async (resource, params) => {
+        if (resource !== "companies") return { data: [], total: 0 };
+        return {
+          data: [{ id: `customer-page-${params.pagination!.page}` }],
+          total: 201,
+        };
+      });
+    const screen = await renderPage(dataProvider);
+
+    await screen.getByRole("button", { name: "导出 Excel" }).click();
+    await expect.poll(() => xlsxMocks.writeFile.mock.calls.length).toBe(1);
+
+    const customerCalls = getList.mock.calls.filter(
+      ([resource]) => resource === "companies",
+    );
+    expect(customerCalls.map(([, params]) => params.pagination)).toEqual([
+      { page: 1, perPage: 100 },
+      { page: 2, perPage: 100 },
+      { page: 3, perPage: 100 },
+    ]);
+    expect(
+      customerCalls.every(([, params]) => params.signal instanceof AbortSignal),
+    ).toBe(true);
+  });
+
   it("maps the 30 second abort deadline to a Chinese timeout notification", async () => {
     const dataProvider = createFakeDataProvider();
     const nativeSetTimeout = window.setTimeout.bind(window);
