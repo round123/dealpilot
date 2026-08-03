@@ -2,5 +2,4 @@ packages:
   - "apps/cloud"
   - "apps/extension"
   - "packages/api-client"
-  - "packages/migration"
   - "packages/shared"

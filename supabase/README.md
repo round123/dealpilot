@@ -38,9 +38,10 @@ overwritten during restore.
 `schema_security.sql` also runs `backup_isolation.sql`. That gate verifies
 owner-only snapshot visibility, denied direct writes, checksum-protected
 transactional restore, automatic safety snapshots, and preservation of
-append-only audit and migration history. Account snapshots contain relational
-CRM data and user settings only; Auth credentials, Storage binaries,
-operational queues, audit events, and migration jobs are deliberately excluded.
+append-only audit history. Account snapshots contain relational CRM data and
+user settings only; Auth credentials, Storage binaries, operational queues and
+audit events are deliberately excluded. The product does not accept V1 SQLite
+databases or migration bundles.
 
 Customer command and detail RPCs return a single success envelope:
 `{"data": ...}`. `get_customer_detail` includes contacts, social accounts,

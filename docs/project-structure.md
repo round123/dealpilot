@@ -3,7 +3,7 @@
 > 状态：当前有效
 > 日期：2026-08-03
 
-当前工作树只包含 WebCloud、浏览器扩展、共享契约、API Client 和一次性迁移工具。V1 Web、Agent、SQLite 业务运行时、EXE/NSIS、托盘和 Native Messaging 已退役；历史源代码仅保存在 `v1-local-final` Git tag。
+当前工作树只包含 WebCloud、浏览器扩展、共享契约、API Client 和 Supabase/PostgreSQL。V1 Web、Agent、SQLite 业务运行时、SQLite 数据迁移包、EXE/NSIS、托盘和 Native Messaging 已退役；历史源代码仅保存在 `v1-local-final` Git tag。
 
 ## 顶层结构
 
@@ -14,7 +14,6 @@ dealpilot/
 │  └─ extension/             # WXT 浏览器扩展，访问同一云端 API
 ├─ packages/
 │  ├─ api-client/            # Auth/PostgREST/RPC/Edge 唯一网络边界
-│  ├─ migration/             # V1 SQLite 只读快照与迁移 bundle
 │  └─ shared/                # 共享 schema、枚举和纯业务规则
 ├─ supabase/
 │  ├─ migrations/            # PostgreSQL schema、约束、RLS 和 RPC
@@ -36,7 +35,6 @@ packages:
   - "apps/cloud"
   - "apps/extension"
   - "packages/api-client"
-  - "packages/migration"
   - "packages/shared"
 ```
 
@@ -51,12 +49,10 @@ apps/extension ───┘
 
 apps/cloud ─────────> packages/shared
 packages/api-client ─> packages/shared
-packages/migration   ─> V1 SQLite snapshot (read-only)
 ```
 
 - `apps/cloud` 和 `apps/extension` 不得直接拥有第二套业务传输层。
 - 业务 wire JSON 只在 `packages/api-client` 边界解析。
-- `packages/migration` 不依赖 Cloud、Extension 或历史 Agent，也不提供业务 API。
 - PostgreSQL migration、RLS、复合外键和事务 RPC 是云端一致性事实源。
 
 ## 关键命令
@@ -69,7 +65,6 @@ pnpm test
 pnpm build
 pnpm audit:v2
 pnpm audit:retirement
-pnpm migration:v1 -- <sqlite-path> <output-directory>
 ```
 
 ## 退役约束

@@ -23,8 +23,8 @@ Storage, RPC, and Edge Function behavior. Never use production customer data
 in the development project.
 
 Demo configuration remains only for isolated UI regression tests; it is not a
-product startup mode. V1 SQLite input is handled only by the standalone
-`packages/migration` package.
+product startup mode. The product does not accept V1 SQLite databases or
+migration bundles; bulk onboarding uses the Web CSV/XLSX import flow.
 
 ## Validation
 

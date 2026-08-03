@@ -12,7 +12,6 @@
     "test:e2e": "cross-env PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright test",
     "test:e2e:install": "cross-env PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright install chromium",
     "playwright:cli": "cross-env PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers playwright-cli",
-    "migration:v1": "pnpm --filter @dealpilot/migration extract",
     "audit:retirement": "node scripts/check-v1-retirement.mjs",
     "audit:v2": "node scripts/audit-v2-production.mjs",
     "test:audit:v2": "node --test scripts/audit-v2-production.test.mjs"

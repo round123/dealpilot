@@ -21,15 +21,6 @@ insert into public.audit_events (
   '{}'::jsonb
 );
 
-insert into public.migration_jobs (
-  id, owner_user_id, idempotency_key, source_fingerprint
-) values (
-  '31000000-0000-4000-8000-000000000030',
-  '31000000-0000-4000-8000-000000000001',
-  'backup-test-migration',
-  'backup-test-source'
-);
-
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -61,9 +52,9 @@ begin
     select 1
     from public.backup_snapshots
     where id = (result -> 'data' ->> 'id')::uuid
-      and (payload ? 'audit_events' or payload ? 'migration_jobs')
+      and payload ? 'audit_events'
   ) then
-    raise exception 'backup payload includes operational audit or migration history';
+    raise exception 'backup payload includes operational audit history';
   end if;
 end;
 $$;
@@ -284,15 +275,6 @@ begin
       and event_type = 'test.audit.before_backup'
   ) then
     raise exception 'restore replaced existing audit history';
-  end if;
-
-  if not exists (
-    select 1
-    from public.migration_jobs
-    where id = '31000000-0000-4000-8000-000000000030'
-      and idempotency_key = 'backup-test-migration'
-  ) then
-    raise exception 'restore replaced existing migration history';
   end if;
 end;
 $$;

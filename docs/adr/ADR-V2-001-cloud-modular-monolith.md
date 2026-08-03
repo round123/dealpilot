@@ -6,7 +6,7 @@
 > 取代：V1 “SQLite 是永久唯一业务数据源”的架构决策
 > 被取代于：`ADR-V2-002-atomic-crm-personal-cloud.md`
 
-> 说明：本文已被 ADR-V2-002 完整取代。当前 V2 不保留 Agent 本机能力桥接；PostgreSQL 在迁移确认后是唯一事实源，V1 SQLite 只由独立迁移包读取。
+> 说明：本文已被 ADR-V2-002 完整取代。当前 V2 不保留 Agent 本机能力桥接或 SQLite 迁移入口；PostgreSQL 从账号创建起就是唯一事实源。
 
 ## Context
 
@@ -17,7 +17,7 @@ V1 面向单人 Windows 本地使用，Bun Agent 同时承载业务 HTTP API、S
 ## Decision
 
 1. 新建 NestJS 云端 API，采用按业务模块组织的模块化单体，不拆微服务。
-2. PostgreSQL 成为用户确认迁移后的业务数据唯一事实源；SQLite 仅作为迁移来源和只读迁移快照，不建立长期双向同步。
+2. PostgreSQL 是业务数据唯一事实源；不建立 SQLite 数据入口或长期双向同步。
 3. 保留 Drizzle ORM，但云端使用 PostgreSQL schema 和独立 migration。
 4. 模块内部保持 Controller、Service、Repository 三层；Controller 不访问 ORM，Service 不依赖 HTTP，Repository 不反向依赖上层。
 5. 跨模块能力通过目标模块导出的应用服务或查询服务调用，不直接查询其他模块的表。
@@ -51,8 +51,8 @@ repository adapter -> Drizzle/PostgreSQL
 ### Negative
 
 - V1 的“不上传客户数据”承诺必须由新的隐私告知和明确同意取代。
-- SQLite 到 PostgreSQL 需要一次性、可校验的迁移工具。
-- NestJS 与现有 Hono API 会在迁移期并存，需要兼容窗口和行为对照测试。
+- 从旧本地产品转向云端账号需要重新定义数据、隐私和发布边界。
+- NestJS 与现有 Hono API 若并存会增加兼容窗口和行为对照成本。
 - 自托管 Keycloak 增加补丁、备份、密钥轮换和可用性责任。
 
 ## Rejected Alternatives
@@ -65,4 +65,4 @@ repository adapter -> Drizzle/PostgreSQL
 
 ## Validation
 
-该决策在 P3 Customer 纵向切片通过后复核。只有当本地/云端行为等价、租户双层隔离、生成客户端契约和上一兼容云端 API 回滚全部通过，才允许批量迁移其他领域或启动移动端工作。
+该决策已由 ADR-V2-002 复核并取代。当前门槛以云端 Customer 行为、账号隔离、客户端契约和上一兼容云端 API 回滚为准，不再包含本地运行端或 SQLite 数据迁移验收。

@@ -9,7 +9,6 @@ import { createCustomerApi, type CustomerApi } from "./customer.js";
 import { createDashboardApi, type DashboardApi } from "./dashboard.js";
 import { createDealApi, type DealApi } from "./deal.js";
 import { createImportApi, type ImportApi } from "./import.js";
-import { createMigrationApi, type MigrationApi } from "./migration.js";
 import { createReminderApi, type ReminderApi } from "./reminder.js";
 import { createPrivateStorageApi, type PrivateStorageApi } from "./storage.js";
 import { API_ERROR_CODES, ApiError } from "./error.js";
@@ -94,7 +93,6 @@ export interface ApiClient {
   readonly dashboard: DashboardApi;
   readonly deals: DealApi;
   readonly imports: ImportApi;
-  readonly migrations: MigrationApi;
   readonly reminders: ReminderApi;
   readonly storage: PrivateStorageApi;
   list<T>(
@@ -251,7 +249,6 @@ class SupabaseResourceGateway implements ApiClient {
   readonly dashboard: DashboardApi;
   readonly deals: DealApi;
   readonly imports: ImportApi;
-  readonly migrations: MigrationApi;
   readonly reminders: ReminderApi;
   readonly storage: PrivateStorageApi;
 
@@ -267,7 +264,6 @@ class SupabaseResourceGateway implements ApiClient {
     this.dashboard = createDashboardApi(this);
     this.deals = createDealApi(this);
     this.imports = createImportApi(this);
-    this.migrations = createMigrationApi(this);
     this.reminders = createReminderApi(this);
     this.storage = createPrivateStorageApi(client);
   }

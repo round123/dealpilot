@@ -10,7 +10,7 @@
 ## 1. 文档关系与决策
 
 本文件是当前唯一有效的产品需求文档。`外贸经理个人工作台_PRD_V1.5.md` 和
-`外贸经理个人工作台_系统架构设计_V1.3.md` 仅作为历史本地行为和迁移来源，不再作为
+`外贸经理个人工作台_系统架构设计_V1.3.md` 仅作为历史行为参考，不再作为
 当前产品入口、后端或发布验收依据。
 
 核心决策：
@@ -18,16 +18,16 @@
 1. 所有业务后端能力按云端实现，使用 Supabase/PostgreSQL、RLS、RPC/Edge Functions 和统一 API 客户端。
 2. PostgreSQL 是唯一业务事实源。开发和生产均使用托管 Supabase/PostgreSQL 项目；开发项目不是另一套业务架构。
 3. Web 工作台是首要产品界面，PWA 复用同一 Web 应用；不建设桌面壳、托盘或安装器作为产品入口。
-4. SQLite/Agent 只用于旧 V1 数据读取、预检、一次性迁移和取证，不参与云端业务读写，不与 PostgreSQL 长期双写。
+4. 当前产品不提供 SQLite/Agent、本地数据源或 V1 数据迁移入口；云端账号从注册开始只使用 PostgreSQL。
 5. 首版是个人云 CRM：每个账号拥有自己的业务数据。不建设团队 workspace、成员、角色、邀请或企业 SSO。
-6. 用户确认迁移后，PostgreSQL 永久成为唯一事实源，不提供云端回写 SQLite 的运行模式。
+6. PostgreSQL 从账号创建起就是永久唯一事实源，不提供本地写模式、双写或云端回写 SQLite。
 
 当前实现口径（2026-08-03）：Web/PWA、统一 API 客户端、Customer 与业务域界面、
-导入/导出、加密云备份、V1 一次性迁移、浏览器扩展及发布/回滚自动化已完成静态实现和
+导入/导出、加密云备份、浏览器扩展及发布/回滚自动化已完成静态实现和
 CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider 已从当前工作树删除；
-历史实现仅由 `v1-local-final` Git tag 保存，SQLite 只读提取由独立 `packages/migration` 承担。
+历史实现仅由 `v1-local-final` Git tag 保存，不作为当前产品的数据来源。
 托管 Supabase 的空库 migration、双账号隔离、真实 Auth、外部平台 DOM、
-迁移确认与生产回滚演练仍是发布前验收项；在这些证据产生前不得宣称云端发布完成。
+备份恢复与生产回滚演练仍是发布前验收项；在这些证据产生前不得宣称云端发布完成。
 
 ## 2. 分阶段运行形态
 
@@ -38,7 +38,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - PostgreSQL、Auth、Storage、Realtime（如需要）和 Edge Functions 均运行在 Supabase 开发项目。
 - Web/PWA 通过 `packages/api-client` 访问开发项目 URL；本机只运行 Vite 开发服务器，不运行第二套业务数据库。
 - 使用开发项目中的测试账号和合成数据，不导入真实客户资料。
-- RLS、复合外键、RPC、Storage 策略、备份恢复和迁移测试在开发项目和 CI 门禁中执行。
+- RLS、复合外键、RPC、Storage 策略、备份恢复和 PostgreSQL schema migration 测试在开发项目和 CI 门禁中执行。
 - 不要求 Docker、Supabase CLI、`exe`、NSIS、托盘、开机自启或 Windows 系统通知。
 
 ### 2.2 云端发布
@@ -60,7 +60,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 3. 用户维护客户、联系人、社媒账号、项目、跟进、提醒、风险和里程碑。
 4. 用户在 Web 查看 Dashboard、客户详情、项目详情和提醒列表。
 5. 后续扩展接入 WhatsApp/Telegram 会话匹配、人工绑定和单条消息跟进。
-6. 用户可以导出数据、创建云端备份或发起本地 V1 数据迁移。
+6. 用户可以导出数据、创建云端备份并从云端备份执行受控恢复。
 
 浏览器关闭时不要求 Windows 系统通知或托盘驻留；再次打开 Web 后必须显示已到期和逾期状态。提醒触达首版只包括 Web/PWA 待办和已接入的浏览器扩展 popup。
 
@@ -90,7 +90,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - 1000 行导入和 1000 客户/10000 跟进验收基线。
 - 导出客户、联系人、项目、跟进和提醒。
 - 加密导出文件的完整性、兼容性和原子恢复校验。
-- V1 SQLite 迁移预检、幂等重试、核对报告和用户确认；确认后只保留只读取证快照。
+- `import_jobs` 记录新的 CSV/XLSX 导入任务和幂等提交结果，不接收旧 SQLite 数据库或迁移包。
 
 ### P1 浏览器扩展
 
@@ -107,7 +107,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 业务模块保持务实三层：Controller/Edge adapter -> Application service -> Repository/SQL adapter。
 跨模块只能调用导出的应用服务或查询服务，不直接查询其他模块 Repository。
 
-模块边界：Identity/Profile、Customer、Engagement、Project、Reminder、Import/Export、Backup/Migration、Audit。
+模块边界：Identity/Profile、Customer、Engagement、Project、Reminder、Import/Export、Backup/Restore、Audit。
 
 ### 5.2 数据安全
 
@@ -123,7 +123,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - 当前工作树不得重新引入 `apps/web`、`apps/agent`、Agent provider 或本地业务 API；CI 必须执行退役门禁。
 - 首版不做 Capacitor 或原生移动应用；手机使用响应式 Web/PWA。
 - 不做系统托盘、开机自启、Explorer 重启恢复、Windows 系统通知或浏览器关闭后的通知承诺。
-- 不把 Agent/SQLite 作为正式业务后端，不做 PostgreSQL 与 SQLite 长期双写。
+- 不提供 SQLite 数据迁移、Agent/SQLite 业务后端、PostgreSQL 与 SQLite 双写或本地回退模式。
 - 不做团队 workspace、成员角色、邀请、共享客户或企业 SSO。
 - 不做自动发消息、自动监听新消息、微信/邮件推送、AI 功能和 ERP/财务系统。
 
@@ -134,7 +134,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - Supabase 开发项目从空库执行 migration，并通过 RLS、复合外键、Storage 和 RPC 隔离测试。
 - Web Customer 全行为 E2E、关联详情、合并/删除/恢复和提醒联动通过。
 - API 客户端契约测试覆盖成功包络、字段错误、非 JSON 错误、网络/取消、过期会话和无法解析的 2xx。
-- 导入、备份恢复和 SQLite 迁移测试通过；确认前中断不得修改 SQLite 原库。
+- CSV/XLSX 导入、数据导出和云备份恢复测试通过；失败或中断不得产生部分业务写入。
 - `pnpm type-check`、`pnpm lint`、`pnpm test`、`pnpm build` 通过。
 
 ### 云端发布门槛
@@ -142,17 +142,17 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - 真实 Auth/OIDC、账号删除、数据导出、备份恢复和密钥轮换演练通过。
 - 两个真实测试账号的 RLS、父子引用、Storage、RPC 和 Edge 隔离矩阵通过。
 - 隐私政策、跨境处理、供应商和数据保留评审通过。
-- 灰度发布、旧 API 兼容回滚和迁移确认后 PostgreSQL 唯一事实源演练通过。
+- 灰度发布、旧 API 兼容回滚和 PostgreSQL 唯一事实源演练通过。
 
-## 8. 迁移与回滚语义
+## 8. 发布与回滚语义
 
-- 用户确认迁移前：SQLite 仍是旧本地数据源，迁移失败或放弃不得修改原库。
-- 用户确认迁移后：PostgreSQL 成为唯一事实源；SQLite 只读保留用于核对、取证和重新迁移。
-- 云端发布回滚使用旧 API 版本和向后兼容 migration；不能通过切回 SQLite 作为云端回滚。
-- 迁移快照由用户在本机管理，不等同于云端备份。
+- PostgreSQL 始终是唯一业务事实源；应用版本回滚不得改变这一事实。
+- PostgreSQL schema migration 必须向后兼容；云端发布回滚使用上一兼容 Web/Edge/API 版本继续读取当前数据库。
+- 禁止通过数据库 `reset`、反向 migration、本地数据库或旧快照覆盖生产 PostgreSQL。
+- 云备份恢复是独立的受控数据操作，必须先校验完整性、版本兼容性和目标账号，再原子提交。
 
 ## 9. 版本关系
 
-- V1.5 PRD/架构：历史本地桌面方案，仅供行为和迁移参考。
+- V1.5 PRD/架构：历史本地桌面方案，仅供行为参考。
 - V2 G0：云端个人 CRM 决策背景。
 - V2.1：当前 Web/Cloud 产品需求和验收基线。

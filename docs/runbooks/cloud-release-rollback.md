@@ -4,7 +4,7 @@
 
 本手册用于 DealPilot V2 Web/PWA、Supabase migration 和 Edge Functions 的 preview、灰度、生产发布及应用版本回滚。
 
-用户确认迁移后，当前生产 PostgreSQL 永久是唯一事实源。发布回滚只允许重新部署上一兼容版本的 Edge Functions 和 Web/PWA；禁止执行数据库 `reset`、`down`、旧 migration 反向回退或切换到 SQLite。备份和旧 SQLite 快照只用于核对、取证与重新迁移。
+生产 PostgreSQL 从账号创建起永久是唯一事实源。发布回滚只允许重新部署上一兼容版本的 Edge Functions 和 Web/PWA；禁止执行数据库 `reset`、`down`、旧 migration 反向回退或切换到本地数据库。云备份恢复是独立的受控数据操作，不作为应用版本回滚手段。
 
 ## 2. GitHub 环境
 
@@ -109,7 +109,7 @@ Canary 不分流生产用户；它是在独立、生产等价环境执行的人�
 - Edge 未登录访问返回 `401` 或 `403`；
 - 使用受控测试账号完成登录和 Customer 读取；
 - 当前 PostgreSQL 数据数量与抽样摘要未变化；
-- 没有 SQLite 写入或数据库降级动作。
+- 没有本地数据库写入、数据库降级或快照覆盖动作。
 
 ## 7. 恢复前进
 
@@ -121,4 +121,4 @@ Canary 不分流生产用户；它是在独立、生产等价环境执行的人�
 4. 核对新 release SHA、业务指标和错误率后关闭 incident。
 5. 将回滚 SHA、修复 SHA、时间线、数据核对结果和后续门禁改进写入演练记录。
 
-每季度至少演练一次“上一兼容 V2 应用继续读取当前 PostgreSQL”。不得把恢复旧 SQLite、数据库快照覆盖或运行旧 migration 作为演练成功证据。
+每季度至少演练一次“上一兼容 V2 应用继续读取当前 PostgreSQL”。不得把数据库快照覆盖、反向 migration 或本地数据源切换作为演练成功证据。

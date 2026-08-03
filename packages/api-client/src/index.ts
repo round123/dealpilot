@@ -102,11 +102,6 @@ export {
   createImportApi,
 } from "./import.js";
 export {
-  createMigrationApi,
-  V1_MIGRATION_COLLECTIONS,
-  V1MigrationBundleSchema,
-} from "./migration.js";
-export {
   createReminderApi,
   ReminderStatusMutationInputSchema,
 } from "./reminder.js";
@@ -123,19 +118,6 @@ export type {
   DealUpdateWithContactsInput,
   DealWithContacts,
 } from "./deal.js";
-export type {
-  MigrationApi,
-  V1MigrationAbandonResult,
-  V1MigrationBeginResult,
-  V1MigrationBundle,
-  V1MigrationCollection,
-  V1MigrationConfirmResult,
-  V1MigrationReconcileResult,
-  V1MigrationStageResult,
-  V1MigrationUploadOptions,
-  V1MigrationUploadProgress,
-  V1MigrationUploadResult,
-} from "./migration.js";
 export type {
   CloudImportCommitInput,
   CloudImportCommitResult,

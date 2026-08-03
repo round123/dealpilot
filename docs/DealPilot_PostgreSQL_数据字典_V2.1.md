@@ -1,22 +1,22 @@
 # DealPilot PostgreSQL 数据字典 V2.1
 
 > 状态：当前云端数据库实现基线
-> 日期：2026-08-02
+> 日期：2026-08-03
 > 产品需求：[DealPilot PRD V2.1](./DealPilot_PRD_V2.1_WebCloud.md)
 > 系统架构：[DealPilot 系统架构设计 V2.1](./DealPilot_系统架构设计_V2.1_WebCloud.md)
 > 数据库事实源：[`supabase/migrations`](../supabase/migrations/)
 
 ## 1. 范围与使用规则
 
-本文记录 V2 WebCloud 当前 PostgreSQL、RLS、RPC 和 Storage 的实际实现，供开发、测试、安全审计、迁移核对和故障恢复使用。字段、约束或权限与本文不一致时，以仓库中按文件名顺序执行后的 migration 为准，并应在同一变更中更新本文。
+本文记录 V2 WebCloud 当前 PostgreSQL、RLS、RPC 和 Storage 的实际实现，供开发、测试、安全审计、schema 核对和故障恢复使用。字段、约束或权限与本文不一致时，以仓库中按文件名顺序执行后的 PostgreSQL migration 为准，并应在同一变更中更新本文。
 
-本版本共包含 13 个枚举、22 张 `public` 表、2 个视图、21 个认证用户可执行 RPC、4 个仅后台服务可执行 RPC，以及 10 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
+本版本共包含 12 个枚举、20 张 `public` 表、2 个视图、16 个认证用户可执行 RPC、4 个仅后台服务可执行 RPC，以及 5 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
 
 ## 2. 敏感级别
 
 | 级别      | 定义                                             | 典型数据                                              | 处理要求                                                                    |
 | --------- | ------------------------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------------- |
-| S3 高敏感 | 可直接识别个人、还原沟通内容或大批量恢复业务数据 | 联系方式、消息正文、附件、完整备份/迁移载荷、删除快照 | 必须由 RLS/RPC 隔离；不得写日志、前端持久缓存或测试夹具；导出需显式用户动作 |
+| S3 高敏感 | 可直接识别个人、还原沟通内容或大批量恢复业务数据 | 联系方式、消息正文、附件、完整云备份和删除快照 | 必须由 RLS/RPC 隔离；不得写日志、前端持久缓存或测试夹具；导出需显式用户动作 |
 | S2 敏感   | 客户、项目、提醒、配置等非公开业务数据           | Customer、项目金额、提醒、用户设置、导入结果          | 仅当前账号可访问；日志只能记录 ID、计数或不可逆摘要                         |
 | S1 内部   | 单独泄露影响较低的控制或分类数据                 | 标签、状态、计数、校验摘要、队列状态                  | 仍受账号隔离；可用于受控运维指标                                            |
 | S0 公开   | 可匿名公开的数据                                 | 当前没有用户业务表属于此级                            | 不适用                                                                      |
@@ -26,9 +26,9 @@
 ## 3. 公共安全与关系规则
 
 - `profiles` 通过 `id = auth.uid()` 隔离；其余业务和运维表通过 `owner_user_id = auth.uid()` 隔离。
-- 22 张表全部启用并强制 RLS。普通业务表允许认证用户在 owner policy 内读写；`backup_snapshots`、`import_jobs`、`migration_staging_rows` 仅允许认证用户读取，写入必须走 RPC。
-- `migration_jobs` 的所有直接写权限均被撤销，包括 `service_role`；`customer_purge_jobs` 不允许客户端直接访问。
-- 关键父子关系使用 `(owner_user_id, parent_id)` 复合外键，防止伪造 ID 形成跨账号引用；多数业务外键为 `DEFERRABLE INITIALLY DEFERRED`，支持事务内合并和迁移。
+- 20 张表全部启用并强制 RLS。普通业务表允许认证用户在 owner policy 内读写；`backup_snapshots` 和 `import_jobs` 仅允许认证用户读取，写入必须走 RPC。
+- `customer_purge_jobs` 不允许客户端直接访问。
+- 关键父子关系使用 `(owner_user_id, parent_id)` 复合外键，防止伪造 ID 形成跨账号引用；多数业务外键为 `DEFERRABLE INITIALLY DEFERRED`，支持事务内合并、恢复和批量导入。
 - `anon` 对 `public` schema 的表、序列和函数无业务权限。客户端只能持有公开 anon key 和用户会话，严禁持有 `service_role`。
 - 所有 `SECURITY DEFINER` 函数固定 `search_path = ''`，并在函数内使用带 schema 的对象名。
 - RPC 成功值统一包含 `{ "data": ... }`；失败由数据库/PostgREST/Edge 层转换为统一 API 错误。
@@ -49,7 +49,6 @@
 | `reminder_priority`         | `low`, `normal`, `high`, `urgent`                                                       | 提醒优先级                            |
 | `risk_severity`             | `low`, `medium`, `high`, `critical`                                                     | 风险严重度                            |
 | `risk_status`               | `open`, `handling`, `resolved`, `ignored`                                               | 风险状态                              |
-| `migration_job_status`      | `pending`, `running`, `awaiting_confirmation`, `confirmed`, `abandoned`, `failed`       | V1 迁移会话状态                       |
 | `customer_purge_job_status` | `pending`, `processing`, `retry`, `completed`, `cancelled`                              | Customer 物理清理队列状态             |
 
 ## 5. 表字典
@@ -148,7 +147,7 @@
 
 ### 5.7 `audit_events`（S3）
 
-认证用户只读；业务事务和迁移 RPC 写入。`metadata` 可能包含提醒状态或删除快照，不得直接记录到应用日志。
+认证用户只读；业务事务和受控 RPC 写入。`metadata` 可能包含提醒状态或删除快照，不得直接记录到应用日志。
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                        | 含义                | 级别 |
 | --------------- | --------------- | ------------------ | -------------------------------- | ------------------- | ---- |
@@ -160,30 +159,7 @@
 | `metadata`      | `jsonb`         | 非空，`{}`         | 必须是 JSON 对象                 | 事件元数据/删除快照 | S3   |
 | `occurred_at`   | `timestamptz`   | 非空，`now()`      |                                  | 发生时间            | S2   |
 
-### 5.8 `migration_jobs`（S2）
-
-V1 一次性迁移会话。认证用户可按 RLS 读取，任何角色均不得直接写表，状态只能由迁移 RPC 改变。
-
-| 字段                 | PostgreSQL 类型        | 空值/默认          | 约束/关系                    | 含义            | 级别 |
-| -------------------- | ---------------------- | ------------------ | ---------------------------- | --------------- | ---- |
-| `id`                 | `uuid`                 | 非空，随机 UUID    | PK；与 owner 构成唯一键      | 迁移会话 ID     | S1   |
-| `owner_user_id`      | `uuid`                 | 非空，`auth.uid()` | FK → `profiles.id`，删除级联 | 所属账号        | S2   |
-| `idempotency_key`    | `text`                 | 非空               | 去空格后非空；owner 内唯一   | 幂等键          | S1   |
-| `source_fingerprint` | `text`                 | 非空               | 去空格后非空                 | 来源数据库指纹  | S2   |
-| `status`             | `migration_job_status` | 非空，`pending`    |                              | 会话状态        | S1   |
-| `counts`             | `jsonb`                | 非空，`{}`         | 必须是 JSON 对象             | 声明/核对数量   | S1   |
-| `checksums`          | `jsonb`                | 非空，`{}`         | 必须是 JSON 对象             | 摘要集合        | S1   |
-| `error_code`         | `text`                 | 可空               |                              | 失败代码        | S1   |
-| `started_at`         | `timestamptz`          | 可空               |                              | 开始时间        | S1   |
-| `completed_at`       | `timestamptz`          | 可空               |                              | 完成时间        | S1   |
-| `confirmed_at`       | `timestamptz`          | 可空               |                              | 用户确认时间    | S2   |
-| `created_at`         | `timestamptz`          | 非空，`now()`      |                              | 创建时间        | S1   |
-| `updated_at`         | `timestamptz`          | 非空，`now()`      | 更新触发器维护               | 更新时间        | S1   |
-| `snapshot_checksum`  | `text`                 | 可空               | 64 位小写十六进制            | SQLite 快照摘要 | S1   |
-| `user_preferences`   | `jsonb`                | 非空，`{}`         | 必须是 JSON 对象             | 待迁移用户设置  | S2   |
-| `abandoned_at`       | `timestamptz`          | 可空               |                              | 放弃时间        | S1   |
-
-### 5.9 `customer_purge_jobs`（S2）
+### 5.8 `customer_purge_jobs`（S2）
 
 后台物理清理队列。故意不引用 Customer，使其在 Customer 级联删除后仍保留 Storage 路径和重试历史；但通过 owner 外键在账号删除时级联删除。
 
@@ -203,7 +179,7 @@ V1 一次性迁移会话。认证用户可按 RLS 读取，任何角色均不得
 | `created_at`      | `timestamptz`               | 非空，`now()`   |                              | 创建时间                | S1   |
 | `updated_at`      | `timestamptz`               | 非空，`now()`   | 更新触发器维护               | 更新时间                | S1   |
 
-### 5.10 `backup_snapshots`（S3）
+### 5.9 `backup_snapshots`（S3）
 
 数据库关系数据的账号级快照。认证用户只读；创建、导出和恢复必须走 RPC。
 
@@ -218,7 +194,7 @@ V1 一次性迁移会话。认证用户可按 RLS 读取，任何角色均不得
 | `payload`        | `jsonb`         | 非空               | 必须是 JSON 对象             | 完整关系数据快照 | S3   |
 | `created_at`     | `timestamptz`   | 非空，`now()`      |                              | 创建时间         | S1   |
 
-### 5.11 `import_jobs`（S2）
+### 5.10 `import_jobs`（S2）
 
 浏览器完成预览和字段映射后，由事务 RPC 创建的 Customer 导入幂等记录。认证用户只读。
 
@@ -234,23 +210,7 @@ V1 一次性迁移会话。认证用户可按 RLS 读取，任何角色均不得
 | `created_at`      | `timestamptz`   | 非空，`now()` |                              | 创建时间           | S1   |
 | `completed_at`    | `timestamptz`   | 可空          |                              | 完成时间           | S1   |
 
-### 5.12 `migration_staging_rows`（S3）
-
-V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交和清理必须走 RPC。迁移会话删除时级联删除。
-
-| 字段               | PostgreSQL 类型 | 空值/默认          | 约束/关系                                | 含义                          | 级别 |
-| ------------------ | --------------- | ------------------ | ---------------------------------------- | ----------------------------- | ---- |
-| `owner_user_id`    | `uuid`          | 非空，`auth.uid()` | PK；复合 FK 的 owner                     | 所属账号                      | S2   |
-| `migration_job_id` | `uuid`          | 非空               | PK；复合 FK → `migration_jobs`，删除级联 | 迁移会话                      | S2   |
-| `collection`       | `text`          | 非空               | 限定为 10 类迁移集合                     | 集合名                        | S1   |
-| `source_id`        | `uuid`          | 非空               | PK                                       | V1 来源 ID                    | S2   |
-| `idempotency_key`  | `text`          | 非空               | 去空格后非空；会话内唯一                 | 行幂等键                      | S1   |
-| `payload_json`     | `text`          | 非空               | 去空格后非空                             | 用于确定性摘要的原始规范 JSON | S3   |
-| `payload`          | `jsonb`         | 非空               | 必须是 JSON 对象                         | 规范化迁移内容                | S3   |
-| `payload_checksum` | `text`          | 非空               | 64 位小写十六进制                        | 行摘要                        | S1   |
-| `created_at`       | `timestamptz`   | 非空，`now()`      |                                          | 暂存时间                      | S1   |
-
-### 5.13 `companies`（S2，Customer 主表）
+### 5.11 `companies`（S2，Customer 主表）
 
 | 字段             | PostgreSQL 类型   | 空值/默认          | 约束/关系                            | 含义                              | 级别 |
 | ---------------- | ----------------- | ------------------ | ------------------------------------ | --------------------------------- | ---- |
@@ -280,7 +240,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `created_at`     | `timestamptz`     | 非空，`now()`      |                                      | 创建时间                          | S1   |
 | `updated_at`     | `timestamptz`     | 非空，`now()`      | 更新触发器维护                       | 更新时间                          | S1   |
 
-### 5.14 `tags`（S1）
+### 5.12 `tags`（S1）
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                          | 含义     | 级别 |
 | --------------- | --------------- | ------------------ | ---------------------------------- | -------- | ---- |
@@ -291,7 +251,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `created_at`    | `timestamptz`   | 非空，`now()`      |                                    | 创建时间 | S1   |
 | `updated_at`    | `timestamptz`   | 非空，`now()`      | 更新触发器维护                     | 更新时间 | S1   |
 
-### 5.15 `contacts`（S3）
+### 5.13 `contacts`（S3）
 
 | 字段             | PostgreSQL 类型 | 空值/默认          | 约束/关系                        | 含义                    | 级别 |
 | ---------------- | --------------- | ------------------ | -------------------------------- | ----------------------- | ---- |
@@ -315,7 +275,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `created_at`     | `timestamptz`   | 非空，`now()`      |                                  | 创建时间                | S1   |
 | `updated_at`     | `timestamptz`   | 非空，`now()`      | 更新触发器维护                   | 更新时间                | S1   |
 
-### 5.16 `contact_tags`（S2）
+### 5.14 `contact_tags`（S2）
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                          | 含义     | 级别 |
 | --------------- | --------------- | ------------------ | ---------------------------------- | -------- | ---- |
@@ -324,7 +284,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `tag_id`        | `uuid`          | 非空               | PK；复合 FK → `tags`，删除级联     | 标签     | S1   |
 | `created_at`    | `timestamptz`   | 非空，`now()`      |                                    | 绑定时间 | S1   |
 
-### 5.17 `contact_notes`（S3）
+### 5.15 `contact_notes`（S3）
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                      | 含义            | 级别 |
 | --------------- | --------------- | ------------------ | ------------------------------ | --------------- | ---- |
@@ -338,7 +298,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `created_at`    | `timestamptz`   | 非空，`now()`      |                                | 创建时间        | S1   |
 | `updated_at`    | `timestamptz`   | 非空，`now()`      | 更新触发器维护                 | 更新时间        | S1   |
 
-### 5.18 `deals`（S2）
+### 5.16 `deals`（S2）
 
 | 字段                    | PostgreSQL 类型 | 空值/默认          | 约束/关系                        | 含义          | 级别 |
 | ----------------------- | --------------- | ------------------ | -------------------------------- | ------------- | ---- |
@@ -360,7 +320,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `created_at`            | `timestamptz`   | 非空，`now()`      |                                  | 创建时间      | S1   |
 | `updated_at`            | `timestamptz`   | 非空，`now()`      | 更新触发器维护                   | 更新时间      | S1   |
 
-### 5.19 `deal_contacts`（S2）
+### 5.17 `deal_contacts`（S2）
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                          | 含义     | 级别 |
 | --------------- | --------------- | ------------------ | ---------------------------------- | -------- | ---- |
@@ -369,7 +329,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `contact_id`    | `uuid`          | 非空               | PK；复合 FK → `contacts`，删除级联 | 联系人   | S2   |
 | `created_at`    | `timestamptz`   | 非空，`now()`      |                                    | 绑定时间 | S1   |
 
-### 5.20 `deal_notes`（S3）
+### 5.18 `deal_notes`（S3）
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                   | 含义            | 级别 |
 | --------------- | --------------- | ------------------ | --------------------------- | --------------- | ---- |
@@ -383,7 +343,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `created_at`    | `timestamptz`   | 非空，`now()`      |                             | 创建时间        | S1   |
 | `updated_at`    | `timestamptz`   | 非空，`now()`      | 更新触发器维护              | 更新时间        | S1   |
 
-### 5.21 `tasks`（S2）
+### 5.19 `tasks`（S2）
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                      | 含义     | 级别 |
 | --------------- | --------------- | ------------------ | ------------------------------ | -------- | ---- |
@@ -397,7 +357,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `created_at`    | `timestamptz`   | 非空，`now()`      |                                | 创建时间 | S1   |
 | `updated_at`    | `timestamptz`   | 非空，`now()`      | 更新触发器维护                 | 更新时间 | S1   |
 
-### 5.22 `configuration`（S2）
+### 5.20 `configuration`（S2）
 
 | 字段            | PostgreSQL 类型 | 空值/默认          | 约束/关系                        | 含义     | 级别 |
 | --------------- | --------------- | ------------------ | -------------------------------- | -------- | ---- |
@@ -429,11 +389,6 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | `restore_backup_payload(jsonb, text, jsonb)`      | 校验 schema、摘要和行数后恢复外部备份载荷。                                                                           |
 | `commit_customer_import(uuid, text, text, jsonb)` | 以任务 ID、幂等键和 payload hash 原子提交最多 1000 行 Customer 导入。                                                 |
 | `create_follow_up_idempotent(...)`                | 以调用方提供的幂等键创建跟进，重试返回原结果。                                                                        |
-| `begin_v1_migration(...)`                         | 校验来源指纹、快照摘要、manifest 和用户设置，开始或重放迁移会话。                                                     |
-| `stage_v1_migration_batch(uuid, text, jsonb)`     | 幂等暂存一批规范化 V1 行。                                                                                            |
-| `reconcile_v1_migration(uuid)`                    | 对比声明 manifest 与实际暂存数据，将一致会话推进到待确认。                                                            |
-| `confirm_v1_migration(uuid, text, jsonb, jsonb)`  | 校验确认令牌/摘要后在单事务中物化暂存数据并确认迁移。                                                                 |
-| `abandon_v1_migration(uuid)`                      | 确认前放弃迁移并清空暂存行，不修改原 SQLite。                                                                         |
 | `list_customers_cursor(...)`                      | Customer 结构化过滤和稳定游标分页；排序字段限 `name/created_at/updated_at/grade`，limit 为 1-100，搜索最长 200 字符。 |
 | `update_reminder_status_idempotent(...)`          | 最终定义来自 `20260802000600`；通过期望旧状态/更新时间防并发覆盖，并支持幂等重试。                                    |
 | `merge_contacts(uuid, uuid)`                      | 在同一账号、同一 Customer 内合并联系人及其标签、任务、笔记、项目和社媒关联。                                          |
@@ -452,7 +407,7 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 
 ### 7.3 内部函数，禁止客户端直接执行
 
-`set_updated_at`、`handle_new_auth_user`、`clear_reminder_deletion_marker`、`collect_customer_storage_paths`、`backup_payload_row_counts`、`v1_migration_collections`、`v1_migration_target_id`、`validate_v1_migration_manifest`、`v1_migration_actual_manifest`、`v1_migration_deletion_metadata` 仅供触发器或受控 RPC 内部调用。
+`set_updated_at`、`handle_new_auth_user`、`clear_reminder_deletion_marker`、`collect_customer_storage_paths`、`backup_payload_row_counts` 仅供触发器或受控 RPC 内部调用。
 
 ## 8. Storage
 
@@ -472,8 +427,8 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 - Customer 软删除后 30 天内可恢复；默认物理清理 cutoff 为 `now() - interval '30 days'`。
 - 删除事务保存开放提醒的 `status/resolution` 快照。恢复采用 `deletion_event_id` 作为比较并交换标记，只恢复仍由该删除动作控制的提醒，避免覆盖删除后的用户操作。
 - `customer_purge_jobs` 不引用 Customer，因此 Customer 级联删除后仍可保留清理结果和重试历史；账号删除时通过 owner 外键级联删除。
-- `migration_staging_rows` 随 `migration_jobs` 删除级联；放弃迁移时会主动清空。确认前中断不得修改原 SQLite；确认后 PostgreSQL 永久为唯一事实源。
-- `audit_events`、`backup_snapshots`、`import_jobs`、`migration_jobs` 当前没有自动 TTL。上线前必须通过隐私/容量评审确定保留期，不能把“暂无 TTL”理解为允许无限期保留。
+- PostgreSQL 始终是唯一业务事实源，当前 schema 不包含 SQLite 导入会话或暂存表。
+- `audit_events`、`backup_snapshots` 和 `import_jobs` 当前没有自动 TTL。上线前必须通过隐私/容量评审确定保留期，不能把“暂无 TTL”理解为允许无限期保留。
 - 关系数据备份不包含 Auth 凭据、Storage 对象、`customer_purge_jobs` 或 `backup_snapshots` 自身。恢复对象和数据库必须分别演练。
 - 当前数据库在删除 `auth.users` 后立即级联删除 `profiles` 及 owner 数据；当前 Edge 实现同样为立即删除。PRD 所述“账号删除 30 天撤销期”尚未由数据库实现。
 
@@ -490,27 +445,10 @@ V1 迁移的规范化暂存行。认证用户只读；上传、核对、提交�
 | 项目           | 当前实现                                                      | 目标/后续动作                                               |
 | -------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
 | 账号删除撤销期 | 删除 Auth 用户后立即级联清除数据库数据，Edge 同步删除 Storage | 按 PRD 实现 30 天可撤销账号删除，或在发布决策中明确调整 PRD |
-| 运维表 TTL     | 审计、备份、导入和迁移任务无自动 TTL                          | 完成隐私、合规和容量评审后增加保留策略                      |
+| 运维表 TTL     | 审计、备份和导入任务无自动 TTL                                | 完成隐私、合规和容量评审后增加保留策略                      |
 | Storage 备份   | DB 快照不包含对象本体                                         | 建立独立对象备份/恢复和核对流程                             |
-| 云端验收       | migration、RLS、RPC、Storage 策略已有静态实现                 | 仍需在受控 Supabase 项目执行双账号隔离、备份恢复和回滚门禁  |
+| 云端验收       | schema migration、RLS、RPC、Storage 策略已有静态实现          | 仍需在受控 Supabase 项目执行双账号隔离、备份恢复和回滚门禁  |
 
-## 12. Migration 索引
+## 12. Schema migration 事实源
 
-按以下顺序构成本文的 schema 事实源：
-
-1. `20260730000100_initial_personal_cloud.sql`
-2. `20260731000100_account_deletion_cascade.sql`
-3. `20260731000200_cloud_backup_snapshots.sql`
-4. `20260801000100_cloud_customer_import.sql`
-5. `20260801000200_encrypted_backup_portability.sql`
-6. `20260801000300_extension_follow_up_idempotency.sql`
-7. `20260801000400_v1_migration_sessions.sql`
-8. `20260802000100_customer_cursor_pagination.sql`
-9. `20260802000200_reminder_status_idempotency.sql`
-10. `20260802000300_contact_merge.sql`
-11. `20260802000400_migration_jobs_rpc_only.sql`
-12. `20260802000500_fix_migration_reconcile_status.sql`
-13. `20260802000600_reminder_delete_concurrency.sql`
-14. `20260802000700_dashboard_summary.sql`
-15. `20260802000800_deal_update_atomic.sql`
-16. `20260802000900_deal_create_atomic.sql`
+[`supabase/migrations`](../supabase/migrations/) 按文件名顺序构成 schema 事实源。fresh schema 只包含本文列出的 12 个枚举、20 张表、2 个视图和函数集合；安全门禁同时验证已退役的本地数据导入对象不存在。已部署环境通过最后的前向 retirement migration 收敛到同一结构，不执行反向 migration 或数据库重置。

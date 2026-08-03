@@ -15,6 +15,7 @@ const forbiddenPaths = [
   "apps/cloud/src/components/atomic-crm/providers/localDataOperations.tsx",
   "apps/cloud/src/components/atomic-crm/settings/LocalDataToolsPage.tsx",
   "apps/extension/src/lib/content-agent-client.ts",
+  "packages/migration",
   "scripts/build-installer.ps1",
   "scripts/installer",
   "scripts/qa-compiled-agent.ts",
@@ -26,15 +27,14 @@ const forbiddenPaths = [
   "packages/shared/src/schemas/stats.ts",
   "packages/shared/src/schemas/system.ts",
   "packages/shared/tests/stats-contract.test.ts",
+  "docs/runbooks/v1-sqlite-migration.md",
 ];
 
 const requiredPaths = [
   "apps/cloud/package.json",
   "apps/extension/package.json",
   "packages/api-client/package.json",
-  "packages/migration/package.json",
   "packages/shared/package.json",
-  "docs/runbooks/v1-sqlite-migration.md",
 ];
 
 const forbiddenReferences = [
@@ -52,6 +52,9 @@ const forbiddenReferences = [
   "LocalDataOperations",
   "LocalDataToolsPage",
   "content-agent-client",
+  "@dealpilot/migration",
+  "migration:v1",
+  "V1MigrationSection",
 ];
 
 const scanRoots = [
@@ -81,7 +84,7 @@ for (const relative of forbiddenPaths) {
 
 for (const relative of requiredPaths) {
   if (!existsSync(path.join(root, relative))) {
-    failures.push(`required V2 or migration path is missing: ${relative}`);
+    failures.push(`required V2 product path is missing: ${relative}`);
   }
 }
 

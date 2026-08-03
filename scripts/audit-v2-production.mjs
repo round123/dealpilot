@@ -7,7 +7,6 @@ export const V2_IMPORTERS = new Set([
   "apps/extension",
   "packages/api-client",
   "packages/shared",
-  "packages/migration",
 ]);
 
 export const AUDIT_EXEMPTIONS = [
