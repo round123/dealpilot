@@ -182,3 +182,49 @@ test("Workflows upload ciphertext only and keep the age identity off GitHub secr
   assert.match(restore, /RESTORE PRODUCTION FROM ENCRYPTED BACKUP/);
   assert.match(restore, /supabase db reset --linked --no-seed --yes/);
 });
+
+test("Disaster recovery actions are immutable and cannot inherit job secrets", () => {
+  for (const workflowPath of [
+    ".github/workflows/backup-cloud.yml",
+    ".github/workflows/restore-cloud-backup.yml",
+  ]) {
+    const workflow = readFileSync(workflowPath, "utf8");
+    const stepsOffset = workflow.indexOf("    steps:");
+    assert.notEqual(stepsOffset, -1, `${workflowPath} must define job steps`);
+    assert.doesNotMatch(
+      workflow.slice(0, stepsOffset),
+      /^    env:/m,
+      `${workflowPath} must not expose secrets through job-level env`,
+    );
+
+    const lines = workflow.split(/\r?\n/);
+    const actionIndexes = lines.flatMap((line, index) =>
+      /^      - uses:/.test(line) ? [index] : [],
+    );
+    assert.ok(actionIndexes.length > 0, `${workflowPath} must use actions`);
+
+    for (const actionIndex of actionIndexes) {
+      const actionReference = lines[actionIndex].match(
+        /^      - uses: [^@\s]+@([0-9a-f]{40})(?:\s+#\s+v\d+)?$/,
+      );
+      assert.ok(
+        actionReference,
+        `${workflowPath}:${actionIndex + 1} must pin uses to a full SHA`,
+      );
+
+      const nextStepOffset = lines
+        .slice(actionIndex + 1)
+        .findIndex((line) => /^      - /.test(line));
+      const actionEnd =
+        nextStepOffset === -1
+          ? lines.length
+          : actionIndex + 1 + nextStepOffset;
+      const actionBlock = lines.slice(actionIndex, actionEnd).join("\n");
+      assert.doesNotMatch(
+        actionBlock,
+        /\$\{\{\s*(?:secrets|vars)\./,
+        `${workflowPath}:${actionIndex + 1} action must not receive DR credentials`,
+      );
+    }
+  }
+});

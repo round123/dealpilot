@@ -47,26 +47,14 @@ jobs:
     timeout-minutes: 60
     environment:
       name: cloud-${{ inputs.target }}
-    env:
-      RESTORE_TARGET: ${{ inputs.target }}
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ inputs.target == 'production' && secrets.SUPABASE_DB_PASSWORD || inputs.target == 'canary' && secrets.CANARY_SUPABASE_DB_PASSWORD || secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
-      SUPABASE_PROJECT_REF: ${{ inputs.target == 'production' && secrets.SUPABASE_PROJECT_REF || inputs.target == 'canary' && secrets.CANARY_SUPABASE_PROJECT_REF || secrets.PREVIEW_SUPABASE_PROJECT_REF }}
-      SUPABASE_URL: ${{ inputs.target == 'production' && secrets.VITE_SUPABASE_URL || inputs.target == 'canary' && secrets.CANARY_VITE_SUPABASE_URL || secrets.PREVIEW_VITE_SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.target == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || inputs.target == 'canary' && secrets.CANARY_SUPABASE_SERVICE_ROLE_KEY || secrets.PREVIEW_SUPABASE_SERVICE_ROLE_KEY }}
-      DATABASE_URL: ${{ inputs.target == 'production' && secrets.PRODUCTION_DATABASE_URL || inputs.target == 'canary' && secrets.CANARY_DATABASE_URL || secrets.PREVIEW_DATABASE_URL }}
-      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
-      DR_RESTORE_ALLOWED: ${{ vars.DR_RESTORE_ALLOWED }}
-      AGE_IDENTITY_FILE: ${{ vars.AGE_IDENTITY_FILE }}
-      ATTACHMENTS_BUCKET: attachments
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
         with:
           version: 2.110.0
       - name: Validate restore authority and isolated target
@@ -76,6 +64,16 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
           BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
           ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          RESTORE_TARGET: ${{ inputs.target }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ inputs.target == 'production' && secrets.SUPABASE_DB_PASSWORD || inputs.target == 'canary' && secrets.CANARY_SUPABASE_DB_PASSWORD || secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ inputs.target == 'production' && secrets.SUPABASE_PROJECT_REF || inputs.target == 'canary' && secrets.CANARY_SUPABASE_PROJECT_REF || secrets.PREVIEW_SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ inputs.target == 'production' && secrets.VITE_SUPABASE_URL || inputs.target == 'canary' && secrets.CANARY_VITE_SUPABASE_URL || secrets.PREVIEW_VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.target == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || inputs.target == 'canary' && secrets.CANARY_SUPABASE_SERVICE_ROLE_KEY || secrets.PREVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ inputs.target == 'production' && secrets.PRODUCTION_DATABASE_URL || inputs.target == 'canary' && secrets.CANARY_DATABASE_URL || secrets.PREVIEW_DATABASE_URL }}
+          PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+          DR_RESTORE_ALLOWED: ${{ vars.DR_RESTORE_ALLOWED }}
+          AGE_IDENTITY_FILE: ${{ vars.AGE_IDENTITY_FILE }}
         run: |
           set -euo pipefail
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
@@ -167,7 +165,7 @@ jobs:
             }
           rm -f "$response"
       - name: Download encrypted archive from successful backup run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ runner.temp }}/dealpilot-dr-download
@@ -180,6 +178,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends age
       - name: Decrypt and verify archive
         shell: bash
+        env:
+          AGE_IDENTITY_FILE: ${{ vars.AGE_IDENTITY_FILE }}
         run: |
           set -euo pipefail
           umask 077
@@ -205,12 +205,18 @@ jobs:
           echo "DR_PAYLOAD=$payload" >> "$GITHUB_ENV"
       - name: Reset target to current forward schema
         shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ inputs.target == 'production' && secrets.SUPABASE_DB_PASSWORD || inputs.target == 'canary' && secrets.CANARY_SUPABASE_DB_PASSWORD || secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ inputs.target == 'production' && secrets.SUPABASE_PROJECT_REF || inputs.target == 'canary' && secrets.CANARY_SUPABASE_PROJECT_REF || secrets.PREVIEW_SUPABASE_PROJECT_REF }}
         run: |
           set -euo pipefail
           supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           supabase db reset --linked --no-seed --yes
       - name: Replace Auth identities and restore relational data
         shell: bash
+        env:
+          DATABASE_URL: ${{ inputs.target == 'production' && secrets.PRODUCTION_DATABASE_URL || inputs.target == 'canary' && secrets.CANARY_DATABASE_URL || secrets.PREVIEW_DATABASE_URL }}
         run: |
           set -euo pipefail
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --no-psqlrc <<'SQL'
@@ -222,6 +228,9 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --no-psqlrc --single-transaction --file "$DR_PAYLOAD/database.sql"
       - name: Replace and verify private attachment objects
         env:
+          SUPABASE_URL: ${{ inputs.target == 'production' && secrets.VITE_SUPABASE_URL || inputs.target == 'canary' && secrets.CANARY_VITE_SUPABASE_URL || secrets.PREVIEW_VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.target == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || inputs.target == 'canary' && secrets.CANARY_SUPABASE_SERVICE_ROLE_KEY || secrets.PREVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+          ATTACHMENTS_BUCKET: attachments
           DR_CLEAR_TARGET: "true"
         run: node scripts/storage-disaster-recovery.mjs restore "$DR_PAYLOAD/storage"
       - name: Remove plaintext and record restore evidence
@@ -229,6 +238,7 @@ jobs:
         shell: bash
         env:
           APPROVAL_EVIDENCE: ${{ inputs.approval_evidence }}
+          RESTORE_TARGET: ${{ inputs.target }}
         run: |
           rm -rf "$RUNNER_TEMP/dealpilot-restore-payload" "$RUNNER_TEMP/dealpilot-dr-download"
           {
