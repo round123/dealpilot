@@ -27,6 +27,10 @@ describe("public legal pages", () => {
     await expect.element(screen.getByText(/首选区域为新加坡/)).toBeVisible();
     await expect.element(screen.getByText(/Supabase：提供 Auth/)).toBeVisible();
     await expect.element(screen.getByText(/默认保留 30 天/)).toBeVisible();
+    await expect
+      .element(screen.getByText(/云备份创建满 35 天后自动淘汰/))
+      .toBeVisible();
+    await expect.element(screen.getByText(/摘要当前随账号保留/)).toBeVisible();
 
     await screen.getByRole("link", { name: "查看服务条款" }).click();
     await expect

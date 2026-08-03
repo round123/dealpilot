@@ -1,7 +1,12 @@
-import type { BackupSnapshot } from "@dealpilot/api-client";
+import { ApiError, type BackupSnapshot } from "@dealpilot/api-client";
 import { DatabaseBackup, Download, RotateCcw, ShieldCheck } from "lucide-react";
-import { useDataProvider, useNotify, type RaRecord } from "ra-core";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useDataProvider,
+  useNotify,
+  type DataProvider,
+  type RaRecord,
+} from "ra-core";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +34,9 @@ const EXPORT_RESOURCES = [
   ["deal_risks", "项目风险"],
   ["deal_milestones", "项目里程碑"],
 ] as const;
+const EXPORT_LIMIT = 10_000;
+const CUSTOMER_EXPORT_PAGE_SIZE = 100;
+const EXPORT_TIMEOUT_MS = 30_000;
 
 type ExportRow = RaRecord & Record<string, unknown>;
 type SpreadsheetRow = Record<string, unknown>;
@@ -43,6 +51,7 @@ export const CloudDataToolsPage = () => {
   const [restoreTarget, setRestoreTarget] = useState<BackupSnapshot>();
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
   const [restoring, setRestoring] = useState(false);
+  const exportControllerRef = useRef<AbortController | null>(null);
 
   const loadBackups = useCallback(
     async (signal?: AbortSignal) => {
@@ -56,9 +65,12 @@ export const CloudDataToolsPage = () => {
         setSnapshots(result.data);
       } catch (error) {
         if (!signal?.aborted) {
-          notify(error instanceof Error ? error.message : "云端备份列表加载失败", {
-            type: "error",
-          });
+          notify(
+            error instanceof Error ? error.message : "云端备份列表加载失败",
+            {
+              type: "error",
+            },
+          );
         }
       } finally {
         if (!signal?.aborted) setLoadingBackups(false);
@@ -73,20 +85,54 @@ export const CloudDataToolsPage = () => {
     return () => controller.abort();
   }, [loadBackups]);
 
+  useEffect(
+    () => () => {
+      const controller = exportControllerRef.current;
+      exportControllerRef.current = null;
+      controller?.abort();
+    },
+    [],
+  );
+
   const exportCloudData = async () => {
+    exportControllerRef.current?.abort();
     setExporting(true);
+    const controller = new AbortController();
+    exportControllerRef.current = controller;
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      EXPORT_TIMEOUT_MS,
+    );
     try {
       const workbook = XLSX.utils.book_new();
       const counts: string[] = [];
+      const exports = await Promise.all(
+        EXPORT_RESOURCES.map(async ([resource, label]) => ({
+          label,
+          result: await loadExportResource(
+            dataProvider,
+            resource,
+            controller.signal,
+          ),
+        })),
+      );
 
-      for (const [resource, label] of EXPORT_RESOURCES) {
-        const result = await dataProvider.getList<ExportRow>(resource, {
-          pagination: { page: 1, perPage: 10_000 },
-          sort: { field: "created_at", order: "ASC" },
-        });
+      const oversized = exports.find(
+        ({ result }) =>
+          typeof result.total === "number" && result.total > EXPORT_LIMIT,
+      );
+      if (oversized) {
+        notify(
+          `${oversized.label}数据超过 ${EXPORT_LIMIT} 条，请联系管理员执行分批导出`,
+          { type: "error" },
+        );
+        return;
+      }
+
+      for (const { label, result } of exports) {
         const rows = result.data.map(toExportRow);
         const sheet = XLSX.utils.json_to_sheet(
-          rows.length ? rows : [{ "暂无数据": "" }],
+          rows.length ? rows : [{ 暂无数据: "" }],
         );
         XLSX.utils.book_append_sheet(workbook, sheet, label.slice(0, 31));
         counts.push(`${label} ${rows.length} 条`);
@@ -98,14 +144,27 @@ export const CloudDataToolsPage = () => {
         { 字段: "说明", 值: "仅包含当前账号在 RLS 授权范围内的数据" },
       ]);
       XLSX.utils.book_append_sheet(workbook, metadata, "导出说明");
-      XLSX.writeFile(workbook, `dealpilot-cloud-export-${fileTimestamp()}.xlsx`);
+      XLSX.writeFile(
+        workbook,
+        `dealpilot-cloud-export-${fileTimestamp()}.xlsx`,
+      );
       notify(`云端数据已导出：${counts.join("、")}`, { type: "success" });
     } catch (error) {
-      notify(error instanceof Error ? error.message : "云端数据导出失败，请重试", {
-        type: "error",
-      });
+      controller.abort();
+      if (exportControllerRef.current === controller) {
+        notify(
+          error instanceof ApiError && error.isAborted
+            ? "云端数据导出超时，请检查网络后重试"
+            : "云端数据导出失败，请重试",
+          { type: "error" },
+        );
+      }
     } finally {
-      setExporting(false);
+      window.clearTimeout(timeoutId);
+      if (exportControllerRef.current === controller) {
+        exportControllerRef.current = null;
+        setExporting(false);
+      }
     }
   };
 
@@ -165,7 +224,8 @@ export const CloudDataToolsPage = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            导出当前账号有权限访问的客户、联系人、社媒账号、项目、跟进、提醒、风险和里程碑。导出过程使用云端 RLS，其他账号的数据不会进入文件。
+            导出当前账号有权限访问的客户、联系人、社媒账号、项目、跟进、提醒、风险和里程碑。导出过程使用云端
+            RLS，其他账号的数据不会进入文件。
           </p>
           <Button onClick={exportCloudData} disabled={exporting}>
             <Download className="size-4" />
@@ -183,7 +243,8 @@ export const CloudDataToolsPage = () => {
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              快照保存在当前账号的云端数据域中，不包含登录凭据和 Storage 附件文件。
+              快照保存在当前账号的云端数据域中，不包含登录凭据和 Storage
+              附件文件。
             </p>
             <Button
               type="button"
@@ -258,7 +319,10 @@ export const CloudDataToolsPage = () => {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>PostgreSQL 是当前业务唯一事实源，浏览器不维护 SQLite 业务副本。</p>
-          <p>云端数据库和 Storage 备份由 Supabase 项目策略管理；下载的导出文件请按敏感业务数据妥善保管。</p>
+          <p>
+            云端数据库和 Storage 备份由 Supabase
+            项目策略管理；下载的导出文件请按敏感业务数据妥善保管。
+          </p>
         </CardContent>
       </Card>
 
@@ -279,7 +343,10 @@ export const CloudDataToolsPage = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <label htmlFor="cloud-backup-confirmation" className="text-sm font-medium">
+            <label
+              htmlFor="cloud-backup-confirmation"
+              className="text-sm font-medium"
+            >
               输入“恢复备份”继续
             </label>
             <Input
@@ -333,6 +400,36 @@ const toExportRow = (record: ExportRow): SpreadsheetRow =>
   );
 
 const fileTimestamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+
+const loadExportResource = async (
+  dataProvider: DataProvider,
+  resource: (typeof EXPORT_RESOURCES)[number][0],
+  signal: AbortSignal,
+) => {
+  const perPage =
+    resource === "companies" ? CUSTOMER_EXPORT_PAGE_SIZE : EXPORT_LIMIT;
+  const first = await dataProvider.getList<ExportRow>(resource, {
+    pagination: { page: 1, perPage },
+    sort: { field: "created_at", order: "ASC" },
+    signal,
+  });
+  const total = first.total ?? first.data.length;
+  if (resource !== "companies" || total <= perPage || total > EXPORT_LIMIT) {
+    return { ...first, total };
+  }
+
+  const data = [...first.data];
+  const pageCount = Math.ceil(total / perPage);
+  for (let page = 2; page <= pageCount; page += 1) {
+    const result = await dataProvider.getList<ExportRow>(resource, {
+      pagination: { page, perPage },
+      sort: { field: "created_at", order: "ASC" },
+      signal,
+    });
+    data.push(...result.data);
+  }
+  return { data, total };
+};
 
 const formatSnapshotDate = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", {

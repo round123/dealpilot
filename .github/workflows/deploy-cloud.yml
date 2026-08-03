@@ -262,7 +262,7 @@ jobs:
       - name: Install hosted Preview E2E browser
         if: needs.plan.outputs.channel == 'preview'
         run: pnpm --filter @dealpilot/cloud exec playwright install --with-deps chromium
-      - name: Gate Preview with hosted two-account acceptance
+      - name: Gate Preview with hosted account, import, and export acceptance
         if: needs.plan.outputs.channel == 'preview'
         env:
           SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
@@ -272,6 +272,14 @@ jobs:
           PREVIEW_E2E_BETA_EMAIL: ${{ secrets.PREVIEW_E2E_BETA_EMAIL }}
           PREVIEW_E2E_BETA_PASSWORD: ${{ secrets.PREVIEW_E2E_BETA_PASSWORD }}
         run: pnpm --filter @dealpilot/cloud test:e2e:preview
+      - name: Upload hosted Preview E2E failure evidence
+        if: failure() && needs.plan.outputs.channel == 'preview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-hosted-e2e-${{ needs.plan.outputs.release_sha }}
+          path: apps/cloud/test-results/preview-hosted-e2e
+          if-no-files-found: warn
+          retention-days: 7
       - name: Record preview/canary evidence
         if: needs.plan.outputs.channel != 'production'
         shell: bash
@@ -284,6 +292,7 @@ jobs:
             echo "- Pre-login smoke: passed"
             if [ "$RELEASE_CHANNEL" = "preview" ]; then
               echo "- Hosted two-account Customer acceptance: passed"
+              echo "- Hosted CSV import persistence and isolated XLSX export: passed"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

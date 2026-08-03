@@ -1,0 +1,112 @@
+name: Controlled administrator account cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_user_id:
+        description: "Target Supabase Auth user UUID"
+        required: true
+        type: string
+      idempotency_key:
+        description: "Stable ticket/change key; reuse this exact value for retries"
+        required: true
+        type: string
+      approval_url:
+        description: "HTTPS work-item or approval evidence URL"
+        required: true
+        type: string
+      confirmation:
+        description: "Type: PERMANENTLY DELETE DEALPILOT ACCOUNT"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-account-cleanup-${{ inputs.target_user_id }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Permanently clean one approved account
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: cloud-production
+    env:
+      SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      TARGET_USER_ID: ${{ inputs.target_user_id }}
+      IDEMPOTENCY_KEY: ${{ inputs.idempotency_key }}
+      APPROVAL_URL: ${{ inputs.approval_url }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      REQUESTED_BY: ${{ github.actor }}
+      REQUEST_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Validate protected cleanup request
+        shell: bash
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_SERVICE_ROLE_KEY"
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$TARGET_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]
+          [[ "$IDEMPOTENCY_KEY" =~ ^[A-Za-z0-9._:-]{1,128}$ ]]
+          [[ "$APPROVAL_URL" =~ ^https://[^[:space:]]+$ ]]
+          [[ "$CONFIRMATION" == "PERMANENTLY DELETE DEALPILOT ACCOUNT" ]]
+
+      - name: Invoke service-only cleanup function
+        shell: bash
+        run: |
+          request_file="$(mktemp)"
+          response_file="$(mktemp)"
+          node -e '
+            const fs = require("node:fs");
+            fs.writeFileSync(process.argv[1], JSON.stringify({
+              target_user_id: process.env.TARGET_USER_ID,
+              idempotency_key: process.env.IDEMPOTENCY_KEY,
+              approval_url: process.env.APPROVAL_URL,
+              requested_by: process.env.REQUESTED_BY,
+              confirmation: process.env.CONFIRMATION,
+            }));
+          ' "$request_file"
+          status_code="$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            --header "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            --header "Content-Type: application/json" \
+            --header "X-Request-Id: $REQUEST_ID" \
+            --data-binary "@$request_file" \
+            "$SUPABASE_URL/functions/v1/admin-account-cleanup")"
+          if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
+            echo "Controlled account cleanup failed with HTTP $status_code; review Edge logs using request ID $REQUEST_ID, then rerun with the same idempotency key." >&2
+            exit 1
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (body?.data?.status !== "completed") {
+              throw new Error("Cleanup response does not contain a completed job");
+            }
+            if (!Number.isInteger(body.data.attempt_count) || body.data.attempt_count < 0) {
+              throw new Error("Cleanup response has an invalid attempt count");
+            }
+            if (!Number.isInteger(body.data.storage_objects_deleted) || body.data.storage_objects_deleted < 0) {
+              throw new Error("Cleanup response has an invalid Storage deletion count");
+            }
+          ' "$response_file"
+
+      - name: Record non-sensitive completion evidence
+        shell: bash
+        run: |
+          {
+            echo "### Controlled account cleanup"
+            echo "- Result: completed"
+            echo "- Request ID: \`$REQUEST_ID\`"
+            echo "- Idempotency key: \`$IDEMPOTENCY_KEY\`"
+            echo "- Approval: $APPROVAL_URL"
+            echo "- Operator: \`$REQUESTED_BY\`"
+          } >> "$GITHUB_STEP_SUMMARY"

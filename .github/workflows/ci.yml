@@ -38,6 +38,7 @@ jobs:
           scripts/audit-v2-production.test.mjs
           scripts/check-migration-compatibility.test.mjs
           scripts/cloud-smoke.test.mjs
+          scripts/disaster-recovery.test.mjs
           scripts/release-workflows.test.mjs
       - name: Verify retired V1 runtime stays absent
         run: node scripts/check-v1-retirement.mjs
@@ -58,6 +59,7 @@ jobs:
         run: >-
           node --experimental-strip-types --test
           supabase/functions/purge-expired-customers/handler.test.ts
+          supabase/functions/admin-account-cleanup/handler.test.ts
           supabase/functions/delete-account/handler.test.ts
       - name: Type-check V2 packages
         run: >-
@@ -192,6 +194,16 @@ jobs:
           psql postgres://postgres:postgres@127.0.0.1:54322/postgres
           -v ON_ERROR_STOP=1
           -f supabase/tests/backup_isolation.sql
+      - name: Verify automatic data retention behavior and privileges
+        run: >-
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres
+          -v ON_ERROR_STOP=1
+          -f supabase/tests/data_retention.sql
+      - name: Verify controlled administrator account cleanup
+        run: >-
+          psql postgres://postgres:postgres@127.0.0.1:54322/postgres
+          -v ON_ERROR_STOP=1
+          -f supabase/tests/admin_account_cleanup.sql
       - name: Export local Supabase public settings
         shell: bash
         run: |

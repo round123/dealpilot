@@ -9,6 +9,14 @@ const customerPurge = readFileSync(
   ".github/workflows/purge-expired-customers.yml",
   "utf8",
 );
+const productionMonitor = readFileSync(
+  ".github/workflows/monitor-production.yml",
+  "utf8",
+);
+const adminAccountCleanup = readFileSync(
+  ".github/workflows/admin-account-cleanup.yml",
+  "utf8",
+);
 
 test("quality CI tests and runs the V2 production audit after install", () => {
   const auditTest = ci.indexOf("scripts/audit-v2-production.test.mjs");
@@ -19,7 +27,7 @@ test("quality CI tests and runs the V2 production audit after install", () => {
   assert.ok(audit > install);
 });
 
-test("database security CI gates Dashboard summaries and backup isolation", () => {
+test("database security CI gates Dashboard, backup, retention, and account cleanup", () => {
   const databaseSecurity = ci.slice(ci.indexOf("  database-security:"));
   const reset = databaseSecurity.indexOf("supabase db reset");
   const dashboard = databaseSecurity.indexOf(
@@ -27,6 +35,12 @@ test("database security CI gates Dashboard summaries and backup isolation", () =
   );
   const backup = databaseSecurity.indexOf(
     "-f supabase/tests/backup_isolation.sql",
+  );
+  const retention = databaseSecurity.indexOf(
+    "-f supabase/tests/data_retention.sql",
+  );
+  const accountCleanup = databaseSecurity.indexOf(
+    "-f supabase/tests/admin_account_cleanup.sql",
   );
   const browserBuild = databaseSecurity.indexOf(
     "Build Cloud against local Supabase",
@@ -39,15 +53,39 @@ test("database security CI gates Dashboard summaries and backup isolation", () =
     databaseSecurity.match(
       /- name: Verify backup restore and account isolation[\s\S]*?(?=\n      - name:)/,
     )?.[0] ?? "";
+  const retentionStep =
+    databaseSecurity.match(
+      /- name: Verify automatic data retention behavior and privileges[\s\S]*?(?=\n      - name:)/,
+    )?.[0] ?? "";
 
   assert.ok(reset >= 0);
   assert.ok(dashboard > reset);
   assert.ok(backup > dashboard);
-  assert.ok(browserBuild > backup);
+  assert.ok(retention > backup);
+  assert.ok(accountCleanup > retention);
+  assert.ok(browserBuild > accountCleanup);
   assert.match(dashboardStep, /-v ON_ERROR_STOP=1/);
   assert.match(dashboardStep, /-f supabase\/tests\/dashboard_summary\.sql/);
   assert.match(backupStep, /-v ON_ERROR_STOP=1/);
   assert.match(backupStep, /-f supabase\/tests\/backup_isolation\.sql/);
+  assert.match(retentionStep, /-v ON_ERROR_STOP=1/);
+  assert.match(retentionStep, /-f supabase\/tests\/data_retention\.sql/);
+});
+
+test("controlled account cleanup is main-only, approved, and explicitly confirmed", () => {
+  assert.match(adminAccountCleanup, /workflow_dispatch:/);
+  assert.match(adminAccountCleanup, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(adminAccountCleanup, /environment:\s+name: cloud-production/);
+  assert.match(adminAccountCleanup, /target_user_id:/);
+  assert.match(adminAccountCleanup, /idempotency_key:/);
+  assert.match(adminAccountCleanup, /approval_url:/);
+  assert.match(adminAccountCleanup, /PERMANENTLY DELETE DEALPILOT ACCOUNT/);
+  assert.match(adminAccountCleanup, /functions\/v1\/admin-account-cleanup/);
+  assert.match(
+    adminAccountCleanup,
+    /SUPABASE_SERVICE_ROLE_KEY: \$\{\{ secrets\.SUPABASE_SERVICE_ROLE_KEY \}\}/,
+  );
+  assert.doesNotMatch(adminAccountCleanup, /delete-account/);
 });
 
 test("normal release orders link, Auth config, migrations, Edge, Web and smoke", () => {
@@ -79,7 +117,7 @@ test("production deploys only a successful completed CI push for main", () => {
     /github\.event\.workflow_run\.event == 'push'[\s\S]+github\.event\.workflow_run\.conclusion == 'success'[\s\S]+github\.event\.workflow_run\.head_branch == 'main'/,
   );
   const pushTrigger =
-    deploy.match(/  push:\n([\s\S]*?)\n\npermissions:/)?.[1] ?? "";
+    deploy.match(/  push:\r?\n([\s\S]*?)\r?\n\r?\npermissions:/)?.[1] ?? "";
   assert.match(pushTrigger, /"codex\/\*\*"/);
   assert.doesNotMatch(pushTrigger, /- main/);
 });
@@ -148,8 +186,11 @@ test("production requires an authenticated Customer smoke baseline", () => {
   );
 });
 
-test("Preview gates the built artifact with two ordinary hosted accounts", () => {
-  assert.match(deploy, /Gate Preview with hosted two-account acceptance/);
+test("Preview gates the built artifact with ordinary hosted accounts and data tools", () => {
+  assert.match(
+    deploy,
+    /Gate Preview with hosted account, import, and export acceptance/,
+  );
   assert.match(deploy, /test:e2e:preview/);
   assert.match(
     deploy,
@@ -164,9 +205,15 @@ test("Preview gates the built artifact with two ordinary hosted accounts", () =>
   assert.match(deploy, /secrets\.PREVIEW_E2E_BETA_EMAIL/);
   assert.match(deploy, /secrets\.PREVIEW_E2E_BETA_PASSWORD/);
   assert.match(deploy, /Hosted two-account Customer acceptance: passed/);
+  assert.match(
+    deploy,
+    /Hosted CSV import persistence and isolated XLSX export: passed/,
+  );
+  assert.match(deploy, /Upload hosted Preview E2E failure evidence/);
+  assert.match(deploy, /path: apps\/cloud\/test-results\/preview-hosted-e2e/);
   assert.doesNotMatch(
     deploy.match(
-      /- name: Gate Preview with hosted two-account acceptance[\s\S]*?(?=\n      - name:)/,
+      /- name: Gate Preview with hosted account, import, and export acceptance[\s\S]*?(?=\n      - name:)/,
     )?.[0] ?? "",
     /SERVICE_ROLE/,
   );
@@ -215,5 +262,27 @@ test("customer retention cleanup is scheduled without embedding its secret", () 
   );
   assert.match(customerPurge, /functions\/v1\/purge-expired-customers/);
   assert.match(customerPurge, /enqueue_limit/);
+  assert.match(customerPurge, /body\.data\.failed !== 0/);
+  assert.match(customerPurge, /failed and require retry/);
   assert.doesNotMatch(customerPurge, /supabase\s+(?:db|migration)|SQLite/i);
+});
+
+test("production health is monitored without deployment approval or privileged credentials", () => {
+  assert.match(productionMonitor, /cron: "7,22,37,52 \* \* \* \*"/);
+  assert.match(productionMonitor, /node scripts\/cloud-smoke\.mjs/);
+  assert.match(
+    productionMonitor,
+    /CLOUD_SMOKE_FUNCTIONS: purge-expired-customers/,
+  );
+  assert.match(productionMonitor, /issues: write/);
+  assert.match(productionMonitor, /if: failure\(\)/);
+  assert.match(productionMonitor, /if: success\(\)/);
+  assert.doesNotMatch(
+    productionMonitor,
+    /environment:\s+name: cloud-production/,
+  );
+  assert.doesNotMatch(
+    productionMonitor,
+    /SERVICE_ROLE|DB_PASSWORD|SMOKE_PASSWORD|SMOKE_EMAIL/,
+  );
 });

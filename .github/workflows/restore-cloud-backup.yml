@@ -1,0 +1,241 @@
+name: Restore WebCloud encrypted backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Dedicated restore target
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - canary
+          - production
+      backup_run_id:
+        description: Successful backup workflow run ID
+        required: true
+        type: string
+      artifact_name:
+        description: Encrypted artifact name from that run
+        required: true
+        type: string
+      approval_evidence:
+        description: HTTPS incident or drill approval URL
+        required: true
+        type: string
+      confirmation:
+        description: Type RESTORE TEST ENVIRONMENT or RESTORE PRODUCTION FROM ENCRYPTED BACKUP
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: webcloud-${{ inputs.target }}-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Restore current schema and encrypted data
+    runs-on:
+      - self-hosted
+      - linux
+      - dealpilot-dr
+    timeout-minutes: 60
+    environment:
+      name: cloud-${{ inputs.target }}
+    env:
+      RESTORE_TARGET: ${{ inputs.target }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ inputs.target == 'production' && secrets.SUPABASE_DB_PASSWORD || inputs.target == 'canary' && secrets.CANARY_SUPABASE_DB_PASSWORD || secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ inputs.target == 'production' && secrets.SUPABASE_PROJECT_REF || inputs.target == 'canary' && secrets.CANARY_SUPABASE_PROJECT_REF || secrets.PREVIEW_SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: ${{ inputs.target == 'production' && secrets.VITE_SUPABASE_URL || inputs.target == 'canary' && secrets.CANARY_VITE_SUPABASE_URL || secrets.PREVIEW_VITE_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.target == 'production' && secrets.SUPABASE_SERVICE_ROLE_KEY || inputs.target == 'canary' && secrets.CANARY_SUPABASE_SERVICE_ROLE_KEY || secrets.PREVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+      DATABASE_URL: ${{ inputs.target == 'production' && secrets.PRODUCTION_DATABASE_URL || inputs.target == 'canary' && secrets.CANARY_DATABASE_URL || secrets.PREVIEW_DATABASE_URL }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+      DR_RESTORE_ALLOWED: ${{ vars.DR_RESTORE_ALLOWED }}
+      AGE_IDENTITY_FILE: ${{ vars.AGE_IDENTITY_FILE }}
+      ATTACHMENTS_BUCKET: attachments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.110.0
+      - name: Validate restore authority and isolated target
+        shell: bash
+        env:
+          APPROVAL_EVIDENCE: ${{ inputs.approval_evidence }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Restore must be dispatched from main." >&2
+            exit 1
+          fi
+          for variable in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY DATABASE_URL PRODUCTION_PROJECT_REF AGE_IDENTITY_FILE; do
+            if [ -z "${!variable:-}" ]; then
+              echo "Missing required configuration: $variable" >&2
+              exit 1
+            fi
+          done
+          if [ "$DR_RESTORE_ALLOWED" != "true" ]; then
+            echo "Target environment is not explicitly dedicated to destructive restore." >&2
+            exit 1
+          fi
+          case "$AGE_IDENTITY_FILE" in
+            /*) ;;
+            *) echo "AGE_IDENTITY_FILE must be an absolute runner-local path." >&2; exit 1 ;;
+          esac
+          if [[ "$AGE_IDENTITY_FILE" == "$GITHUB_WORKSPACE"/* ]] || [[ "$AGE_IDENTITY_FILE" == "$RUNNER_TEMP"/* ]] || [ ! -f "$AGE_IDENTITY_FILE" ]; then
+            echo "Offline age identity is absent or stored in an unsafe runner path." >&2
+            exit 1
+          fi
+          identity_mode="$(stat -c '%a' "$AGE_IDENTITY_FILE")"
+          if [ "$identity_mode" != "400" ] && [ "$identity_mode" != "600" ]; then
+            echo "Offline age identity must have mode 0400 or 0600." >&2
+            exit 1
+          fi
+          if [[ ! "$BACKUP_RUN_ID" =~ ^[0-9]+$ ]] || [[ ! "$ARTIFACT_NAME" =~ ^dealpilot-dr-${BACKUP_RUN_ID}-[0-9]+$ ]]; then
+            echo "Backup run ID or artifact name has an invalid format." >&2
+            exit 1
+          fi
+          if [[ ! "$APPROVAL_EVIDENCE" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "approval_evidence must be a single HTTPS URL." >&2
+            exit 1
+          fi
+          if [ "$RESTORE_TARGET" = "production" ]; then
+            if [ "$CONFIRMATION" != "RESTORE PRODUCTION FROM ENCRYPTED BACKUP" ]; then
+              echo "Production restore confirmation does not match." >&2
+              exit 1
+            fi
+            if [ "$SUPABASE_PROJECT_REF" != "$PRODUCTION_PROJECT_REF" ]; then
+              echo "Production restore target does not match the registered production project." >&2
+              exit 1
+            fi
+          else
+            if [ "$CONFIRMATION" != "RESTORE TEST ENVIRONMENT" ]; then
+              echo "Test restore confirmation does not match." >&2
+              exit 1
+            fi
+            if [ "$SUPABASE_PROJECT_REF" = "$PRODUCTION_PROJECT_REF" ]; then
+              echo "Preview/canary restore must not target production." >&2
+              exit 1
+            fi
+          fi
+          if [[ ! "$SUPABASE_URL" =~ ^https://$SUPABASE_PROJECT_REF\.supabase\.co/?$ ]]; then
+            echo "SUPABASE_URL does not match the selected project ref." >&2
+            exit 1
+          fi
+          if [[ "$DATABASE_URL" != postgresql://* ]] || [[ "$DATABASE_URL" != *"$SUPABASE_PROJECT_REF"* ]]; then
+            echo "DATABASE_URL must be a percent-encoded PostgreSQL URL for the selected project." >&2
+            exit 1
+          fi
+      - name: Verify backup run provenance before download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/dealpilot-backup-run.json"
+          curl --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPOSITORY/actions/runs/$BACKUP_RUN_ID" \
+            --output "$response"
+          jq --exit-status \
+            --arg repository "$REPOSITORY" \
+            '.repository.full_name == $repository and
+             .path == ".github/workflows/backup-cloud.yml" and
+             .head_branch == "main" and
+             .conclusion == "success"' \
+            "$response" > /dev/null || {
+              echo "Backup run provenance verification failed." >&2
+              exit 1
+            }
+          rm -f "$response"
+      - name: Download encrypted archive from successful backup run
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ runner.temp }}/dealpilot-dr-download
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.backup_run_id }}
+      - name: Install age from Ubuntu repository
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+      - name: Decrypt and verify archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          download="$RUNNER_TEMP/dealpilot-dr-download"
+          encrypted_files=("$download"/*.tar.age)
+          if [ "${#encrypted_files[@]}" -ne 1 ] || [ ! -f "${encrypted_files[0]}" ]; then
+            echo "Artifact must contain exactly one encrypted archive." >&2
+            exit 1
+          fi
+          archive="$RUNNER_TEMP/dealpilot-restore.tar"
+          payload="$RUNNER_TEMP/dealpilot-restore-payload"
+          mkdir -p "$payload"
+          age --decrypt --identity "$AGE_IDENTITY_FILE" --output "$archive" "${encrypted_files[0]}"
+          members="$RUNNER_TEMP/dealpilot-tar-members.txt"
+          tar --list --file "$archive" > "$members"
+          if awk 'BEGIN { bad=0 } /^\// || /(^|\/)\.\.($|\/)/ { bad=1 } END { exit bad ? 0 : 1 }' "$members"; then
+            echo "Archive contains an unsafe path." >&2
+            exit 1
+          fi
+          tar --extract --file "$archive" --directory "$payload" --no-same-owner --no-same-permissions
+          rm -f "$archive" "$members"
+          node scripts/disaster-recovery-manifest.mjs verify "$payload"
+          echo "DR_PAYLOAD=$payload" >> "$GITHUB_ENV"
+      - name: Reset target to current forward schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase db reset --linked --no-seed --yes
+      - name: Replace Auth identities and restore relational data
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --no-psqlrc <<'SQL'
+          begin;
+          set local session_replication_role = replica;
+          truncate table auth.instances cascade;
+          commit;
+          SQL
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --no-psqlrc --single-transaction --file "$DR_PAYLOAD/database.sql"
+      - name: Replace and verify private attachment objects
+        env:
+          DR_CLEAR_TARGET: "true"
+        run: node scripts/storage-disaster-recovery.mjs restore "$DR_PAYLOAD/storage"
+      - name: Remove plaintext and record restore evidence
+        if: always()
+        shell: bash
+        env:
+          APPROVAL_EVIDENCE: ${{ inputs.approval_evidence }}
+        run: |
+          rm -rf "$RUNNER_TEMP/dealpilot-restore-payload" "$RUNNER_TEMP/dealpilot-dr-download"
+          {
+            echo "### Controlled encrypted-backup restore"
+            echo "- Target: $RESTORE_TARGET"
+            echo "- Backup run: ${{ inputs.backup_run_id }}"
+            echo "- Current schema commit: $GITHUB_SHA"
+            echo "- Approval evidence: $APPROVAL_EVIDENCE"
+            echo "- Plaintext retained as artifact: no"
+          } >> "$GITHUB_STEP_SUMMARY"

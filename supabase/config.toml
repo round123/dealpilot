@@ -74,3 +74,6 @@ verify_jwt = true
 
 [functions.delete-account]
 verify_jwt = true
+
+[functions.admin-account-cleanup]
+verify_jwt = true

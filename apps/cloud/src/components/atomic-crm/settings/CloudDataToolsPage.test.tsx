@@ -1,5 +1,9 @@
-import type { BackupSnapshot } from "@dealpilot/api-client";
-import { CoreAdminContext } from "ra-core";
+import {
+  API_ERROR_CODES,
+  ApiError,
+  type BackupSnapshot,
+} from "@dealpilot/api-client";
+import { CoreAdminContext, type DataProvider } from "ra-core";
 import fakeDataProvider from "ra-data-fakerest";
 import { render } from "vitest-browser-react";
 
@@ -16,6 +20,20 @@ const cryptoMocks = vi.hoisted(() => ({
   inspectEncryptedBackupArchive: vi.fn(),
 }));
 
+const xlsxMocks = vi.hoisted(() => ({
+  writeFile: vi.fn(),
+}));
+
+const uiMocks = vi.hoisted(() => ({
+  notify: vi.fn(),
+}));
+
+vi.mock("ra-core", async (importOriginal) => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  ...(await importOriginal<typeof import("ra-core")>()),
+  useNotify: () => uiMocks.notify,
+}));
+
 vi.mock("../providers/apiClient", () => ({
   getCloudApiClient: () => ({
     backups: mocks,
@@ -23,6 +41,12 @@ vi.mock("../providers/apiClient", () => ({
 }));
 
 vi.mock("./encryptedCloudBackup", () => cryptoMocks);
+
+vi.mock("xlsx", async (importOriginal) => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  ...(await importOriginal<typeof import("xlsx")>()),
+  writeFile: xlsxMocks.writeFile,
+}));
 
 import { CloudDataToolsPage } from "./CloudDataToolsPage";
 
@@ -62,21 +86,32 @@ const i18nProvider = {
   getLocale: () => "zh-CN",
 };
 
-const renderPage = () =>
+const exportResources = [
+  "companies",
+  "contacts",
+  "social_accounts",
+  "deals",
+  "follow_ups",
+  "reminders",
+  "deal_risks",
+  "deal_milestones",
+];
+
+const createFakeDataProvider = () =>
+  fakeDataProvider({
+    companies: [],
+    contacts: [],
+    social_accounts: [],
+    deals: [],
+    follow_ups: [],
+    reminders: [],
+    deal_risks: [],
+    deal_milestones: [],
+  });
+
+const renderPage = (dataProvider: DataProvider = createFakeDataProvider()) =>
   render(
-    <CoreAdminContext
-      dataProvider={fakeDataProvider({
-        companies: [],
-        contacts: [],
-        social_accounts: [],
-        deals: [],
-        follow_ups: [],
-        reminders: [],
-        deal_risks: [],
-        deal_milestones: [],
-      })}
-      i18nProvider={i18nProvider}
-    >
+    <CoreAdminContext dataProvider={dataProvider} i18nProvider={i18nProvider}>
       <CloudDataToolsPage />
     </CoreAdminContext>,
   );
@@ -100,6 +135,8 @@ describe("CloudDataToolsPage", () => {
       .mockReset()
       .mockResolvedValue(new Blob(["encrypted"]));
     cryptoMocks.inspectEncryptedBackupArchive.mockReset();
+    xlsxMocks.writeFile.mockReset();
+    uiMocks.notify.mockReset();
   });
 
   it("loads snapshot metadata and creates a cloud backup", async () => {
@@ -118,6 +155,145 @@ describe("CloudDataToolsPage", () => {
     await screen.getByRole("button", { name: "创建云端备份" }).click();
     await expect.poll(() => mocks.create.mock.calls.length).toBe(1);
     expect(mocks.create).toHaveBeenCalledWith({ label: "手动备份" });
+  });
+
+  it("loads all standard export resources with one bounded abort signal", async () => {
+    const dataProvider = createFakeDataProvider();
+    const releases: Array<() => void> = [];
+    const getList = vi
+      .spyOn(dataProvider, "getList")
+      .mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            releases.push(() => resolve({ data: [], total: 0 })),
+          ),
+      );
+    const screen = await renderPage(dataProvider);
+
+    await screen.getByRole("button", { name: "导出 Excel" }).click();
+    await expect
+      .poll(
+        () =>
+          getList.mock.calls.filter(([resource]) =>
+            exportResources.includes(resource),
+          ).length,
+      )
+      .toBe(exportResources.length);
+
+    const exportCalls = getList.mock.calls.filter(([resource]) =>
+      exportResources.includes(resource),
+    );
+    expect(exportCalls.map(([resource]) => resource).sort()).toEqual(
+      [...exportResources].sort(),
+    );
+    const signals = exportCalls.map(([, params]) => params.signal);
+    expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true);
+    expect(new Set(signals).size).toBe(1);
+    releases.forEach((release) => release());
+    await expect
+      .element(screen.getByRole("button", { name: "导出 Excel" }))
+      .toBeEnabled();
+    expect(xlsxMocks.writeFile).toHaveBeenCalledOnce();
+  });
+
+  it("exports customers through the cursor API's 100-row page limit", async () => {
+    const dataProvider = createFakeDataProvider();
+    const getList = vi
+      .spyOn(dataProvider, "getList")
+      .mockImplementation(async (resource, params) => {
+        if (resource !== "companies") return { data: [], total: 0 };
+        return {
+          data: [{ id: `customer-page-${params.pagination!.page}` }],
+          total: 201,
+        };
+      });
+    const screen = await renderPage(dataProvider);
+
+    await screen.getByRole("button", { name: "导出 Excel" }).click();
+    await expect.poll(() => xlsxMocks.writeFile.mock.calls.length).toBe(1);
+
+    const customerCalls = getList.mock.calls.filter(
+      ([resource]) => resource === "companies",
+    );
+    expect(customerCalls.map(([, params]) => params.pagination)).toEqual([
+      { page: 1, perPage: 100 },
+      { page: 2, perPage: 100 },
+      { page: 3, perPage: 100 },
+    ]);
+    expect(
+      customerCalls.every(([, params]) => params.signal instanceof AbortSignal),
+    ).toBe(true);
+  });
+
+  it("maps the 30 second abort deadline to a Chinese timeout notification", async () => {
+    const dataProvider = createFakeDataProvider();
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    const timeout = vi
+      .spyOn(window, "setTimeout")
+      .mockImplementation((handler, delay) => {
+        if (delay === 30_000) {
+          queueMicrotask(() => handler());
+          return 30_000 as unknown as ReturnType<typeof setTimeout>;
+        }
+        return nativeSetTimeout(handler, delay) as unknown as ReturnType<
+          typeof window.setTimeout
+        >;
+      });
+    const getList = vi
+      .spyOn(dataProvider, "getList")
+      .mockImplementation((_resource, params) => {
+        const signal = params.signal!;
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () =>
+              reject(
+                new ApiError({
+                  code: API_ERROR_CODES.aborted,
+                  message: "Request was aborted",
+                }),
+              ),
+            { once: true },
+          );
+        });
+      });
+
+    try {
+      const screen = await renderPage(dataProvider);
+      await screen.getByRole("button", { name: "导出 Excel" }).click();
+      await expect.poll(() => uiMocks.notify.mock.calls.length).toBe(1);
+      expect(uiMocks.notify).toHaveBeenCalledWith(
+        "云端数据导出超时，请检查网络后重试",
+        { type: "error" },
+      );
+      expect(getList).toHaveBeenCalledTimes(exportResources.length);
+      expect(
+        getList.mock.calls.every(([, params]) => params.signal?.aborted),
+      ).toBe(true);
+      expect(xlsxMocks.writeFile).not.toHaveBeenCalled();
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it("rejects exports over 10000 rows without creating a download", async () => {
+    const dataProvider = createFakeDataProvider();
+    const getList = vi
+      .spyOn(dataProvider, "getList")
+      .mockImplementation(async (resource) => ({
+        data: [],
+        total: resource === "companies" ? 10_001 : 0,
+      }));
+    const screen = await renderPage(dataProvider);
+
+    await screen.getByRole("button", { name: "导出 Excel" }).click();
+    await expect.poll(() => uiMocks.notify.mock.calls.length).toBe(1);
+    expect(uiMocks.notify).toHaveBeenCalledWith(
+      "客户数据超过 10000 条，请联系管理员执行分批导出",
+      { type: "error" },
+    );
+    expect(getList).toHaveBeenCalledTimes(exportResources.length);
+    expect(xlsxMocks.writeFile).not.toHaveBeenCalled();
   });
 
   it("requires explicit confirmation before restoring a snapshot", async () => {

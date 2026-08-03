@@ -1,4 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import * as XLSX from "xlsx";
 
 type PreviewEnvironment = {
   url: string;
@@ -108,8 +110,13 @@ test("hosted Preview preserves account isolation and the Customer Web lifecycle"
       );
 
       await alphaPage.goto(`/#/companies/${createdTargetId}`);
-      await alphaPage.locator('input[name="name"]').fill(targetName);
-      await alphaPage.locator('input[name="company"]').fill(`Target ${suffix}`);
+      const customerNameInput = alphaPage.locator('input[name="name"]');
+      const customerCompanyInput = alphaPage.locator('input[name="company"]');
+      await customerNameInput.fill(targetName);
+      await customerCompanyInput.fill(`Target ${suffix}`);
+      await customerCompanyInput.blur();
+      await expect(customerNameInput).toHaveValue(targetName);
+      await expect(customerCompanyInput).toHaveValue(`Target ${suffix}`);
       const updateResponsePromise = waitForPostgrestResponse(
         alphaPage,
         "PATCH",
@@ -555,6 +562,238 @@ test("hosted Preview preserves account isolation and the Customer Web lifecycle"
   }
 });
 
+test("hosted Preview imports CSV persistently and exports isolated XLSX data", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const environment = requirePreviewEnvironment();
+  const suffix = `preview-data-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+  const alphaSession = await signIn(environment, environment.alpha);
+  const betaSession = await signIn(environment, environment.beta);
+  const asAlpha = authenticatedRequest(environment, alphaSession);
+  const asBeta = authenticatedRequest(environment, betaSession);
+  const importedCustomerName = `CSV Customer ${suffix}`;
+  const importedCompany = `CSV Company ${suffix}`;
+  const importedContactName = `CSV Contact ${suffix}`;
+  const importedEmail = `${suffix}@example.com`;
+  const betaCustomerId = crypto.randomUUID();
+  const betaCustomerName = `Export must exclude ${suffix}`;
+  const context = await browser.newContext({ acceptDownloads: true });
+  const page = await context.newPage();
+  let importedCustomerId: string | undefined;
+
+  try {
+    await insert(asBeta, "companies", {
+      id: betaCustomerId,
+      name: betaCustomerName,
+    });
+    await login(page, environment.alpha);
+
+    await test.step("Web imports a real CSV fixture and persists it after refresh", async () => {
+      const csv = [
+        "客户名称,公司,联系人,邮箱",
+        [
+          importedCustomerName,
+          importedCompany,
+          importedContactName,
+          importedEmail,
+        ].join(","),
+      ].join("\r\n");
+
+      await page.goto("/#/import");
+      await page.locator('input[type="file"]').setInputFiles({
+        name: `customers-${suffix}.csv`,
+        mimeType: "text/csv",
+        buffer: Buffer.from(csv, "utf8"),
+      });
+      await expect(page.getByText(`customers-${suffix}.csv`)).toBeVisible();
+      await page.getByRole("button", { name: "解析并继续" }).click();
+
+      await expect(
+        page.getByRole("heading", { name: "字段映射", exact: true }),
+      ).toBeVisible();
+      for (const [fieldLabel, sourceColumn] of [
+        ["客户名称", "客户名称"],
+        ["公司", "公司"],
+        ["联系人", "联系人"],
+        ["邮箱", "邮箱"],
+      ] as const) {
+        await selectImportSource(page, fieldLabel, sourceColumn);
+      }
+      await page.getByRole("button", { name: "下一步" }).click();
+
+      await expect(
+        page.getByText(importedCustomerName, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(importedContactName, { exact: true }),
+      ).toBeVisible();
+      const commitResponsePromise = waitForRpcResponse(
+        page,
+        "commit_customer_import",
+      );
+      await page.getByRole("button", { name: "确认导入" }).click();
+      const commitResponse = await commitResponsePromise;
+      expect(
+        commitResponse.ok(),
+        `CSV import failed with HTTP ${commitResponse.status()}: ${await commitResponse.text()}`,
+      ).toBe(true);
+      await expect(
+        page.getByRole("heading", { name: "导入完成", exact: true }),
+      ).toBeVisible();
+
+      const importedCustomers = await expectJson<
+        Array<{ id: string; name: string; company: string }>
+      >(
+        await asAlpha(
+          `/rest/v1/companies?name=eq.${encodeURIComponent(importedCustomerName)}&select=id,name,company`,
+        ),
+        200,
+      );
+      expect(importedCustomers).toEqual([
+        {
+          id: expect.any(String),
+          name: importedCustomerName,
+          company: importedCompany,
+        },
+      ]);
+      importedCustomerId = importedCustomers[0]!.id;
+
+      const importedContacts = await expectJson<
+        Array<{
+          company_id: string;
+          name: string;
+          email_jsonb: Array<{ email: string; type: string }>;
+        }>
+      >(
+        await asAlpha(
+          `/rest/v1/contacts?company_id=eq.${importedCustomerId}&select=company_id,name,email_jsonb`,
+        ),
+        200,
+      );
+      expect(importedContacts).toEqual([
+        {
+          company_id: importedCustomerId,
+          name: importedContactName,
+          email_jsonb: [{ email: importedEmail, type: "Work" }],
+        },
+      ]);
+
+      await page.goto("/#/companies");
+      await page.reload();
+      const search = page.getByPlaceholder(/search|搜索/i).first();
+      await expect(search).toBeVisible();
+      await search.fill(importedCustomerName);
+      await expect(
+        page.getByText(importedCustomerName, { exact: true }).first(),
+      ).toBeVisible();
+    });
+
+    await test.step("Web exports an XLSX containing only the signed-in account data", async () => {
+      const diagnostics = observeExportDiagnostics(page);
+      await page.goto("/#/settings/cloud-data");
+      await expect(
+        page.getByRole("heading", { name: "导出与数据管理", exact: true }),
+      ).toBeVisible();
+
+      try {
+        const exportButton = page.getByRole("button", { name: "导出 Excel" });
+        await expect(exportButton).toBeEnabled();
+        const downloadPromise = page
+          .waitForEvent("download", { timeout: 45_000 })
+          .then((download) => ({ kind: "download" as const, download }));
+        const exportErrorPromise = page
+          .getByText(
+            /云端数据导出超时，请检查网络后重试|云端数据导出失败，请重试|数据超过 10000 条/,
+          )
+          .waitFor({ state: "visible", timeout: 45_000 })
+          .then(() => ({ kind: "error" as const }));
+        await exportButton.click();
+        const outcome = await Promise.race([
+          downloadPromise,
+          exportErrorPromise,
+        ]).catch(async (error) => {
+          throw new Error(
+            `XLSX export did not start within 45 seconds. ${await diagnostics.summary()}`,
+            { cause: error },
+          );
+        });
+        if (outcome.kind === "error") {
+          throw new Error(
+            `XLSX export reported an application error. ${await diagnostics.summary()}`,
+          );
+        }
+        const { download } = outcome;
+        expect(download.suggestedFilename()).toMatch(
+          /^dealpilot-cloud-export-.*\.xlsx$/,
+        );
+        const downloadPath = await download.path();
+        expect(downloadPath).not.toBeNull();
+        const workbook = XLSX.read(await readFile(downloadPath!), {
+          type: "buffer",
+        });
+        expect(workbook.SheetNames).toEqual([
+          "客户",
+          "联系人",
+          "社媒账号",
+          "项目",
+          "跟进",
+          "提醒",
+          "项目风险",
+          "项目里程碑",
+          "导出说明",
+        ]);
+
+        const customerRows = sheetRows(workbook, "客户");
+        expect(customerRows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: importedCustomerName,
+              company: importedCompany,
+            }),
+          ]),
+        );
+        expect(customerRows.some((row) => row.name === betaCustomerName)).toBe(
+          false,
+        );
+
+        const contactRows = sheetRows(workbook, "联系人");
+        const exportedContact = contactRows.find(
+          (row) => row.name === importedContactName,
+        );
+        expect(exportedContact).toBeDefined();
+        expect(String(exportedContact!.email_jsonb)).toContain(importedEmail);
+
+        expect(sheetRows(workbook, "导出说明")).toEqual(
+          expect.arrayContaining([
+            { 字段: "数据来源", 值: "DealPilot Cloud / Supabase" },
+            { 字段: "说明", 值: "仅包含当前账号在 RLS 授权范围内的数据" },
+          ]),
+        );
+      } finally {
+        diagnostics.dispose();
+      }
+    });
+  } finally {
+    await closeContext(context);
+    const cleanupResponses = await Promise.all([
+      asAlpha(
+        `/rest/v1/companies?name=eq.${encodeURIComponent(importedCustomerName)}`,
+        { method: "DELETE" },
+      ),
+      asBeta(`/rest/v1/companies?id=eq.${betaCustomerId}`, {
+        method: "DELETE",
+      }),
+    ]);
+    for (const response of cleanupResponses) {
+      expect(
+        response.ok,
+        `Preview data-tools cleanup failed with HTTP ${response.status}: ${await response.text()}`,
+      ).toBe(true);
+    }
+  }
+});
+
 const authenticatedRequest = (
   environment: Pick<PreviewEnvironment, "url" | "anonKey">,
   session: UserSession,
@@ -636,6 +875,88 @@ const waitForRpcResponse = (page: Page, name: string) =>
     );
   });
 
+const observeExportDiagnostics = (page: Page) => {
+  const events: string[] = [];
+  const onResponse = (response: import("@playwright/test").Response) => {
+    const request = response.request();
+    const url = new URL(response.url());
+    if (
+      request.method() === "GET" &&
+      (url.pathname.includes("/rest/v1/") ||
+        url.pathname.includes("/functions/v1/"))
+    ) {
+      events.push(
+        `${request.method()} ${url.pathname} -> ${response.status()}`,
+      );
+    }
+  };
+  const onRequestFailed = (request: import("@playwright/test").Request) => {
+    const url = new URL(request.url());
+    events.push(
+      `${request.method()} ${url.pathname} -> requestfailed: ${request.failure()?.errorText ?? "unknown"}`,
+    );
+  };
+  const onPageError = (error: Error) =>
+    events.push(`pageerror: ${error.message}`);
+  page.on("response", onResponse);
+  page.on("requestfailed", onRequestFailed);
+  page.on("pageerror", onPageError);
+
+  return {
+    dispose() {
+      page.off("response", onResponse);
+      page.off("requestfailed", onRequestFailed);
+      page.off("pageerror", onPageError);
+    },
+    async summary() {
+      const alerts = await page
+        .locator('[role="alert"]')
+        .allTextContents()
+        .catch(() => []);
+      const button = page.getByRole("button", {
+        name: /导出 Excel|正在导出/,
+      });
+      const buttonState = await button
+        .evaluate((element: HTMLButtonElement) => ({
+          disabled: element.disabled,
+          text: element.textContent?.trim() ?? "",
+        }))
+        .catch(() => ({ disabled: true, text: "unavailable" }));
+      return `button=${JSON.stringify(buttonState)}; alerts=${JSON.stringify(alerts)}; network=${JSON.stringify(events)}`;
+    },
+  };
+};
+
+const closeContext = async (
+  context: import("@playwright/test").BrowserContext,
+) => {
+  try {
+    await context.close();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /Failed to find context|Target page, context or browser has been closed/.test(
+        error.message,
+      )
+    ) {
+      return;
+    }
+    throw error;
+  }
+};
+
+const selectImportSource = async (
+  page: Page,
+  fieldLabel: string,
+  sourceColumn: string,
+) => {
+  await page.getByLabel(`${fieldLabel}源列`, { exact: true }).click();
+  await page.getByRole("option", { name: sourceColumn, exact: true }).click();
+  await expect(
+    page.getByLabel(`${fieldLabel}源列`, { exact: true }),
+  ).toContainText(sourceColumn);
+};
+
 const waitForPostgrestResponse = (
   page: Page,
   method: "GET" | "PATCH",
@@ -684,6 +1005,15 @@ const readReminder = async (
   );
   expect(rows).toHaveLength(1);
   return rows[0];
+};
+
+const sheetRows = (
+  workbook: XLSX.WorkBook,
+  sheetName: string,
+): Array<Record<string, unknown>> => {
+  const sheet = workbook.Sheets[sheetName];
+  expect(sheet, `Missing XLSX sheet: ${sheetName}`).toBeDefined();
+  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet!);
 };
 
 const expectJson = async <T>(

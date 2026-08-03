@@ -24,6 +24,9 @@ psql postgres://postgres:postgres@127.0.0.1:54322/postgres `
 psql postgres://postgres:postgres@127.0.0.1:54322/postgres `
   -v ON_ERROR_STOP=1 `
   -f supabase/tests/personal_isolation.sql
+psql postgres://postgres:postgres@127.0.0.1:54322/postgres `
+  -v ON_ERROR_STOP=1 `
+  -f supabase/tests/data_retention.sql
 ```
 
 Both SQL checks are transactional and leave no fixture data behind.
@@ -79,8 +82,8 @@ Customers remain restorable for 30 days. Expired deletion uses a durable queue:
    snapshot. New paths move the job back to `retry`; a stable snapshot allows
    the Customer delete and relational FK cascades to commit atomically.
 4. Storage or RPC failures keep the Customer and queue row, record the error,
-   and retry with bounded exponential backoff. Completed queue rows remain as
-   operational evidence and are never reclaimed.
+   and retry with bounded exponential backoff. Completed or cancelled queue
+   rows remain as operational evidence for 180 days after their last update.
 
 The queue deliberately has no Customer foreign key, so its object paths and
 retry state survive the cascade. It has forced RLS, no policies, and no direct
@@ -116,3 +119,15 @@ The optional body accepts `cutoff`, `enqueue_limit` (1-500), and `claim_limit`
 (1-100). An empty JSON body uses the 30-day cutoff and bounded defaults. Cron
 overlap is safe because enqueue is unique by Customer and claims use row locks
 with `SKIP LOCKED`; abandoned leases become claimable again after 15 minutes.
+
+PostgreSQL `pg_cron` runs `enforce_data_retention(now())` daily at 03:17 UTC.
+This database-local schedule does not depend on a GitHub environment approval
+and only deletes relational records: backup snapshots older than 35 days,
+audit events older than 180 days, and completed/cancelled Customer purge jobs
+whose last update is older than 180 days. The service-role-only RPC returns
+deletion counts inside the standard `{ "data": ... }` envelope and is replay-safe.
+
+Import source files are parsed only in the browser and are never uploaded.
+`import_jobs` stores idempotency results and summaries, and remains outside
+automatic TTL until that record type receives an explicit approved retention
+period.
