@@ -360,7 +360,24 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   await expect(
     page.getByText(`${cursorToken}-01`, { exact: true }),
   ).toHaveCount(0);
+  const unfilteredCustomersResponse = page.waitForResponse((response) => {
+    if (!response.url().endsWith("/rest/v1/rpc/list_customers_cursor")) {
+      return false;
+    }
+    try {
+      const body = response.request().postDataJSON() as {
+        p_grade?: unknown;
+        p_search?: unknown;
+      };
+      return body.p_search === cursorToken && body.p_grade === null;
+    } catch {
+      return false;
+    }
+  });
   await page.getByRole("button", { name: "A", exact: true }).click();
+  const unfilteredResponse = await unfilteredCustomersResponse;
+  expect(unfilteredResponse.ok()).toBe(true);
+  await unfilteredResponse.finished();
   await expect(
     page.getByText(`${cursorToken}-01`, { exact: true }),
   ).toBeVisible();
