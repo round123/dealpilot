@@ -40,7 +40,7 @@ jobs:
           scripts/cloud-smoke.test.mjs
           scripts/release-workflows.test.mjs
       - name: Verify retired V1 runtime stays absent
-        run: pnpm audit:retirement
+        run: node scripts/check-v1-retirement.mjs
       - uses: pnpm/action-setup@v4
         with:
           version: 9.0.0
