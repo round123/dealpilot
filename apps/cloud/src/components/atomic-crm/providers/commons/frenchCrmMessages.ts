@@ -179,6 +179,18 @@ export const frenchCrmMessages = {
         merging: "Fusion...",
         no_additional_data: "Aucune donnée supplémentaire à fusionner",
         select_target: "Veuillez sélectionner un contact avec lequel fusionner",
+        summary: {
+          deals:
+            "%{smart_count} projet mettra à jour son contact |||| %{smart_count} projets mettront à jour leur contact",
+          emails:
+            "%{smart_count} adresse e-mail sera ajoutée |||| %{smart_count} adresses e-mail seront ajoutées",
+          notes:
+            "%{smart_count} note sera réaffectée |||| %{smart_count} notes seront réaffectées",
+          phones:
+            "%{smart_count} numéro de téléphone sera ajouté |||| %{smart_count} numéros de téléphone seront ajoutés",
+          tasks:
+            "%{smart_count} tâche sera réaffectée |||| %{smart_count} tâches seront réaffectées",
+        },
         success: "Contacts fusionnés avec succès",
         target_contact: "Contact cible (sera conservé)",
         title: "Fusionner les contacts",

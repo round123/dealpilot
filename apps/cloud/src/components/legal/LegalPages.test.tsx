@@ -31,6 +31,12 @@ describe("public legal pages", () => {
       .element(screen.getByText(/云备份创建满 35 天后自动淘汰/))
       .toBeVisible();
     await expect.element(screen.getByText(/摘要当前随账号保留/)).toBeVisible();
+    await expect
+      .element(screen.getByText(/默认不会向 Gravatar 发送邮箱哈希/))
+      .toBeVisible();
+    await expect
+      .element(screen.getByText(/不会根据客户邮箱域名请求 favicon/))
+      .toBeVisible();
 
     await screen.getByRole("link", { name: "查看服务条款" }).click();
     await expect

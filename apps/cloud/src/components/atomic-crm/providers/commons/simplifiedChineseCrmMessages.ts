@@ -490,6 +490,13 @@ export const simplifiedChineseCrmMessages: CrmMessages = {
         merging: "正在合并...",
         no_additional_data: "没有可补充的数据",
         select_target: "请选择要合并到的联系人",
+        summary: {
+          deals: "%{smart_count} 个项目将更新联系人",
+          emails: "%{smart_count} 个邮箱地址将添加到保留联系人",
+          notes: "%{smart_count} 条备注将转移到保留联系人",
+          phones: "%{smart_count} 个电话号码将添加到保留联系人",
+          tasks: "%{smart_count} 项任务将转移到保留联系人",
+        },
         success: "联系人合并成功",
         target_contact: "目标联系人（将被保留）",
         title: "合并联系人",

@@ -1,97 +1,56 @@
-import { fetchWithTimeout } from "../../misc/fetchWithTimeout";
 import type { Contact, EmailAndType } from "../../types";
-import { getContactAvatar, hash } from "./getContactAvatar";
-
-vi.mock("../../misc/fetchWithTimeout", () => ({
-  fetchWithTimeout: vi.fn(),
-}));
+import { getContactAvatar } from "./getContactAvatar";
 
 describe("getContactAvatar", () => {
-  afterAll(() => {
-    vi.resetAllMocks();
+  it("returns an explicitly stored avatar unchanged", async () => {
+    const avatar = "https://storage.example.test/signed/avatar.png";
+
+    await expect(
+      getContactAvatar({
+        avatar: { src: avatar },
+        first_name: "Ada",
+        email_jsonb: [{ email: "ada@example.com", type: "Work" }],
+      }),
+    ).resolves.toBe(avatar);
   });
-  beforeEach(() => {
-    vi.mocked(fetchWithTimeout).mockReset();
-    vi.mocked(fetchWithTimeout).mockResolvedValue({ ok: false } as Response);
+
+  it("generates a local initials data URL without making a network request", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const avatar = await getContactAvatar({
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email_jsonb: [{ email: "ada@example.com", type: "Work" }],
+    });
+
+    expect(avatar).toMatch(/^data:image\/svg\+xml;charset=UTF-8,/);
+    expect(decodeURIComponent(avatar?.split(",", 2)[1] ?? "")).toContain(
+      ">AL</text>",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
-  it("should return gravatar URL for anthony@marmelab.com", async () => {
-    vi.mocked(fetchWithTimeout).mockResolvedValue({ ok: true } as Response);
+
+  it("uses the email local part only to generate initials locally", async () => {
     const email: EmailAndType[] = [
       { email: "anthony@marmelab.com", type: "Work" },
     ];
-    const record: Partial<Contact> = { email_jsonb: email };
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    const avatarUrl = await getContactAvatar(record);
-    const hashedEmail = await hash(email[0].email);
-    expect(avatarUrl).toBe(
-      `https://www.gravatar.com/avatar/${hashedEmail}?d=404`,
+    const avatar = await getContactAvatar({ email_jsonb: email });
+
+    expect(decodeURIComponent(avatar?.split(",", 2)[1] ?? "")).toContain(
+      ">A</text>",
     );
+    expect(avatar).not.toContain("gravatar");
+    expect(avatar).not.toContain("marmelab.com");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
-  it("should return favicon URL if gravatar does not exist", async () => {
-    vi.mocked(fetchWithTimeout)
-      .mockResolvedValueOnce({ ok: false } as Response)
-      .mockResolvedValueOnce({ ok: true } as Response);
-    const email: EmailAndType[] = [
-      { email: "no-gravatar@gravatar.com", type: "Work" },
-    ];
-    const record: Partial<Contact> = { email_jsonb: email };
+  it("returns null when there is no stored avatar or local initial source", async () => {
+    const record: Partial<Contact> = { email_jsonb: [] };
 
-    const avatarUrl = await getContactAvatar(record);
-    expect(avatarUrl).toBe("https://gravatar.com/favicon.ico");
-  });
-
-  it("should not return favicon URL if not domain not allowed", async () => {
-    const email: EmailAndType[] = [
-      { email: "no-gravatar@gmail.com", type: "Work" },
-    ];
-    const record: Partial<Contact> = { email_jsonb: email };
-
-    const avatarUrl = await getContactAvatar(record);
-    expect(avatarUrl).toBeNull();
-  });
-
-  it("should return null if no email is provided", async () => {
-    const record: Partial<Contact> = {};
-
-    const avatarUrl = await getContactAvatar(record);
-    expect(avatarUrl).toBeNull();
-  });
-
-  it("should return null if an empty array is provided", async () => {
-    const email: EmailAndType[] = [];
-    const record: Partial<Contact> = { email_jsonb: email };
-
-    const avatarUrl = await getContactAvatar(record);
-    expect(avatarUrl).toBeNull();
-  });
-
-  it("should return null if email has no gravatar or validate domain", async () => {
-    vi.mocked(fetchWithTimeout).mockResolvedValue({ ok: false } as Response);
-    const email: EmailAndType[] = [
-      { email: "anthony@fake-domain-marmelab.com", type: "Work" },
-    ];
-    const record: Partial<Contact> = { email_jsonb: email };
-
-    const avatarUrl = await getContactAvatar(record);
-    expect(avatarUrl).toBeNull();
-  });
-
-  it("should return gravatar URL for 2nd email if 1st email has no gravatar nor valid domain", async () => {
-    vi.mocked(fetchWithTimeout)
-      .mockResolvedValueOnce({ ok: false } as Response)
-      .mockResolvedValueOnce({ ok: false } as Response)
-      .mockResolvedValueOnce({ ok: true } as Response);
-    const email: EmailAndType[] = [
-      { email: "anthony@fake-domain-marmelab.com", type: "Work" },
-      { email: "anthony@marmelab.com", type: "Work" },
-    ];
-    const record: Partial<Contact> = { email_jsonb: email };
-
-    const avatarUrl = await getContactAvatar(record);
-    const hashedEmail = await hash(email[1].email);
-    expect(avatarUrl).toBe(
-      `https://www.gravatar.com/avatar/${hashedEmail}?d=404`,
-    );
+    await expect(getContactAvatar(record)).resolves.toBeNull();
   });
 });

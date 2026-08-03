@@ -57,6 +57,84 @@ interface ContactMergeDialogProps {
   onClose: () => void;
 }
 
+interface ContactMergeSummaryProps {
+  notesCount?: number;
+  tasksCount?: number;
+  dealsCount?: number;
+  emailCount: number;
+  phoneCount: number;
+}
+
+export const ContactMergeSummary = ({
+  notesCount,
+  tasksCount,
+  dealsCount,
+  emailCount,
+  phoneCount,
+}: ContactMergeSummaryProps) => {
+  const translate = useTranslate();
+  const hasAdditionalData = Boolean(
+    notesCount || tasksCount || dealsCount || emailCount || phoneCount,
+  );
+
+  return (
+    <ul className="ml-4 list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+      {!!notesCount && (
+        <li>
+          {translate("resources.contacts.merge.summary.notes", {
+            smart_count: notesCount,
+            count: notesCount,
+            _: `${notesCount} 条备注将转移到保留联系人`,
+          })}
+        </li>
+      )}
+      {!!tasksCount && (
+        <li>
+          {translate("resources.contacts.merge.summary.tasks", {
+            smart_count: tasksCount,
+            count: tasksCount,
+            _: `${tasksCount} 项任务将转移到保留联系人`,
+          })}
+        </li>
+      )}
+      {!!dealsCount && (
+        <li>
+          {translate("resources.contacts.merge.summary.deals", {
+            smart_count: dealsCount,
+            count: dealsCount,
+            _: `${dealsCount} 个项目将更新联系人`,
+          })}
+        </li>
+      )}
+      {!!emailCount && (
+        <li>
+          {translate("resources.contacts.merge.summary.emails", {
+            smart_count: emailCount,
+            count: emailCount,
+            _: `${emailCount} 个邮箱地址将添加到保留联系人`,
+          })}
+        </li>
+      )}
+      {!!phoneCount && (
+        <li>
+          {translate("resources.contacts.merge.summary.phones", {
+            smart_count: phoneCount,
+            count: phoneCount,
+            _: `${phoneCount} 个电话号码将添加到保留联系人`,
+          })}
+        </li>
+      )}
+      {!hasAdditionalData && (
+        <li className="text-muted-foreground/60">
+          {translate("resources.contacts.merge.no_additional_data", {
+            _: "没有需要合并的附加数据",
+          })}
+        </li>
+      )}
+    </ul>
+  );
+};
+
 const ContactMergeDialog = ({ open, onClose }: ContactMergeDialogProps) => {
   const loserContact = useRecordContext<Contact>();
   const notify = useNotify();
@@ -225,54 +303,13 @@ const ContactMergeDialog = ({ open, onClose }: ContactMergeDialogProps) => {
                     _: "What will be merged:",
                   })}
                 </p>
-                <ul className="text-sm text-muted-foreground space-y-1 ml-4">
-                  {notesCount != null && notesCount > 0 && (
-                    <li>
-                      • {notesCount} note
-                      {notesCount !== 1 ? "s" : ""} will be reassigned
-                    </li>
-                  )}
-                  {tasksCount != null && tasksCount > 0 && (
-                    <li>
-                      • {tasksCount} task
-                      {tasksCount !== 1 ? "s" : ""} will be reassigned
-                    </li>
-                  )}
-                  {dealsCount != null && dealsCount > 0 && (
-                    <li>
-                      • {dealsCount} deal
-                      {dealsCount !== 1 ? "s" : ""} will be updated
-                    </li>
-                  )}
-                  {loserContact.email_jsonb?.length > 0 && (
-                    <li>
-                      • {loserContact.email_jsonb.length} email address
-                      {loserContact.email_jsonb.length !== 1 ? "es" : ""} will
-                      be added
-                    </li>
-                  )}
-                  {loserContact.phone_jsonb?.length > 0 && (
-                    <li>
-                      • {loserContact.phone_jsonb.length} phone number
-                      {loserContact.phone_jsonb.length !== 1 ? "s" : ""} will be
-                      added
-                    </li>
-                  )}
-                  {!notesCount &&
-                    !tasksCount &&
-                    !dealsCount &&
-                    !loserContact.email_jsonb?.length &&
-                    !loserContact.phone_jsonb?.length && (
-                      <li className="text-muted-foreground/60">
-                        {translate(
-                          "resources.contacts.merge.no_additional_data",
-                          {
-                            _: "No additional data to merge",
-                          },
-                        )}
-                      </li>
-                    )}
-                </ul>
+                <ContactMergeSummary
+                  notesCount={notesCount}
+                  tasksCount={tasksCount}
+                  dealsCount={dealsCount}
+                  emailCount={loserContact.email_jsonb?.length ?? 0}
+                  phoneCount={loserContact.phone_jsonb?.length ?? 0}
+                />
               </div>
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
