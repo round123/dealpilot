@@ -27,6 +27,13 @@ test("quality CI tests and runs the V2 production audit after install", () => {
   assert.ok(audit > install);
 });
 
+test("CI runs PR commits once and reserves push validation for main", () => {
+  const triggers = ci.slice(0, ci.indexOf("\n\nconcurrency:"));
+  assert.match(triggers, /pull_request:/);
+  assert.match(triggers, /push:\s+branches:\s+- main/);
+  assert.doesNotMatch(triggers, /codex\/\*\*/);
+});
+
 test("database security CI gates Dashboard, backup, retention, and account cleanup", () => {
   const databaseSecurity = ci.slice(ci.indexOf("  database-security:"));
   const reset = databaseSecurity.indexOf("supabase db reset");

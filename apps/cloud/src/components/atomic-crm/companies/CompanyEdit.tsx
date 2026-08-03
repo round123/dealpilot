@@ -1,6 +1,7 @@
-import { EditBase, Form } from "ra-core";
+import { EditBase, Form, useEditContext } from "ra-core";
 import { Card, CardContent } from "@/components/ui/card";
 
+import type { Company } from "../types";
 import { CompanyInputs } from "./CompanyInputs";
 import { CompanyAside } from "./CompanyAside";
 import { FormToolbar } from "../layout/FormToolbar";
@@ -18,8 +19,17 @@ export const CompanyEdit = () => (
       return values;
     }}
   >
+    <CompanyEditContent />
+  </EditBase>
+);
+
+const CompanyEditContent = () => {
+  const { isPending, record } = useEditContext<Company>();
+  if (isPending || !record) return null;
+
+  return (
     <div className="mt-2 flex gap-8">
-      <Form className="flex flex-1 flex-col gap-4 pb-2">
+      <Form className="flex flex-1 flex-col gap-4 pb-2" record={record}>
         <Card>
           <CardContent>
             <CompanyInputs />
@@ -30,5 +40,5 @@ export const CompanyEdit = () => (
 
       <CompanyAside link="show" />
     </div>
-  </EditBase>
-);
+  );
+};
