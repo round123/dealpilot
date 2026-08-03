@@ -110,10 +110,46 @@ test("hosted Preview preserves account isolation and the Customer Web lifecycle"
       await alphaPage.goto(`/#/companies/${createdTargetId}`);
       await alphaPage.locator('input[name="name"]').fill(targetName);
       await alphaPage.locator('input[name="company"]').fill(`Target ${suffix}`);
+      const updateResponsePromise = waitForPostgrestResponse(
+        alphaPage,
+        "PATCH",
+        "companies",
+        createdTargetId,
+      );
       await alphaPage.getByRole("button", { name: /保存/i }).click();
+      const updateResponse = await updateResponsePromise;
+      expect(
+        updateResponse.ok(),
+        `Customer update failed with HTTP ${updateResponse.status()}: ${await updateResponse.text()}`,
+      ).toBe(true);
       await expect(alphaPage).toHaveURL(
         new RegExp(`#/companies/${createdTargetId}/show(?:/.*)?$`),
       );
+
+      const persistedCustomers = await expectJson<
+        Array<{ id: string; name: string; company: string }>
+      >(
+        await asAlpha(
+          `/rest/v1/companies?id=eq.${createdTargetId}&select=id,name,company`,
+        ),
+        200,
+      );
+      expect(persistedCustomers).toEqual([
+        {
+          id: createdTargetId,
+          name: targetName,
+          company: `Target ${suffix}`,
+        },
+      ]);
+
+      const refreshedCustomerResponse = waitForPostgrestResponse(
+        alphaPage,
+        "GET",
+        "companies_summary",
+        createdTargetId,
+      );
+      await alphaPage.reload();
+      expect((await refreshedCustomerResponse).ok()).toBe(true);
       await expect(
         alphaPage.getByRole("heading", { name: targetName, exact: true }),
       ).toBeVisible();
@@ -597,6 +633,21 @@ const waitForRpcResponse = (page: Page, name: string) =>
     return (
       response.request().method() === "POST" &&
       url.pathname.endsWith(`/rest/v1/rpc/${name}`)
+    );
+  });
+
+const waitForPostgrestResponse = (
+  page: Page,
+  method: "GET" | "PATCH",
+  resource: string,
+  id: string,
+) =>
+  page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === method &&
+      url.pathname.endsWith(`/rest/v1/${resource}`) &&
+      url.searchParams.get("id") === `eq.${id}`
     );
   });
 
