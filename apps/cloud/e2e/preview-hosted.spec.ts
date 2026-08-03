@@ -606,7 +606,14 @@ test("hosted Preview imports CSV persistently and exports isolated XLSX data", a
       await expect(
         page.getByRole("heading", { name: "字段映射", exact: true }),
       ).toBeVisible();
-      await expect(page.getByLabel("客户名称源列")).toContainText("客户名称");
+      for (const [fieldLabel, sourceColumn] of [
+        ["客户名称", "客户名称"],
+        ["公司", "公司"],
+        ["联系人", "联系人"],
+        ["邮箱", "邮箱"],
+      ] as const) {
+        await selectImportSource(page, fieldLabel, sourceColumn);
+      }
       await page.getByRole("button", { name: "下一步" }).click();
 
       await expect(
@@ -830,6 +837,18 @@ const waitForRpcResponse = (page: Page, name: string) =>
       url.pathname.endsWith(`/rest/v1/rpc/${name}`)
     );
   });
+
+const selectImportSource = async (
+  page: Page,
+  fieldLabel: string,
+  sourceColumn: string,
+) => {
+  await page.getByLabel(`${fieldLabel}源列`, { exact: true }).click();
+  await page.getByRole("option", { name: sourceColumn, exact: true }).click();
+  await expect(
+    page.getByLabel(`${fieldLabel}源列`, { exact: true }),
+  ).toContainText(sourceColumn);
+};
 
 const waitForPostgrestResponse = (
   page: Page,
