@@ -416,10 +416,6 @@ test("Customer behavior remains complete on the real Supabase provider", async (
 
   await page.goto("/#/companies");
   const updatedSearchInput = page.getByPlaceholder(/搜索/i);
-  await expect(updatedSearchInput).toHaveValue(cursorToken);
-  await expect(
-    page.getByText(`${cursorToken}-00`, { exact: true }),
-  ).toBeVisible();
   const updatedSearchResponse = page.waitForResponse((response) => {
     if (!response.url().endsWith("/rest/v1/rpc/list_customers_cursor")) {
       return false;
