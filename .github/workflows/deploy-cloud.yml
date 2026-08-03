@@ -272,6 +272,14 @@ jobs:
           PREVIEW_E2E_BETA_EMAIL: ${{ secrets.PREVIEW_E2E_BETA_EMAIL }}
           PREVIEW_E2E_BETA_PASSWORD: ${{ secrets.PREVIEW_E2E_BETA_PASSWORD }}
         run: pnpm --filter @dealpilot/cloud test:e2e:preview
+      - name: Upload hosted Preview E2E failure evidence
+        if: failure() && needs.plan.outputs.channel == 'preview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-hosted-e2e-${{ needs.plan.outputs.release_sha }}
+          path: apps/cloud/test-results/preview-hosted-e2e
+          if-no-files-found: warn
+          retention-days: 7
       - name: Record preview/canary evidence
         if: needs.plan.outputs.channel != 'production'
         shell: bash

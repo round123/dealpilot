@@ -209,6 +209,8 @@ test("Preview gates the built artifact with ordinary hosted accounts and data to
     deploy,
     /Hosted CSV import persistence and isolated XLSX export: passed/,
   );
+  assert.match(deploy, /Upload hosted Preview E2E failure evidence/);
+  assert.match(deploy, /path: apps\/cloud\/test-results\/preview-hosted-e2e/);
   assert.doesNotMatch(
     deploy.match(
       /- name: Gate Preview with hosted account, import, and export acceptance[\s\S]*?(?=\n      - name:)/,

@@ -684,61 +684,90 @@ test("hosted Preview imports CSV persistently and exports isolated XLSX data", a
     });
 
     await test.step("Web exports an XLSX containing only the signed-in account data", async () => {
+      const diagnostics = observeExportDiagnostics(page);
       await page.goto("/#/settings/cloud-data");
       await expect(
         page.getByRole("heading", { name: "导出与数据管理", exact: true }),
       ).toBeVisible();
 
-      const downloadPromise = page.waitForEvent("download");
-      await page.getByRole("button", { name: "导出 Excel" }).click();
-      const download = await downloadPromise;
-      expect(download.suggestedFilename()).toMatch(
-        /^dealpilot-cloud-export-.*\.xlsx$/,
-      );
-      const downloadPath = await download.path();
-      expect(downloadPath).not.toBeNull();
-      const workbook = XLSX.readFile(downloadPath!);
-      expect(workbook.SheetNames).toEqual([
-        "客户",
-        "联系人",
-        "社媒账号",
-        "项目",
-        "跟进",
-        "提醒",
-        "项目风险",
-        "项目里程碑",
-        "导出说明",
-      ]);
+      try {
+        const exportButton = page.getByRole("button", { name: "导出 Excel" });
+        await expect(exportButton).toBeEnabled();
+        const downloadPromise = page
+          .waitForEvent("download", { timeout: 45_000 })
+          .then((download) => ({ kind: "download" as const, download }));
+        const exportErrorPromise = page
+          .getByText(
+            /云端数据导出超时，请检查网络后重试|云端数据导出失败，请重试|数据超过 10000 条/,
+          )
+          .waitFor({ state: "visible", timeout: 45_000 })
+          .then(() => ({ kind: "error" as const }));
+        await exportButton.click();
+        const outcome = await Promise.race([
+          downloadPromise,
+          exportErrorPromise,
+        ]).catch(async (error) => {
+          throw new Error(
+            `XLSX export did not start within 45 seconds. ${await diagnostics.summary()}`,
+            { cause: error },
+          );
+        });
+        if (outcome.kind === "error") {
+          throw new Error(
+            `XLSX export reported an application error. ${await diagnostics.summary()}`,
+          );
+        }
+        const { download } = outcome;
+        expect(download.suggestedFilename()).toMatch(
+          /^dealpilot-cloud-export-.*\.xlsx$/,
+        );
+        const downloadPath = await download.path();
+        expect(downloadPath).not.toBeNull();
+        const workbook = XLSX.readFile(downloadPath!);
+        expect(workbook.SheetNames).toEqual([
+          "客户",
+          "联系人",
+          "社媒账号",
+          "项目",
+          "跟进",
+          "提醒",
+          "项目风险",
+          "项目里程碑",
+          "导出说明",
+        ]);
 
-      const customerRows = sheetRows(workbook, "客户");
-      expect(customerRows).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            name: importedCustomerName,
-            company: importedCompany,
-          }),
-        ]),
-      );
-      expect(customerRows.some((row) => row.name === betaCustomerName)).toBe(
-        false,
-      );
+        const customerRows = sheetRows(workbook, "客户");
+        expect(customerRows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: importedCustomerName,
+              company: importedCompany,
+            }),
+          ]),
+        );
+        expect(customerRows.some((row) => row.name === betaCustomerName)).toBe(
+          false,
+        );
 
-      const contactRows = sheetRows(workbook, "联系人");
-      const exportedContact = contactRows.find(
-        (row) => row.name === importedContactName,
-      );
-      expect(exportedContact).toBeDefined();
-      expect(String(exportedContact!.email_jsonb)).toContain(importedEmail);
+        const contactRows = sheetRows(workbook, "联系人");
+        const exportedContact = contactRows.find(
+          (row) => row.name === importedContactName,
+        );
+        expect(exportedContact).toBeDefined();
+        expect(String(exportedContact!.email_jsonb)).toContain(importedEmail);
 
-      expect(sheetRows(workbook, "导出说明")).toEqual(
-        expect.arrayContaining([
-          { 字段: "数据来源", 值: "DealPilot Cloud / Supabase" },
-          { 字段: "说明", 值: "仅包含当前账号在 RLS 授权范围内的数据" },
-        ]),
-      );
+        expect(sheetRows(workbook, "导出说明")).toEqual(
+          expect.arrayContaining([
+            { 字段: "数据来源", 值: "DealPilot Cloud / Supabase" },
+            { 字段: "说明", 值: "仅包含当前账号在 RLS 授权范围内的数据" },
+          ]),
+        );
+      } finally {
+        diagnostics.dispose();
+      }
     });
   } finally {
-    await context.close();
+    await closeContext(context);
     const cleanupResponses = await Promise.all([
       asAlpha(
         `/rest/v1/companies?name=eq.${encodeURIComponent(importedCustomerName)}`,
@@ -837,6 +866,76 @@ const waitForRpcResponse = (page: Page, name: string) =>
       url.pathname.endsWith(`/rest/v1/rpc/${name}`)
     );
   });
+
+const observeExportDiagnostics = (page: Page) => {
+  const events: string[] = [];
+  const onResponse = (response: import("@playwright/test").Response) => {
+    const request = response.request();
+    const url = new URL(response.url());
+    if (
+      request.method() === "GET" &&
+      (url.pathname.includes("/rest/v1/") ||
+        url.pathname.includes("/functions/v1/"))
+    ) {
+      events.push(
+        `${request.method()} ${url.pathname} -> ${response.status()}`,
+      );
+    }
+  };
+  const onRequestFailed = (request: import("@playwright/test").Request) => {
+    const url = new URL(request.url());
+    events.push(
+      `${request.method()} ${url.pathname} -> requestfailed: ${request.failure()?.errorText ?? "unknown"}`,
+    );
+  };
+  const onPageError = (error: Error) =>
+    events.push(`pageerror: ${error.message}`);
+  page.on("response", onResponse);
+  page.on("requestfailed", onRequestFailed);
+  page.on("pageerror", onPageError);
+
+  return {
+    dispose() {
+      page.off("response", onResponse);
+      page.off("requestfailed", onRequestFailed);
+      page.off("pageerror", onPageError);
+    },
+    async summary() {
+      const alerts = await page
+        .locator('[role="alert"]')
+        .allTextContents()
+        .catch(() => []);
+      const button = page.getByRole("button", {
+        name: /导出 Excel|正在导出/,
+      });
+      const buttonState = await button
+        .evaluate((element: HTMLButtonElement) => ({
+          disabled: element.disabled,
+          text: element.textContent?.trim() ?? "",
+        }))
+        .catch(() => ({ disabled: true, text: "unavailable" }));
+      return `button=${JSON.stringify(buttonState)}; alerts=${JSON.stringify(alerts)}; network=${JSON.stringify(events)}`;
+    },
+  };
+};
+
+const closeContext = async (
+  context: import("@playwright/test").BrowserContext,
+) => {
+  try {
+    await context.close();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /Failed to find context|Target page, context or browser has been closed/.test(
+        error.message,
+      )
+    ) {
+      return;
+    }
+    throw error;
+  }
+};
 
 const selectImportSource = async (
   page: Page,
