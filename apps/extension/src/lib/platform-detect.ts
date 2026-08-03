@@ -181,7 +181,9 @@ export function detectConversation(): ConversationInfo | null {
  * 使用 MutationObserver + hashchange 事件监听。
  */
 export function onConversationChange(callback: (info: ConversationInfo | null) => void): () => void {
-  let lastKey = "";
+  // Keep the initial state distinct from an unsupported/non-conversation page.
+  // Otherwise the first `null` result is suppressed and the float panel remains idle.
+  let lastKey: string | null = null;
 
   const check = () => {
     const info = detectConversation();
