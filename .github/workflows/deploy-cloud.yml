@@ -16,9 +16,13 @@ on:
         description: Approval URL matching an exceptional migration marker
         required: false
         type: string
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
   push:
     branches:
-      - main
       - "codex/**"
     paths:
       - ".github/workflows/deploy-cloud.yml"
@@ -39,12 +43,17 @@ permissions:
   id-token: write
 
 concurrency:
-  group: webcloud-${{ github.event_name == 'push' && github.ref_name == 'main' && 'production' || inputs.channel || 'preview' }}
+  group: webcloud-${{ github.event_name == 'workflow_run' && 'production' || github.event_name == 'push' && 'preview' || inputs.channel || 'preview' }}
   cancel-in-progress: false
 
 jobs:
   plan:
     name: Plan release and gate migrations
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -54,36 +63,58 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - name: Resolve deployment channel
         id: release
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
           REQUESTED_CHANNEL: ${{ inputs.channel || '' }}
+          CI_EVENT: ${{ github.event.workflow_run.event || '' }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          CI_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          WORKFLOW_SHA: ${{ github.sha }}
         run: |
           channel="$REQUESTED_CHANNEL"
-          if [ "${{ github.event_name }}" = "push" ]; then
-            if [ "${{ github.ref_name }}" = "main" ]; then
-              channel="production"
-            else
-              channel="preview"
+          release_sha="$WORKFLOW_SHA"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "$CI_EVENT" != "push" ] || \
+               [ "$CI_CONCLUSION" != "success" ] || \
+               [ "$CI_HEAD_BRANCH" != "main" ]; then
+              echo "Production deployment requires a successful CI push run on main." >&2
+              exit 1
             fi
+            channel="production"
+            release_sha="$CI_HEAD_SHA"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            channel="preview"
           fi
 
           case "$channel" in
             preview|canary|production) ;;
             *) echo "Unsupported deployment channel: $channel" >&2; exit 1 ;;
           esac
-          if [ "$channel" = "production" ] && [ "${{ github.ref_name }}" != "main" ]; then
+          if [ "$channel" = "production" ] && \
+             [ "$EVENT_NAME" != "workflow_run" ] && \
+             [ "$REF_NAME" != "main" ]; then
             echo "Production deployment is restricted to the main workflow ref." >&2
+            exit 1
+          fi
+          if [[ ! "$release_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Release SHA must be a full lowercase commit SHA." >&2
             exit 1
           fi
 
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
-          echo "release_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
       - name: Enforce forward-compatible PostgreSQL migrations
+        if: github.event_name != 'workflow_run'
         shell: bash
         env:
           MIGRATION_APPROVAL: ${{ inputs.migration_approval || '' }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             mapfile -t migration_files < <(git ls-files 'supabase/migrations/*.sql')
@@ -97,7 +128,7 @@ jobs:
             fi
             node scripts/check-migration-compatibility.mjs \
               --base "$base_sha" \
-              --head "${{ github.sha }}" \
+              --head "$RELEASE_SHA" \
               --approval "$MIGRATION_APPROVAL"
           fi
 
@@ -113,9 +144,11 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ needs.plan.outputs.channel == 'production' && secrets.SUPABASE_ACCESS_TOKEN || needs.plan.outputs.channel == 'canary' && secrets.CANARY_SUPABASE_ACCESS_TOKEN || secrets.PREVIEW_SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ needs.plan.outputs.channel == 'production' && secrets.SUPABASE_DB_PASSWORD || needs.plan.outputs.channel == 'canary' && secrets.CANARY_SUPABASE_DB_PASSWORD || secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ needs.plan.outputs.channel == 'production' && secrets.SUPABASE_PROJECT_REF || needs.plan.outputs.channel == 'canary' && secrets.CANARY_SUPABASE_PROJECT_REF || secrets.PREVIEW_SUPABASE_PROJECT_REF }}
-      PRODUCTION_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.release_sha }}
       - uses: supabase/setup-cli@v1
         with:
           version: 2.110.0
@@ -125,11 +158,12 @@ jobs:
           test -n "$SUPABASE_ACCESS_TOKEN"
           test -n "$SUPABASE_DB_PASSWORD"
           test -n "$SUPABASE_PROJECT_REF"
-          if [ "$RELEASE_CHANNEL" != "production" ] && \
-             [ -n "$PRODUCTION_PROJECT_REF" ] && \
-             [ "$SUPABASE_PROJECT_REF" = "$PRODUCTION_PROJECT_REF" ]; then
-            echo "Preview/canary project must not equal the production project." >&2
-            exit 1
+          if [ "$RELEASE_CHANNEL" != "production" ]; then
+            test -n "$PRODUCTION_PROJECT_REF"
+            if [ "$SUPABASE_PROJECT_REF" = "$PRODUCTION_PROJECT_REF" ]; then
+              echo "Preview/canary project must not equal the production project." >&2
+              exit 1
+            fi
           fi
       - name: Link selected Supabase project
         run: >-
@@ -171,6 +205,8 @@ jobs:
       VITE_ATTACHMENTS_BUCKET: attachments
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.release_sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 9.0.0
@@ -264,15 +300,24 @@ jobs:
       SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
       RELEASE_SHA: ${{ needs.plan.outputs.release_sha }}
+      CLOUD_SMOKE_REQUIRE_AUTHENTICATED: "true"
+      CLOUD_SMOKE_EMAIL: ${{ secrets.CLOUD_SMOKE_EMAIL }}
+      CLOUD_SMOKE_PASSWORD: ${{ secrets.CLOUD_SMOKE_PASSWORD }}
+      CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON: ${{ secrets.CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.release_sha }}
       - name: Validate smoke configuration
         shell: bash
         run: |
           test -n "$CLOUD_WEB_URL"
           test -n "$SUPABASE_URL"
           test -n "$SUPABASE_PUBLISHABLE_KEY"
-      - name: Run pre-login smoke
+          test -n "$CLOUD_SMOKE_EMAIL"
+          test -n "$CLOUD_SMOKE_PASSWORD"
+          test -n "$CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON"
+      - name: Run authenticated production smoke
         run: node scripts/cloud-smoke.mjs
       - name: Record production release evidence
         shell: bash
@@ -282,5 +327,5 @@ jobs:
             echo "- Release SHA: $RELEASE_SHA"
             echo "- Web: $CLOUD_WEB_URL"
             echo "- PostgreSQL fact source: unchanged current production project"
-            echo "- Pre-login smoke: passed"
+            echo "- Authenticated Customer count and related summary: passed"
           } >> "$GITHUB_STEP_SUMMARY"
