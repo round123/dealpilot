@@ -22,11 +22,12 @@ Preview 和 canary 不部署 GitHub Pages，因为公开 Pages 的 PR preview �
 
 仓库或对应环境需提供：
 
-- Production：`SUPABASE_ACCESS_TOKEN`、`SUPABASE_DB_PASSWORD`、`SUPABASE_PROJECT_REF`、`VITE_SUPABASE_URL`、`VITE_SB_PUBLISHABLE_KEY`，以及回滚业务 smoke 使用的 `CLOUD_SMOKE_EMAIL`、`CLOUD_SMOKE_PASSWORD`、`CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON`。
-- Preview：同名字段加 `PREVIEW_` 前缀。
-- Canary：同名字段加 `CANARY_` 前缀。
+- 仓库共享部署凭据：`SUPABASE_ACCESS_TOKEN`。这是 Supabase CLI 使用的账号级 PAT，preview、canary 和 production 共用；不要再为各发布通道创建带前缀的 access token secret。
+- Production：`SUPABASE_DB_PASSWORD`、`SUPABASE_PROJECT_REF`、`VITE_SUPABASE_URL`、`VITE_SB_PUBLISHABLE_KEY`，以及回滚业务 smoke 使用的 `CLOUD_SMOKE_EMAIL`、`CLOUD_SMOKE_PASSWORD`、`CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON`。
+- Preview：`PREVIEW_SUPABASE_DB_PASSWORD`、`PREVIEW_SUPABASE_PROJECT_REF`、`PREVIEW_VITE_SUPABASE_URL`、`PREVIEW_VITE_SB_PUBLISHABLE_KEY`。
+- Canary：`CANARY_SUPABASE_DB_PASSWORD`、`CANARY_SUPABASE_PROJECT_REF`、`CANARY_VITE_SUPABASE_URL`、`CANARY_VITE_SB_PUBLISHABLE_KEY`。
 
-Preview/canary project ref 与 production 相同会被工作流拒绝。
+Supabase PAT 不能按单个项目收窄权限，因此项目隔离不依赖 PAT。工作流按发布通道选择独立的 project ref 和数据库密码，并用 `PRODUCTION_SUPABASE_PROJECT_REF` 变量校验 preview/canary 目标不得等于 production；任何目标变量缺失也会在 link 或 migration 前失败。
 
 生产 smoke 账号只用于读取一条稳定的合成 Customer，不得使用真实客户数据。`CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON` 固定该账号可见的活动 Customer 总数和样本关联摘要，例如：
 

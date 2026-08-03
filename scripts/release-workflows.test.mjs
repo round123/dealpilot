@@ -68,6 +68,12 @@ test("manual production dispatch is restricted to main", () => {
 
 test("non-main releases use isolated preview/canary credentials", () => {
   assert.match(deploy, /elif \[ "\$EVENT_NAME" = "push" \]; then\s+channel="preview"/);
+  assert.match(
+    deploy,
+    /SUPABASE_ACCESS_TOKEN: \$\{\{ secrets\.SUPABASE_ACCESS_TOKEN \}\}/,
+  );
+  assert.doesNotMatch(deploy, /PREVIEW_SUPABASE_ACCESS_TOKEN/);
+  assert.doesNotMatch(deploy, /CANARY_SUPABASE_ACCESS_TOKEN/);
   assert.match(deploy, /PREVIEW_SUPABASE_PROJECT_REF/);
   assert.match(deploy, /CANARY_SUPABASE_PROJECT_REF/);
   assert.match(
