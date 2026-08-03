@@ -117,6 +117,30 @@ test("production requires an authenticated Customer smoke baseline", () => {
   );
 });
 
+test("Preview gates the built artifact with two ordinary hosted accounts", () => {
+  assert.match(deploy, /Gate Preview with hosted two-account acceptance/);
+  assert.match(deploy, /test:e2e:preview/);
+  assert.match(
+    deploy,
+    /build-web:[\s\S]*?environment:\s+name: cloud-\$\{\{ needs\.plan\.outputs\.channel \}\}/,
+  );
+  assert.match(
+    deploy,
+    /PLAYWRIGHT_BROWSERS_PATH: \$\{\{ github\.workspace \}\}\/\.playwright-browsers/,
+  );
+  assert.match(deploy, /secrets\.PREVIEW_E2E_ALPHA_EMAIL/);
+  assert.match(deploy, /secrets\.PREVIEW_E2E_ALPHA_PASSWORD/);
+  assert.match(deploy, /secrets\.PREVIEW_E2E_BETA_EMAIL/);
+  assert.match(deploy, /secrets\.PREVIEW_E2E_BETA_PASSWORD/);
+  assert.match(deploy, /Hosted two-account Customer acceptance: passed/);
+  assert.doesNotMatch(
+    deploy.match(
+      /- name: Gate Preview with hosted two-account acceptance[\s\S]*?(?=\n      - name:)/,
+    )?.[0] ?? "",
+    /SERVICE_ROLE/,
+  );
+});
+
 test("rollback redeploys only immutable Edge and Web application code", () => {
   assert.match(rollback, /verified_sha must be a full lowercase commit SHA/);
   assert.match(rollback, /git merge-base --is-ancestor/);

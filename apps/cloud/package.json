@@ -23,6 +23,7 @@
     "test:e2e:pwa": "playwright test --config playwright.pwa.config.ts",
     "build:pwa:test": "cross-env VITE_IS_DEMO=false VITE_SUPABASE_URL=http://127.0.0.1:54321 VITE_SB_PUBLISHABLE_KEY=pwa-test-public-key vite build --mode production",
     "test:e2e:supabase": "playwright test --config playwright.supabase.config.ts",
+    "test:e2e:preview": "playwright test --config playwright.preview.config.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },

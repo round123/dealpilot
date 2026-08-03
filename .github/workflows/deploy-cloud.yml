@@ -197,10 +197,13 @@ jobs:
       - plan
       - deploy-backend
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    environment:
+      name: cloud-${{ needs.plan.outputs.channel }}
     env:
       RELEASE_CHANNEL: ${{ needs.plan.outputs.channel }}
       RELEASE_SHA: ${{ needs.plan.outputs.release_sha }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
       VITE_IS_DEMO: "false"
       VITE_SUPABASE_URL: ${{ needs.plan.outputs.channel == 'production' && secrets.VITE_SUPABASE_URL || needs.plan.outputs.channel == 'canary' && secrets.CANARY_VITE_SUPABASE_URL || secrets.PREVIEW_VITE_SUPABASE_URL }}
       VITE_SB_PUBLISHABLE_KEY: ${{ needs.plan.outputs.channel == 'production' && secrets.VITE_SB_PUBLISHABLE_KEY || needs.plan.outputs.channel == 'canary' && secrets.CANARY_VITE_SB_PUBLISHABLE_KEY || secrets.PREVIEW_VITE_SB_PUBLISHABLE_KEY }}
@@ -256,6 +259,19 @@ jobs:
             --host 127.0.0.1 --port 4188 \
             > /tmp/dealpilot-preview.log 2>&1 &
           node scripts/cloud-smoke.mjs
+      - name: Install hosted Preview E2E browser
+        if: needs.plan.outputs.channel == 'preview'
+        run: pnpm --filter @dealpilot/cloud exec playwright install --with-deps chromium
+      - name: Gate Preview with hosted two-account acceptance
+        if: needs.plan.outputs.channel == 'preview'
+        env:
+          SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ env.VITE_SB_PUBLISHABLE_KEY }}
+          PREVIEW_E2E_ALPHA_EMAIL: ${{ secrets.PREVIEW_E2E_ALPHA_EMAIL }}
+          PREVIEW_E2E_ALPHA_PASSWORD: ${{ secrets.PREVIEW_E2E_ALPHA_PASSWORD }}
+          PREVIEW_E2E_BETA_EMAIL: ${{ secrets.PREVIEW_E2E_BETA_EMAIL }}
+          PREVIEW_E2E_BETA_PASSWORD: ${{ secrets.PREVIEW_E2E_BETA_PASSWORD }}
+        run: pnpm --filter @dealpilot/cloud test:e2e:preview
       - name: Record preview/canary evidence
         if: needs.plan.outputs.channel != 'production'
         shell: bash
@@ -266,6 +282,9 @@ jobs:
             echo "- PostgreSQL target: isolated $RELEASE_CHANNEL project"
             echo "- Web artifact: cloud-$RELEASE_CHANNEL-$RELEASE_SHA"
             echo "- Pre-login smoke: passed"
+            if [ "$RELEASE_CHANNEL" = "preview" ]; then
+              echo "- Hosted two-account Customer acceptance: passed"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-web:
