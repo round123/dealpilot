@@ -972,7 +972,7 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   ).toEqual(expectedAtomicContactIds.map((contact_id) => ({ contact_id })));
 });
 
-test("account deletion removes the authenticated user and all owned data", async () => {
+test("self-service account deletion is disabled and preserves owned data", async () => {
   test.setTimeout(90_000);
   const environment = requireSupabaseAdminEnvironment();
   const userIds = requireSeededUserIds();
@@ -1091,28 +1091,38 @@ test("account deletion removes the authenticated user and all owned data", async
       },
     );
     expect(
-      await expectJson<{ data: { deleted: boolean } }>(deleteResponse, 200),
-    ).toEqual({ data: { deleted: true } });
+      await expectJson<{
+        error: { code: string; message: string; request_id: string };
+      }>(deleteResponse, 404),
+    ).toEqual({
+      error: {
+        code: "FEATURE_DISABLED",
+        message: "Self-service account deletion is not available",
+        request_id: requestId,
+      },
+    });
     expect(deleteResponse.headers.get("x-request-id")).toBe(requestId);
 
-    const deletedAuthUser = await adminFetch(
+    const preservedAuthUser = await adminFetch(
       `/auth/v1/admin/users/${createdUserId}`,
     );
-    expect(deletedAuthUser.status).toBe(404);
+    expect(preservedAuthUser.status).toBe(200);
 
     // The service role intentionally has no direct profile/contact table grants.
     // Schema tests verify those cascades; this E2E checks the customer root.
-    const deletedCompanies = await expectJson<unknown[]>(
+    const preservedCompanies = await expectJson<Array<{ id: string }>>(
       await adminFetch(
         `/rest/v1/companies?owner_user_id=eq.${createdUserId}&select=id`,
       ),
       200,
     );
-    expect(deletedCompanies).toEqual([]);
+    expect(preservedCompanies).toEqual([{ id: companyId }]);
 
-    expect(await listAttachmentObjects(adminFetch, createdUserId)).toEqual([]);
+    expect(await listAttachmentObjects(adminFetch, createdUserId)).not.toEqual(
+      [],
+    );
 
-    const deletedUserLogin = await fetchSupabase(
+    const preservedUserLogin = await fetchSupabase(
       new URL("/auth/v1/token?grant_type=password", environment.url),
       {
         method: "POST",
@@ -1123,7 +1133,7 @@ test("account deletion removes the authenticated user and all owned data", async
         body: JSON.stringify({ email, password }),
       },
     );
-    expect(deletedUserLogin.status).toBe(400);
+    expect(preservedUserLogin.status).toBe(200);
 
     const alphaSession = await signIn(
       environment,

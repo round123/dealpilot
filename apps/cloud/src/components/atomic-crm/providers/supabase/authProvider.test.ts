@@ -16,7 +16,6 @@ const createAccount = (): PersonalAccountApi => ({
   resetPassword: vi.fn(),
   exchangeCodeForSession: vi.fn(),
   updatePassword: vi.fn(),
-  deleteAccount: vi.fn(),
 });
 
 describe("personal auth provider", () => {

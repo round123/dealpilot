@@ -35,8 +35,6 @@ import {
   type ConfigurationLabelGroup,
 } from "../root/configurationLocalization";
 import { CloudDataToolsPage } from "./CloudDataToolsPage";
-import { AccountDeletionSection } from "./AccountDeletionSection";
-import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 const SECTIONS = [
   {
@@ -51,7 +49,6 @@ const SECTIONS = [
   { id: "deals", label: "resources.deals.name" },
   { id: "notes", label: "resources.notes.name" },
   { id: "tasks", label: "resources.tasks.name" },
-  { id: "account", label: "crm.profile.account_section" },
 ];
 
 /** Ensure every item in a { value, label } array has a value (slug from label). */
@@ -200,7 +197,6 @@ const SettingsForm = () => {
 const SettingsFormFields = () => {
   const translate = useTranslate();
   const currencyChoices = useMemo(() => getCurrencyChoices(), []);
-  const capabilities = useCrmProviderCapabilities();
   const {
     watch,
     setValue,
@@ -263,10 +259,7 @@ const SettingsFormFields = () => {
           <h1 className="text-2xl font-semibold px-3 mb-2">
             {translate("crm.settings.title")}
           </h1>
-          {SECTIONS.filter(
-            (section) =>
-              (section.id !== "account" || capabilities.accountDeletion),
-          ).map((section) => (
+          {SECTIONS.map((section) => (
             <button
               key={section.id}
               type="button"
@@ -336,8 +329,6 @@ const SettingsFormFields = () => {
             </div>
           </CardContent>
         </Card>
-
-        {capabilities.accountDeletion ? <AccountDeletionSection /> : null}
 
         {/* Companies */}
         <Card id="companies">

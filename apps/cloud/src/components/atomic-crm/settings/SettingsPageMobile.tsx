@@ -44,8 +44,6 @@ import MobileHeader from "../layout/MobileHeader";
 import { ChangelogPage } from "../misc/ChangelogPage";
 import { personalAccount } from "../providers/personalAccount";
 import { CloudDataToolsPage } from "./CloudDataToolsPage";
-import { DeleteAccountControl } from "./AccountDeletionSection";
-import { useCrmProviderCapabilities } from "../providers/capabilities";
 
 const ChangePasswordButton = () => {
   const translate = useTranslate();
@@ -106,7 +104,6 @@ export const SettingsPageMobile = () => {
             <CloudDataSection />
             <McpServerSection />
             <AboutSection />
-            <AccountSection />
           </div>
 
           <div className="mt-auto pt-6 space-y-3 mb-4">
@@ -315,23 +312,6 @@ const AboutSection = () => {
           </Link>
         </Item>
       </ItemGroup>
-    </div>
-  );
-};
-
-const AccountSection = () => {
-  const translate = useTranslate();
-  const capabilities = useCrmProviderCapabilities();
-
-  if (!capabilities.accountDeletion) return null;
-
-  return (
-    <div>
-      <SectionLabel>{translate("crm.profile.account_section")}</SectionLabel>
-      <p className="text-sm text-muted-foreground mb-2 px-1">
-        {translate("crm.profile.delete_description")}
-      </p>
-      <DeleteAccountControl compact />
     </div>
   );
 };

@@ -114,6 +114,17 @@ describe("public API gateway", () => {
     mocks.createClient.mockReset();
   });
 
+  it("does not expose a self-service account deletion API", () => {
+    mocks.createClient.mockReturnValue({ from: vi.fn(), functions: {} });
+
+    const api = createApiClient({
+      url: "https://example.supabase.co",
+      anonKey: "anon-key",
+    });
+
+    expect(api).not.toHaveProperty("account");
+  });
+
   it("constructs list queries inside the package and returns React Admin-shaped metadata", async () => {
     const query = createQuery({
       data: [{ id: "550e8400-e29b-41d4-a716-446655440000", name: "Acme" }],

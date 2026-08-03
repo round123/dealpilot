@@ -849,20 +849,6 @@ export const englishCrmMessages = {
       password: {
         change: "Change password",
       },
-      account_section: "Account",
-      delete_action: "Delete account",
-      delete_description:
-        "Permanently delete your account and all cloud CRM data. This cannot be undone.",
-      delete_dialog_title: "Delete account permanently?",
-      delete_dialog_description:
-        "This removes your profile, CRM records, attachments, and active session. Type DELETE to continue.",
-      delete_confirmation_label: "Type DELETE to confirm",
-      delete_confirmation_placeholder: "DELETE",
-      delete_confirmation_value: "DELETE",
-      delete_confirm_action: "Delete permanently",
-      deleting: "Deleting...",
-      delete_success: "Your account was deleted",
-      delete_error: "Account deletion failed. Please try again.",
       password_reset_sent:
         "A reset password email has been sent to your email address",
       password_updated: "Password updated",

@@ -82,7 +82,7 @@ PostgreSQL constraints + RLS + transaction functions
 |------|------|
 | 云端开发环境 | 受控开发项目提供 PostgreSQL、Auth、Storage 和所需函数；CI 从空库验证 migration、RLS、事务函数与目标云端配置一致 |
 | 主界面 | Web/PWA 在受控开发项目完成登录、Customer 纵向切片和错误/权限验收；不以 V1 工作台、托盘、系统通知或 Native Messaging 作为 V2 通过条件 |
-| 数据生命周期 | PostgreSQL 从账号创建起是唯一事实源；CSV/XLSX 导入、云备份恢复和账号删除均通过受控事务与审计边界执行 |
+| 数据生命周期 | PostgreSQL 从账号创建起是唯一事实源；CSV/XLSX 导入和云备份恢复通过受控事务与审计边界执行；首版不提供自助删号 |
 | P3 门槛 | 两用户隔离矩阵、Customer 行为等价、原子合并/删除/恢复、唯一客户端边界和应用版本回滚全部通过 |
 
 只有上述 P3 门槛全部通过后，才允许批量迁移其他领域；原生移动端不在首版范围内，正式云环境部署、试点和浏览器扩展商店审核另行验收。

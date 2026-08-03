@@ -3,6 +3,9 @@ import appSource from "./App.tsx?raw";
 import packageJsonSource from "../package.json?raw";
 import viteConfigSource from "../vite.config.ts?raw";
 import crmSource from "./components/atomic-crm/root/CRM.tsx?raw";
+import settingsSource from "./components/atomic-crm/settings/SettingsPage.tsx?raw";
+import mobileSettingsSource from "./components/atomic-crm/settings/SettingsPageMobile.tsx?raw";
+import personalAccountSource from "./components/atomic-crm/providers/personalAccount.ts?raw";
 
 describe("Cloud runtime boundary", () => {
   it("keeps the application entrypoint Cloud-only", () => {
@@ -29,6 +32,13 @@ describe("Cloud runtime boundary", () => {
     expect(crmSource).not.toContain("LocalPrivacyGuard");
     expect(crmSource).not.toContain("createLocalCustomerOperations");
     expect(crmSource).not.toContain("VITE_DATA_BACKEND");
+  });
+
+  it("does not expose self-service account deletion", () => {
+    expect(settingsSource).not.toContain("AccountDeletion");
+    expect(mobileSettingsSource).not.toContain("DeleteAccount");
+    expect(personalAccountSource).not.toContain("deleteAccount");
+    expect(personalAccountSource).not.toContain("delete-account");
   });
 
   it("gates demo customer operations behind the demo development runtime", () => {

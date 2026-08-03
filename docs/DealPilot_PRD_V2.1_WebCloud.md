@@ -47,7 +47,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - PostgreSQL、Auth、Storage、Edge Functions 使用受控云环境。
 - OIDC/Supabase Auth 令牌只证明用户身份；业务查询通过 RLS 和服务端授权限制到当前用户数据。
 - 所有客户端继续使用同一个类型化 API 客户端，不能直接在组件中调用 Supabase 或 `fetch`。
-- 生产发布前完成隐私、跨境数据、备份恢复、账号删除和安全事件流程评审。
+- 生产发布前完成隐私、跨境数据、备份恢复、受控管理员数据清理和安全事件流程评审。
 
 ## 3. 用户与核心流程
 
@@ -125,6 +125,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - 不做系统托盘、开机自启、Explorer 重启恢复、Windows 系统通知或浏览器关闭后的通知承诺。
 - 不提供 SQLite 数据迁移、Agent/SQLite 业务后端、PostgreSQL 与 SQLite 双写或本地回退模式。
 - 不做团队 workspace、成员角色、邀请、共享客户或企业 SSO。
+- 首版不提供自助删除账号；Web、API Client 和公开 Edge API 均不暴露删号能力。
 - 不做自动发消息、自动监听新消息、微信/邮件推送、AI 功能和 ERP/财务系统。
 
 ## 7. 验收门槛
@@ -139,7 +140,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 
 ### 云端发布门槛
 
-- 真实 Auth/OIDC、账号删除、数据导出、备份恢复和密钥轮换演练通过。
+- 真实 Auth/OIDC、数据导出、备份恢复、受控管理员数据清理和密钥轮换演练通过。
 - 两个真实测试账号的 RLS、父子引用、Storage、RPC 和 Edge 隔离矩阵通过。
 - 隐私政策、跨境处理、供应商和数据保留评审通过。
 - 灰度发布、旧 API 兼容回滚和 PostgreSQL 唯一事实源演练通过。

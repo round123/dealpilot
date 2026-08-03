@@ -55,7 +55,7 @@
 
 ### 5.1 `profiles`（S2）
 
-账号级用户设置。`auth.users` 新增后由触发器自动创建；账号删除时级联删除。
+账号级用户设置。`auth.users` 新增后由触发器自动创建；受控管理员删除 Auth 用户时级联删除。
 
 | 字段           | PostgreSQL 类型 | 空值/默认     | 约束/关系                                                 | 含义     | 级别 |
 | -------------- | --------------- | ------------- | --------------------------------------------------------- | -------- | ---- |
@@ -161,7 +161,7 @@
 
 ### 5.8 `customer_purge_jobs`（S2）
 
-后台物理清理队列。故意不引用 Customer，使其在 Customer 级联删除后仍保留 Storage 路径和重试历史；但通过 owner 外键在账号删除时级联删除。
+后台物理清理队列。故意不引用 Customer，使其在 Customer 级联删除后仍保留 Storage 路径和重试历史；但通过 owner 外键在受控管理员清理账号时级联删除。
 
 | 字段              | PostgreSQL 类型             | 空值/默认       | 约束/关系                    | 含义                    | 级别 |
 | ----------------- | --------------------------- | --------------- | ---------------------------- | ----------------------- | ---- |
@@ -420,17 +420,17 @@
 | 操作策略   | 认证用户的 `SELECT/INSERT/UPDATE/DELETE` 均校验 bucket 和第一段路径 |
 | 敏感级别   | S3                                                                  |
 
-业务记录只保存对象路径和元数据。数据库备份 payload 不包含 Storage 对象本体；Customer 清理和账号删除由受限 Edge Function 删除对应对象。
+业务记录只保存对象路径和元数据。数据库备份 payload 不包含 Storage 对象本体；Customer 清理由受限 Edge Function 删除对应对象。首版不开放自助账号删除。
 
 ## 9. 保留、删除与备份语义
 
 - Customer 软删除后 30 天内可恢复；默认物理清理 cutoff 为 `now() - interval '30 days'`。
 - 删除事务保存开放提醒的 `status/resolution` 快照。恢复采用 `deletion_event_id` 作为比较并交换标记，只恢复仍由该删除动作控制的提醒，避免覆盖删除后的用户操作。
-- `customer_purge_jobs` 不引用 Customer，因此 Customer 级联删除后仍可保留清理结果和重试历史；账号删除时通过 owner 外键级联删除。
+- `customer_purge_jobs` 不引用 Customer，因此 Customer 级联删除后仍可保留清理结果和重试历史；受控管理员清理账号时通过 owner 外键级联删除。
 - PostgreSQL 始终是唯一业务事实源，当前 schema 不包含 SQLite 导入会话或暂存表。
 - `audit_events`、`backup_snapshots` 和 `import_jobs` 当前没有自动 TTL。上线前必须通过隐私/容量评审确定保留期，不能把“暂无 TTL”理解为允许无限期保留。
 - 关系数据备份不包含 Auth 凭据、Storage 对象、`customer_purge_jobs` 或 `backup_snapshots` 自身。恢复对象和数据库必须分别演练。
-- 当前数据库在删除 `auth.users` 后立即级联删除 `profiles` 及 owner 数据；当前 Edge 实现同样为立即删除。PRD 所述“账号删除 30 天撤销期”尚未由数据库实现。
+- 数据库保留 `auth.users` 删除后的级联约束，供受控管理员清理使用；Web、API Client 和 `delete-account` Edge Function 均不提供自助删号，后者固定返回 `FEATURE_DISABLED`。
 
 ## 10. API wire/domain 映射
 
@@ -444,7 +444,6 @@
 
 | 项目           | 当前实现                                                      | 目标/后续动作                                               |
 | -------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
-| 账号删除撤销期 | 删除 Auth 用户后立即级联清除数据库数据，Edge 同步删除 Storage | 按 PRD 实现 30 天可撤销账号删除，或在发布决策中明确调整 PRD |
 | 运维表 TTL     | 审计、备份和导入任务无自动 TTL                                | 完成隐私、合规和容量评审后增加保留策略                      |
 | Storage 备份   | DB 快照不包含对象本体                                         | 建立独立对象备份/恢复和核对流程                             |
 | 云端验收       | schema migration、RLS、RPC、Storage 策略已有静态实现          | 仍需在受控 Supabase 项目执行双账号隔离、备份恢复和回滚门禁  |

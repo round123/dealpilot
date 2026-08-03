@@ -54,7 +54,7 @@ HTTP / Edge adapter
 
 模块划分：
 
-- Identity/Profile：账号、会话、用户设置和账号删除。
+- Identity/Profile：账号、会话和用户设置；首版不提供自助删除账号。
 - Customer：客户、联系人、社媒账号、详情、软删除、恢复和合并。
 - Engagement：跟进记录和消息标记。
 - Project：项目、阶段、风险和里程碑。
