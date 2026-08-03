@@ -2,6 +2,7 @@ import type { AuthSession, SignUpResult } from "@dealpilot/api-client";
 import { z } from "zod/v3";
 
 import type { SignUpData } from "../types";
+import { getSignUpRedirectUrl } from "../../supabase/signup-redirect-url";
 import { getCloudApiClient } from "./apiClient";
 
 const PRIVACY_POLICY_VERSION = "2026-08-03";
@@ -85,6 +86,10 @@ export const personalAccount: PersonalAccountApi = {
       .join(" ");
     const acceptedAt = new Date().toISOString();
     return getCloudApiClient().auth.signUp(email, password, {
+      emailRedirectTo: getSignUpRedirectUrl(
+        import.meta.env.BASE_URL,
+        window.location.href,
+      ),
       metadata: {
         display_name: displayName,
         first_name: first_name.trim(),
