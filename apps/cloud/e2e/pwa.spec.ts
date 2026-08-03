@@ -1,4 +1,91 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const cloudRoot = path.dirname(fileURLToPath(import.meta.url));
+const serviceWorkerPath = path.resolve(cloudRoot, "../dist/sw.js");
+const manifestPath = path.resolve(cloudRoot, "../dist/manifest.json");
+const VERSION_REQUEST = "DEALPILOT_PWA_VERSION_REQUEST";
+const VERSION_RESPONSE = "DEALPILOT_PWA_VERSION_RESPONSE";
+const CACHE_VERSION_FIELD = "dealpilot_pwa_test_version";
+
+const serviceWorkerWithVersion = (source: string, version: string) => {
+  const revision = `dealpilot-pwa-${version}`;
+  const revisedSource = source.replace(
+    /(url:"manifest\.json",revision:)"[^"]+"/,
+    `$1"${revision}"`,
+  );
+  if (revisedSource === source) {
+    throw new Error("Generated service worker has no manifest precache entry");
+  }
+
+  return `${revisedSource}
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "${VERSION_REQUEST}") {
+    event.source?.postMessage({ type: "${VERSION_RESPONSE}", version: "${version}" });
+  }
+});
+`;
+};
+
+const manifestWithVersion = (source: string, version: string) =>
+  JSON.stringify(
+    {
+      ...(JSON.parse(source) as Record<string, unknown>),
+      [CACHE_VERSION_FIELD]: version,
+    },
+    null,
+    2,
+  );
+
+const controllerVersion = (page: Page) =>
+  page.evaluate(
+    ({ requestType, responseType }) =>
+      new Promise<string | null>((resolve) => {
+        const controller = navigator.serviceWorker.controller;
+        if (!controller) {
+          resolve(null);
+          return;
+        }
+        const timeout = window.setTimeout(() => {
+          navigator.serviceWorker.removeEventListener("message", onMessage);
+          resolve(null);
+        }, 1_000);
+        const onMessage = (event: MessageEvent) => {
+          if (event.data?.type !== responseType) return;
+          window.clearTimeout(timeout);
+          navigator.serviceWorker.removeEventListener("message", onMessage);
+          resolve(
+            typeof event.data.version === "string" ? event.data.version : null,
+          );
+        };
+        navigator.serviceWorker.addEventListener("message", onMessage);
+        controller.postMessage({ type: requestType });
+      }),
+    { requestType: VERSION_REQUEST, responseType: VERSION_RESPONSE },
+  );
+
+const cachedManifestEntries = (page: Page) =>
+  page.evaluate(async () => {
+    const entries: Array<{ cacheName: string; url: string }> = [];
+    for (const cacheName of await caches.keys()) {
+      const cache = await caches.open(cacheName);
+      for (const request of await cache.keys()) {
+        if (new URL(request.url).pathname.endsWith("/manifest.json")) {
+          entries.push({ cacheName, url: request.url });
+        }
+      }
+    }
+    return entries;
+  });
+
+const fetchedManifestVersion = (page: Page) =>
+  page.evaluate(async (versionField) => {
+    const response = await fetch("./manifest.json");
+    const manifest = (await response.json()) as Record<string, unknown>;
+    return manifest[versionField] ?? null;
+  }, CACHE_VERSION_FIELD);
 
 interface WebAppManifest {
   id?: unknown;
@@ -127,5 +214,115 @@ test("registered service worker serves the cached login shell offline", async ({
     ).resolves.toBe("DealPilot 外贸客户工作台");
   } finally {
     await context.setOffline(false);
+  }
+});
+
+test("service worker activates a new version and replaces the old precache", async ({
+  context,
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const originalServiceWorker = await readFile(serviceWorkerPath, "utf8");
+  const originalManifest = await readFile(manifestPath, "utf8");
+
+  try {
+    await writeFile(
+      manifestPath,
+      manifestWithVersion(originalManifest, "v1"),
+      "utf8",
+    );
+    await writeFile(
+      serviceWorkerPath,
+      serviceWorkerWithVersion(originalServiceWorker, "v1"),
+      "utf8",
+    );
+    await page.goto("/");
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await expect
+      .poll(() => controllerVersion(page), { timeout: 15_000 })
+      .toBe("v1");
+    await expect.poll(() => fetchedManifestVersion(page)).toBe("v1");
+
+    const v1ManifestEntries = await cachedManifestEntries(page);
+    expect(v1ManifestEntries).toEqual([
+      expect.objectContaining({
+        url: expect.stringContaining(
+          "manifest.json?__WB_REVISION__=dealpilot-pwa-v1",
+        ),
+      }),
+    ]);
+
+    await page.evaluate(() => {
+      const state = window as typeof window & {
+        __dealpilotControllerChanges?: number;
+      };
+      state.__dealpilotControllerChanges = 0;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        state.__dealpilotControllerChanges =
+          (state.__dealpilotControllerChanges ?? 0) + 1;
+      });
+    });
+    await writeFile(
+      manifestPath,
+      manifestWithVersion(originalManifest, "v2"),
+      "utf8",
+    );
+    await writeFile(
+      serviceWorkerPath,
+      serviceWorkerWithVersion(originalServiceWorker, "v2"),
+      "utf8",
+    );
+
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration)
+        throw new Error("Service worker registration is missing");
+      await registration.update();
+    });
+
+    await expect
+      .poll(() => controllerVersion(page), { timeout: 30_000 })
+      .toBe("v2");
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __dealpilotControllerChanges?: number;
+              }
+            ).__dealpilotControllerChanges ?? 0,
+        ),
+      )
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const registration = await navigator.serviceWorker.getRegistration();
+          return {
+            active: registration?.active?.state,
+            waiting: registration?.waiting?.state ?? null,
+          };
+        }),
+      )
+      .toEqual({ active: "activated", waiting: null });
+
+    await expect.poll(() => fetchedManifestVersion(page)).toBe("v2");
+    await expect
+      .poll(() => cachedManifestEntries(page))
+      .toEqual([
+        expect.objectContaining({
+          url: expect.stringContaining(
+            "manifest.json?__WB_REVISION__=dealpilot-pwa-v2",
+          ),
+        }),
+      ]);
+
+    await context.setOffline(true);
+    await expect(fetchedManifestVersion(page)).resolves.toBe("v2");
+  } finally {
+    await context.setOffline(false);
+    await writeFile(manifestPath, originalManifest, "utf8");
+    await writeFile(serviceWorkerPath, originalServiceWorker, "utf8");
   }
 });

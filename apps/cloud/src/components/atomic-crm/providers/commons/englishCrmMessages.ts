@@ -287,6 +287,18 @@ export const englishCrmMessages = {
         merging: "Merging...",
         no_additional_data: "No additional data to merge",
         select_target: "Please select a contact to merge with",
+        summary: {
+          deals:
+            "%{smart_count} deal will update its contact |||| %{smart_count} deals will update their contact",
+          emails:
+            "%{smart_count} email address will be added |||| %{smart_count} email addresses will be added",
+          notes:
+            "%{smart_count} note will be reassigned |||| %{smart_count} notes will be reassigned",
+          phones:
+            "%{smart_count} phone number will be added |||| %{smart_count} phone numbers will be added",
+          tasks:
+            "%{smart_count} task will be reassigned |||| %{smart_count} tasks will be reassigned",
+        },
         success: "Contacts merged successfully",
         target_contact: "Target Contact (will be kept)",
         title: "Merge Contact",

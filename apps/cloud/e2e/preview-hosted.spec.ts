@@ -794,6 +794,381 @@ test("hosted Preview imports CSV persistently and exports isolated XLSX data", a
   }
 });
 
+test("hosted Preview accepts the complete P0 business workflow", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const environment = requirePreviewEnvironment();
+  const suffix = `preview-p0-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+  const alphaSession = await signIn(environment, environment.alpha);
+  const betaSession = await signIn(environment, environment.beta);
+  expect(alphaSession.user.id).not.toBe(betaSession.user.id);
+
+  const asAlpha = authenticatedRequest(environment, alphaSession);
+  const asBeta = authenticatedRequest(environment, betaSession);
+  const alphaIds = {
+    company: crypto.randomUUID(),
+    contact: crypto.randomUUID(),
+    socialAccount: crypto.randomUUID(),
+    deal: crypto.randomUUID(),
+    risk: crypto.randomUUID(),
+    milestone: crypto.randomUUID(),
+    followUp: crypto.randomUUID(),
+    reminder: crypto.randomUUID(),
+  };
+  const betaIds = {
+    company: crypto.randomUUID(),
+    contact: crypto.randomUUID(),
+    socialAccount: crypto.randomUUID(),
+    deal: crypto.randomUUID(),
+    risk: crypto.randomUUID(),
+    milestone: crypto.randomUUID(),
+    followUp: crypto.randomUUID(),
+    reminder: crypto.randomUUID(),
+  };
+  const alphaNames = {
+    company: `Alpha P0 Customer ${suffix}`,
+    contact: `Alpha P0 Contact ${suffix}`,
+    socialAccount: `alpha-wx-${suffix}`,
+    deal: `Alpha P0 Deal ${suffix}`,
+    risk: `Alpha critical risk ${suffix}`,
+    milestone: `Alpha milestone ${suffix}`,
+    followUp: `Alpha follow-up ${suffix}`,
+  };
+  const betaNames = {
+    company: `Beta P0 Customer ${suffix}`,
+    contact: `Beta P0 Contact ${suffix}`,
+    socialAccount: `beta-wx-${suffix}`,
+    deal: `Beta P0 Deal ${suffix}`,
+    risk: `Beta critical risk ${suffix}`,
+    milestone: `Beta milestone ${suffix}`,
+    followUp: `Beta follow-up ${suffix}`,
+  };
+  const expectedClosingDate = new Date(Date.now() + 30 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const milestoneDueDate = new Date(Date.now() + 14 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  try {
+    await Promise.all([
+      insert(asAlpha, "companies", {
+        id: alphaIds.company,
+        name: alphaNames.company,
+        company: `Alpha Trading ${suffix}`,
+        grade: "A",
+      }),
+      insert(asBeta, "companies", {
+        id: betaIds.company,
+        name: betaNames.company,
+        company: `Beta Trading ${suffix}`,
+        grade: "A",
+      }),
+    ]);
+    await Promise.all([
+      insert(asAlpha, "contacts", {
+        id: alphaIds.contact,
+        company_id: alphaIds.company,
+        first_name: alphaNames.contact,
+        last_name: "User",
+        name: `${alphaNames.contact} User`,
+        last_seen: new Date().toISOString(),
+      }),
+      insert(asBeta, "contacts", {
+        id: betaIds.contact,
+        company_id: betaIds.company,
+        first_name: betaNames.contact,
+        last_name: "User",
+        name: `${betaNames.contact} User`,
+        last_seen: new Date().toISOString(),
+      }),
+      insert(asAlpha, "deals", {
+        id: alphaIds.deal,
+        company_id: alphaIds.company,
+        name: alphaNames.deal,
+        description: `Alpha business description ${suffix}`,
+        stage: "proposal",
+        grade: "A",
+        currency: "CNY",
+        amount: 125000,
+        probability: 65,
+        expected_closing_date: expectedClosingDate,
+        closed_reason: null,
+      }),
+      insert(asBeta, "deals", {
+        id: betaIds.deal,
+        company_id: betaIds.company,
+        name: betaNames.deal,
+        description: `Beta business description ${suffix}`,
+        stage: "proposal",
+        grade: "A",
+        currency: "CNY",
+        amount: 98000,
+        probability: 55,
+        expected_closing_date: expectedClosingDate,
+        closed_reason: null,
+      }),
+    ]);
+    await Promise.all([
+      insert(asAlpha, "social_accounts", {
+        id: alphaIds.socialAccount,
+        company_id: alphaIds.company,
+        contact_id: alphaIds.contact,
+        platform: "wechat",
+        raw_identifier: alphaNames.socialAccount,
+        normalized_identifier: alphaNames.socialAccount,
+      }),
+      insert(asBeta, "social_accounts", {
+        id: betaIds.socialAccount,
+        company_id: betaIds.company,
+        contact_id: betaIds.contact,
+        platform: "wechat",
+        raw_identifier: betaNames.socialAccount,
+        normalized_identifier: betaNames.socialAccount,
+      }),
+      insert(asAlpha, "deal_contacts", {
+        deal_id: alphaIds.deal,
+        contact_id: alphaIds.contact,
+      }),
+      insert(asBeta, "deal_contacts", {
+        deal_id: betaIds.deal,
+        contact_id: betaIds.contact,
+      }),
+      insert(asAlpha, "deal_risks", {
+        id: alphaIds.risk,
+        deal_id: alphaIds.deal,
+        description: alphaNames.risk,
+        severity: "critical",
+        status: "open",
+      }),
+      insert(asBeta, "deal_risks", {
+        id: betaIds.risk,
+        deal_id: betaIds.deal,
+        description: betaNames.risk,
+        severity: "critical",
+        status: "open",
+      }),
+      insert(asAlpha, "deal_milestones", {
+        id: alphaIds.milestone,
+        deal_id: alphaIds.deal,
+        name: alphaNames.milestone,
+        due_date: milestoneDueDate,
+        completed: false,
+      }),
+      insert(asBeta, "deal_milestones", {
+        id: betaIds.milestone,
+        deal_id: betaIds.deal,
+        name: betaNames.milestone,
+        due_date: milestoneDueDate,
+        completed: false,
+      }),
+      insert(asAlpha, "follow_ups", {
+        id: alphaIds.followUp,
+        company_id: alphaIds.company,
+        deal_id: alphaIds.deal,
+        type: "note",
+        note: alphaNames.followUp,
+        occurred_at: new Date().toISOString(),
+      }),
+      insert(asBeta, "follow_ups", {
+        id: betaIds.followUp,
+        company_id: betaIds.company,
+        deal_id: betaIds.deal,
+        type: "note",
+        note: betaNames.followUp,
+        occurred_at: new Date().toISOString(),
+      }),
+      insert(asAlpha, "reminders", {
+        id: alphaIds.reminder,
+        company_id: alphaIds.company,
+        deal_id: alphaIds.deal,
+        type: "waiting_reply",
+        status: "pending",
+        due_at: "2000-01-01T00:00:00.000Z",
+        priority: "urgent",
+      }),
+      insert(asBeta, "reminders", {
+        id: betaIds.reminder,
+        company_id: betaIds.company,
+        deal_id: betaIds.deal,
+        type: "waiting_reply",
+        status: "pending",
+        due_at: "2000-01-02T00:00:00.000Z",
+        priority: "urgent",
+      }),
+    ]);
+
+    await test.step("RLS hides every Beta P0 record from the Alpha account", async () => {
+      for (const [resource, filter] of [
+        ["companies", `id=eq.${betaIds.company}`],
+        ["contacts", `id=eq.${betaIds.contact}`],
+        ["social_accounts", `id=eq.${betaIds.socialAccount}`],
+        ["deals", `id=eq.${betaIds.deal}`],
+        [
+          "deal_contacts",
+          `deal_id=eq.${betaIds.deal}&contact_id=eq.${betaIds.contact}`,
+        ],
+        ["deal_risks", `id=eq.${betaIds.risk}`],
+        ["deal_milestones", `id=eq.${betaIds.milestone}`],
+        ["follow_ups", `id=eq.${betaIds.followUp}`],
+        ["reminders", `id=eq.${betaIds.reminder}`],
+      ] as const) {
+        expect(
+          await expectJson<unknown[]>(
+            await asAlpha(`/rest/v1/${resource}?${filter}&select=*`),
+            200,
+          ),
+          `Alpha must not read Beta ${resource}`,
+        ).toEqual([]);
+      }
+    });
+
+    await login(page, environment.alpha);
+
+    await test.step("Contacts and Customer social details render without cross-account leakage", async () => {
+      await page.goto("/#/contacts");
+      await expect(
+        page.getByText(alphaNames.contact, { exact: false }).first(),
+      ).toBeVisible();
+      await expect(
+        page.getByText(betaNames.contact, { exact: false }),
+      ).toHaveCount(0);
+
+      await page.goto(`/#/companies/${alphaIds.company}/show`);
+      await expect(
+        page
+          .getByRole("region", { name: "联系人", exact: true })
+          .getByText(alphaNames.contact, { exact: false }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "社媒账号", exact: true })
+          .getByText(alphaNames.socialAccount, { exact: false }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(betaNames.company, { exact: false }),
+      ).toHaveCount(0);
+    });
+
+    await test.step("Deal detail renders commercial fields, risk, milestone, and linked contact", async () => {
+      await page.goto(`/#/deals/${alphaIds.deal}/show`);
+      const dealDialog = page.getByRole("dialog").filter({
+        has: page.getByRole("heading", {
+          name: alphaNames.deal,
+          exact: true,
+        }),
+      });
+      await expect(dealDialog).toBeVisible();
+      await expect(
+        dealDialog.getByText("项目评级", { exact: true }).locator(".."),
+      ).toContainText("A");
+      await expect(
+        dealDialog.getByText("成交概率（%）", { exact: true }).locator(".."),
+      ).toContainText("65%");
+      await expect(
+        dealDialog.getByText(alphaNames.contact, { exact: false }),
+      ).toBeVisible();
+      await expect(
+        dealDialog
+          .getByRole("region", { name: "项目风险", exact: true })
+          .getByText(alphaNames.risk, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        dealDialog
+          .getByRole("region", { name: "项目里程碑", exact: true })
+          .getByText(alphaNames.milestone, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        dealDialog.getByText(betaNames.risk, { exact: false }),
+      ).toHaveCount(0);
+    });
+
+    await test.step("Follow-up list resolves the Customer and Deal references", async () => {
+      await page.goto("/#/follow_ups");
+      const followUpRow = page
+        .locator("article")
+        .filter({ hasText: alphaNames.followUp });
+      await expect(followUpRow).toHaveCount(1);
+      await expect(followUpRow).toContainText(alphaNames.company);
+      await expect(followUpRow).toContainText(alphaNames.deal);
+      await expect(
+        page.getByText(betaNames.followUp, { exact: false }),
+      ).toHaveCount(0);
+    });
+
+    await test.step("Dashboard aggregates only Alpha P0 data", async () => {
+      const summary = await readDashboardSummary(asAlpha);
+      expect(summary.open_reminder_count).toBeGreaterThanOrEqual(1);
+      expect(summary.overdue_reminder_count).toBeGreaterThanOrEqual(1);
+      expect(summary.high_risk_deal_count).toBeGreaterThanOrEqual(1);
+      expect(summary.follow_up_count).toBeGreaterThanOrEqual(1);
+      expect(summary.priority_reminders.map(({ id }) => id)).toContain(
+        alphaIds.reminder,
+      );
+      expect(summary.priority_reminders.map(({ id }) => id)).not.toContain(
+        betaIds.reminder,
+      );
+
+      await page.goto("/#/");
+      await expect(
+        page.getByRole("heading", { name: "今日工作台", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("region", { name: "业务概览", exact: true }),
+      ).toBeVisible();
+      const priority = page.getByRole("region", {
+        name: "优先待办",
+        exact: true,
+      });
+      await expect(priority).toContainText(alphaNames.company);
+      await expect(priority).toContainText(alphaNames.deal);
+      await expect(priority).not.toContainText(betaNames.company);
+    });
+
+    await test.step("Reminder completion persists and leaves Dashboard priority work", async () => {
+      await page.goto("/#/reminders");
+      const reminderRow = page
+        .locator("article")
+        .filter({ hasText: alphaNames.company })
+        .filter({ hasText: alphaNames.deal });
+      await expect(reminderRow).toHaveCount(1);
+      const statusResponse = waitForRpcResponse(
+        page,
+        "update_reminder_status_idempotent",
+      );
+      await reminderRow
+        .getByRole("button", { name: "完成", exact: true })
+        .click();
+      expect((await statusResponse).ok()).toBe(true);
+      await expect(
+        reminderRow.getByText("已完成", { exact: true }),
+      ).toBeVisible();
+      expect(await readReminder(asAlpha, alphaIds.reminder)).toEqual({
+        id: alphaIds.reminder,
+        status: "completed",
+        resolution: "completed",
+        deletion_event_id: null,
+      });
+
+      const updatedSummary = await readDashboardSummary(asAlpha);
+      expect(
+        updatedSummary.priority_reminders.map(({ id }) => id),
+      ).not.toContain(alphaIds.reminder);
+      await page.goto("/#/");
+      await expect(
+        page.getByRole("region", { name: "优先待办", exact: true }),
+      ).not.toContainText(alphaNames.company);
+    });
+  } finally {
+    await closeContext(context);
+    await cleanupP0Fixture(asAlpha, alphaIds);
+    await cleanupP0Fixture(asBeta, betaIds);
+  }
+});
+
 const authenticatedRequest = (
   environment: Pick<PreviewEnvironment, "url" | "anonKey">,
   session: UserSession,
@@ -1005,6 +1380,71 @@ const readReminder = async (
   );
   expect(rows).toHaveLength(1);
   return rows[0];
+};
+
+type DashboardSummary = {
+  open_reminder_count: number;
+  overdue_reminder_count: number;
+  high_risk_deal_count: number;
+  follow_up_count: number;
+  priority_reminders: Array<{ id: string }>;
+};
+
+const readDashboardSummary = async (request: AuthenticatedRequest) => {
+  const response = await expectJson<{ data: DashboardSummary }>(
+    await request("/rest/v1/rpc/get_dashboard_summary", {
+      method: "POST",
+      body: "{}",
+    }),
+    200,
+  );
+  return response.data;
+};
+
+const cleanupP0Fixture = async (
+  request: AuthenticatedRequest,
+  ids: {
+    company: string;
+    contact: string;
+    socialAccount: string;
+    deal: string;
+    risk: string;
+    milestone: string;
+    followUp: string;
+    reminder: string;
+  },
+) => {
+  const targets = [
+    ["reminders", `id=eq.${ids.reminder}`],
+    ["follow_ups", `id=eq.${ids.followUp}`],
+    ["deal_risks", `id=eq.${ids.risk}`],
+    ["deal_milestones", `id=eq.${ids.milestone}`],
+    ["deal_contacts", `deal_id=eq.${ids.deal}&contact_id=eq.${ids.contact}`],
+    ["deals", `id=eq.${ids.deal}`],
+    ["social_accounts", `id=eq.${ids.socialAccount}`],
+    ["contacts", `id=eq.${ids.contact}`],
+    ["companies", `id=eq.${ids.company}`],
+  ] as const;
+
+  for (const [resource, filter] of targets) {
+    const response = await request(`/rest/v1/${resource}?${filter}`, {
+      method: "DELETE",
+    });
+    expect(
+      response.ok,
+      `Preview P0 cleanup failed for ${resource} with HTTP ${response.status}: ${await response.text()}`,
+    ).toBe(true);
+  }
+
+  for (const [resource, filter] of targets) {
+    expect(
+      await expectJson<unknown[]>(
+        await request(`/rest/v1/${resource}?${filter}&select=*`),
+        200,
+      ),
+      `Preview P0 cleanup left ${resource} rows behind`,
+    ).toEqual([]);
+  }
 };
 
 const sheetRows = (

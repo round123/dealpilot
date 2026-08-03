@@ -15,6 +15,10 @@ interface EmbeddedImageDependencies {
   readBlobAsDataUrl?: BlobDataUrlReader;
 }
 
+interface ParsedDataUrl extends EmbeddedImage {
+  bytes: Uint8Array;
+}
+
 export function fetchMedia(
   resource: RequestInfo | URL,
   options?: RequestInit,
@@ -28,6 +32,44 @@ export function extractBase64Payload(dataUrl: string): string {
     throw new Error("Media reader did not return a valid base64 data URL");
   }
   return match[1];
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function parseDataUrl(resource: string): ParsedDataUrl | null {
+  if (!resource.startsWith("data:")) return null;
+
+  const commaIndex = resource.indexOf(",");
+  if (commaIndex < 0) {
+    throw new Error("Media source is not a valid data URL");
+  }
+
+  const metadata = resource.slice(5, commaIndex);
+  const mimeType = metadata.split(";", 1)[0] || "text/plain";
+  const encodedPayload = resource.slice(commaIndex + 1);
+  const isBase64 = metadata
+    .split(";")
+    .slice(1)
+    .some((part) => part.toLowerCase() === "base64");
+
+  try {
+    const bytes = isBase64
+      ? Uint8Array.from(atob(encodedPayload), (character) =>
+          character.charCodeAt(0),
+        )
+      : new TextEncoder().encode(decodeURIComponent(encodedPayload));
+    return {
+      base64: isBase64 ? encodedPayload : bytesToBase64(bytes),
+      mimeType,
+      bytes,
+    };
+  } catch {
+    throw new Error("Media source is not a valid data URL");
+  }
 }
 
 function readBlobAsDataUrl(blob: Blob): Promise<string> {
@@ -50,6 +92,11 @@ export async function fetchEmbeddedImage(
   resource: string,
   dependencies: EmbeddedImageDependencies = {},
 ): Promise<EmbeddedImage> {
+  const localImage = parseDataUrl(resource);
+  if (localImage) {
+    return { base64: localImage.base64, mimeType: localImage.mimeType };
+  }
+
   const fetcher = dependencies.fetcher ?? fetchMedia;
   const response = await fetcher(resource);
   const blob = await response.blob();
@@ -65,6 +112,11 @@ export async function fetchEmbeddedImage(
 
 export async function fetchBlobSource(resource: string): Promise<Blob | null> {
   try {
+    const localData = parseDataUrl(resource);
+    if (localData) {
+      return new Blob([localData.bytes], { type: localData.mimeType });
+    }
+
     const response = await fetchMedia(resource);
     if (response.status !== 200) return null;
     return await response.blob();

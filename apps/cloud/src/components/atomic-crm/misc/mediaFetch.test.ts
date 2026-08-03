@@ -37,6 +37,29 @@ describe("mediaFetch", () => {
     expect(readBlobAsDataUrl).toHaveBeenCalledWith(blob);
   });
 
+  it("converts a local initials data URL without calling a fetcher", async () => {
+    const fetcher = vi.fn();
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>AL</text></svg>';
+    const resource = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+
+    const embedded = await fetchEmbeddedImage(resource, { fetcher });
+
+    expect(embedded.mimeType).toBe("image/svg+xml");
+    expect(atob(embedded.base64)).toBe(svg);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("creates a Blob from local data without calling global fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const blob = await fetchBlobSource("data:text/plain;base64,SGVsbG8=");
+
+    expect(blob?.type).toBe("text/plain");
+    await expect(blob?.text()).resolves.toBe("Hello");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
   it("returns null when a blob source cannot be downloaded", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
