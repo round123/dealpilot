@@ -1,17 +1,18 @@
 # DealPilot 系统架构设计 V2.1：Web 与云端优先
 
 > 状态：当前有效架构
-> 日期：2026-07-31
+> 日期：2026-08-03
 > 产品需求：[DealPilot PRD V2.1](./DealPilot_PRD_V2.1_WebCloud.md)
 > 云端计划：[cloud-multiplatform-refactor-plan.md](./cloud-multiplatform-refactor-plan.md)
+> 数据字典：[PostgreSQL 数据字典 V2.1](./DealPilot_PostgreSQL_数据字典_V2.1.md)
 
 ## 1. 架构结论
 
 DealPilot 采用 Web/PWA + 云端模块化单体 + PostgreSQL 的单一后端架构。
 
-本地开发不是另一套本地产品，而是云端架构的本地实例：Supabase CLI/Docker 在开发者机器上提供 PostgreSQL、Auth、Storage 和 Edge Functions；部署到测试或生产时只替换服务地址、密钥和运行配置，不替换业务后端边界。
+云端开发、测试和生产使用同一套托管 Supabase 架构；开发者电脑只运行 Web/PWA 的 Vite 前端服务，直接连接受控 Supabase 开发项目。环境之间只替换服务地址、密钥和运行配置，不替换业务后端边界，也不维护本地 PostgreSQL/Supabase 业务实例。
 
-SQLite 和旧 Agent 只承担一次性迁移、快照读取和取证工具职责。它们不提供当前产品的业务 API，不作为 PostgreSQL 的第二事实源，也不参与长期双写。
+当前工作树不包含旧 Agent 或 V1 Web，当前产品也不提供 SQLite 迁移、快照读取或本地回退入口。旧实现仅保存在 `v1-local-final` Git tag 中，不参与 demo、开发或生产数据流。
 
 ## 2. 运行拓扑
 
@@ -23,17 +24,15 @@ flowchart LR
   CLIENT --> API["PostgREST / RPC / Edge Functions"]
   API --> PG["PostgreSQL"]
   API --> STORAGE["Object Storage"]
-  MIG["SQLite migration tool"] --> API
-  MIG --> SNAP["Read-only SQLite snapshot"]
 ```
 
-### 2.1 本地开发环境
+### 2.1 云端开发环境
 
-- `supabase start` 启动本地 PostgreSQL、Auth、Storage 和 Functions 依赖。
-- Web/PWA 使用本地 Supabase URL 和本地测试账号。
-- 所有表、RLS、复合外键、RPC、Edge Function 和 Storage 策略从空库 migration 重建。
+- Supabase 开发项目提供 PostgreSQL、Auth、Storage 和 Functions 依赖。
+- Web/PWA 使用开发项目 URL 和测试账号；开发者电脑只运行 Vite 前端服务。
+- 所有表、RLS、复合外键、RPC、Edge Function 和 Storage 策略通过 CI migration 门禁重建并部署到开发项目。
 - 测试数据只能使用合成数据或不可逆匿名化数据。
-- 不启动桌面 exe、托盘、系统通知或安装器作为业务验收前置条件。
+- 不启动 Docker、本地 PostgreSQL、桌面 exe、托盘、系统通知或安装器作为业务验收前置条件。
 
 ### 2.2 云端环境
 
@@ -55,14 +54,14 @@ HTTP / Edge adapter
 
 模块划分：
 
-- Identity/Profile：账号、会话、用户设置和账号删除。
+- Identity/Profile：账号、会话和用户设置；首版不提供自助删除账号。
 - Customer：客户、联系人、社媒账号、详情、软删除、恢复和合并。
 - Engagement：跟进记录和消息标记。
 - Project：项目、阶段、风险和里程碑。
 - Reminder：提醒状态、排序权重、处理记录和通知摘要。
 - Import/Export：CSV/XLSX 映射、重复处理和导出。
-- Backup/Migration：云端备份、恢复和 SQLite 一次性迁移。
-- Audit：请求、迁移、删除和安全操作的脱敏审计记录。
+- Backup/Restore：云端备份、完整性校验和原子恢复。
+- Audit：请求、导入、备份恢复、删除和安全操作的脱敏审计记录。
 
 模块之间只能调用导出的应用服务或查询服务，禁止跨模块直接访问 Repository 或数据库表。
 
@@ -96,23 +95,20 @@ HTTP / Edge adapter
 - 合并必须迁移联系人、社媒账号、项目、跟进、提醒和关联摘要；冲突由客户端显式提交解析结果。
 - 任何中途失败都必须回滚全部写入，并留下可审计 request ID。
 
-## 7. SQLite 一次性迁移
+## 7. Schema 变更与数据恢复
 
-迁移工具属于基础设施边界，不属于业务运行时：
-
-1. 读取旧 SQLite 并创建一致性快照。
-2. 按数据分类预检、去重、转换和分批上传到云端暂存区。
-3. 逐批校验数量、摘要、关系和幂等重试结果。
-4. 用户确认前可放弃，原 SQLite 不得被修改。
-5. 用户确认后 PostgreSQL 成为唯一事实源，SQLite 只读保留用于核对、取证和重新迁移。
-
-云端发布回滚使用上一兼容 API 版本和向后兼容 migration，不把切回 SQLite 作为回滚方案。
+- PostgreSQL schema 只通过仓库中的前向 migration 演进，并从空库和上一发布版本两条路径验证。
+- migration 必须保持上一兼容 Web/Edge/API 版本可读，不使用 `down`、`reset` 或快照覆盖作为应用发布回滚。
+- CSV/XLSX 导入是当前唯一的批量业务数据写入入口，由浏览器完成解析预览并通过事务 RPC 提交，`import_jobs` 记录幂等结果。
+- 云备份恢复必须校验格式版本、密文完整性、账号所有权和记录摘要，全部校验通过后才允许在单一事务中提交。
+- 当前产品不读取 SQLite 文件、V1 bundle 或本地业务快照。
 
 ## 8. 当前明确不建设
 
 - 桌面壳、`dealpilot-agent.exe`、NSIS 安装器和桌面快捷方式。
 - 系统托盘、开机自启、Windows 系统通知和 Explorer 重启恢复。
-- Agent 业务 API、SQLite 运行时主库和 PostgreSQL/SQLite 长期双写。
+- Agent 业务 API、SQLite 运行时主库、V1 数据迁移和 PostgreSQL/SQLite 双写。
+- 当前工作树中的 V1 Web、Agent provider、EXE/NSIS 构建链和 Native Messaging host。
 - 团队 workspace、成员角色、邀请、共享客户和企业 SSO。
 - 微服务拆分、Kubernetes 和第二套云端 CRUD API。
 
@@ -122,8 +118,9 @@ HTTP / Edge adapter
 
 - 空库 migration、RLS、复合外键、Storage、RPC 和 Edge Function 测试。
 - 两个测试账号的隔离矩阵、伪造归属和跨账号父子引用测试。
-- Customer 行为等价、导入导出、提醒、备份恢复和迁移 E2E。
+- Customer 行为等价、CSV/XLSX 导入导出、提醒和云备份恢复 E2E。
 - API 客户端成功/失败包络、字段错误、网络/取消、过期会话和不可解析 2xx 测试。
 - `type-check`、`lint`、单元测试、构建和浏览器 E2E 全部通过。
+- `pnpm audit:retirement` 通过，证明旧运行时路径和引用没有重新进入当前工作树。
 
 历史 V1 文档：[外贸经理个人工作台_PRD_V1.5.md](./外贸经理个人工作台_PRD_V1.5.md)、[外贸经理个人工作台_系统架构设计_V1.3.md](./外贸经理个人工作台_系统架构设计_V1.3.md)。

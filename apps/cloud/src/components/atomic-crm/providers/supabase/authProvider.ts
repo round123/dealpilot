@@ -12,7 +12,7 @@ export type PersonalAuthProvider = AuthProvider & {
 };
 
 const isPublicAuthRoute = () =>
-  ["/sign-up", "/forgot-password", "/set-password"].some(
+  ["/sign-up", "/forgot-password", "/set-password", "/privacy", "/terms"].some(
     (path) =>
       window.location.pathname === path ||
       window.location.hash.includes(`#${path}`),

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseData } from "./contracts.js";
+import { API_ERROR_CODES, ApiError } from "./error.js";
 import type { ApiClient, ApiRequestOptions } from "./gateway.js";
 import {
   ContactIdSchema,
@@ -15,7 +16,7 @@ type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
   JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     z.string(),
     z.number(),
@@ -28,6 +29,18 @@ const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 
 const DateTimeSchema = z.string().datetime({ offset: true });
 const NullableTextSchema = z.string().nullable();
+
+export const DEAL_STAGE_VALUES = [
+  "lead",
+  "qualified",
+  "proposal",
+  "negotiation",
+  "closed_won",
+  "closed_lost",
+  "archived",
+] as const;
+
+export const DealStageSchema = z.enum(DEAL_STAGE_VALUES);
 
 export const CustomerSchema = z
   .object({
@@ -103,26 +116,23 @@ export const CustomerDealSchema = z
     id: DealIdSchema,
     owner_user_id: UserIdSchema,
     company_id: CustomerIdSchema,
-    name: z.string().min(1),
+    name: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0, {
+        message: "Deal name cannot be blank",
+      }),
     category: NullableTextSchema,
-    stage: z.enum([
-      "lead",
-      "qualified",
-      "proposal",
-      "negotiation",
-      "closed_won",
-      "closed_lost",
-      "archived",
-    ]),
+    stage: DealStageSchema,
     grade: z.enum(["S", "A", "B", "C"]),
     description: NullableTextSchema,
-    currency: z.string().length(3),
+    currency: z.string().regex(/^[A-Z]{3}$/),
     amount: z.number().nonnegative().nullable(),
     probability: z.number().int().min(0).max(100).nullable(),
     expected_closing_date: z.string().date().nullable(),
     closed_reason: NullableTextSchema,
     archived_at: DateTimeSchema.nullable(),
-    sort_index: z.number().int().nullable(),
+    sort_index: z.number().int().min(-32_768).max(32_767).nullable(),
     created_at: DateTimeSchema,
     updated_at: DateTimeSchema,
   })
@@ -205,9 +215,8 @@ const validateMessageFollowUp = (
   }
 };
 
-export const FollowUpCreateInputSchema = FollowUpInputShape.strict().superRefine(
-  validateMessageFollowUp,
-);
+export const FollowUpCreateInputSchema =
+  FollowUpInputShape.strict().superRefine(validateMessageFollowUp);
 
 export const FollowUpUpdateInputSchema = FollowUpInputShape.partial()
   .strict()
@@ -245,6 +254,33 @@ export const CustomerSummarySchema = CustomerSchema.extend({
   search_text: z.string(),
 }).strict();
 
+export const CustomerCursorSortFieldSchema = z.enum([
+  "name",
+  "created_at",
+  "updated_at",
+  "grade",
+]);
+
+export const CustomerCursorPageInputSchema = z
+  .object({
+    cursor: z.string().min(1).nullable().optional(),
+    limit: z.number().int().min(1).max(100),
+    search: z.string().trim().max(200).nullable().optional(),
+    grade: z.enum(["A", "B", "C"]).nullable().optional(),
+    status: z.enum(["active", "inactive"]).nullable().optional(),
+    sortField: CustomerCursorSortFieldSchema,
+    sortOrder: z.enum(["asc", "desc"]),
+  })
+  .strict();
+
+export const CustomerCursorPageSchema = z
+  .object({
+    items: z.array(CustomerSummarySchema),
+    next_cursor: z.string().min(1).nullable(),
+    total: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const ResolvedCustomerMergeFieldsSchema = z
   .object({
     name: z.string().min(1),
@@ -276,6 +312,7 @@ export const CustomerMergeChoicesSchema = z
 export type Customer = z.infer<typeof CustomerSchema>;
 export type CustomerContact = z.infer<typeof CustomerContactSchema>;
 export type CustomerSocialAccount = z.infer<typeof CustomerSocialAccountSchema>;
+export type DealStage = z.infer<typeof DealStageSchema>;
 export type CustomerDeal = z.infer<typeof CustomerDealSchema>;
 export type CustomerFollowUp = z.infer<typeof CustomerFollowUpSchema>;
 export type CustomerReminder = z.infer<typeof CustomerReminderSchema>;
@@ -285,6 +322,13 @@ export type ReminderCreateInput = z.infer<typeof ReminderCreateInputSchema>;
 export type ReminderUpdateInput = z.infer<typeof ReminderUpdateInputSchema>;
 export type CustomerDetail = z.infer<typeof CustomerDetailSchema>;
 export type CustomerSummary = z.infer<typeof CustomerSummarySchema>;
+export type CustomerCursorSortField = z.infer<
+  typeof CustomerCursorSortFieldSchema
+>;
+export type CustomerCursorPageInput = z.infer<
+  typeof CustomerCursorPageInputSchema
+>;
+export type CustomerCursorPage = z.infer<typeof CustomerCursorPageSchema>;
 export type CustomerMergeFieldResolutions = z.infer<
   typeof CustomerMergeFieldResolutionsSchema
 >;
@@ -321,6 +365,10 @@ export interface MergeCustomersInput {
 }
 
 export interface CustomerApi {
+  listCustomers(
+    input: CustomerCursorPageInput,
+    options?: ApiRequestOptions,
+  ): Promise<CustomerCursorPage>;
   getCustomerDetail(
     id: Customer["id"],
     options?: ApiRequestOptions,
@@ -337,6 +385,11 @@ export interface CustomerApi {
     input: MergeCustomersInput,
     options?: ApiRequestOptions,
   ): Promise<Customer>;
+  mergeContacts(
+    sourceId: CustomerContact["id"],
+    targetId: CustomerContact["id"],
+    options?: ApiRequestOptions,
+  ): Promise<CustomerContact>;
 }
 
 type CustomerRpcClient = Pick<ApiClient, "rpc">;
@@ -354,6 +407,39 @@ async function callCustomerRpc<Schema extends z.ZodTypeAny>(
 
 export function createCustomerApi(client: CustomerRpcClient): CustomerApi {
   return {
+    async listCustomers(input, options) {
+      const parsed = CustomerCursorPageInputSchema.safeParse(input);
+      if (!parsed.success) {
+        const fields: Record<string, string[]> = {};
+        for (const issue of parsed.error.issues) {
+          const field = issue.path.join(".") || "request";
+          (fields[field] ??= []).push(issue.message);
+        }
+        throw new ApiError({
+          code: API_ERROR_CODES.validation,
+          message: "Invalid Customer cursor query",
+          fields,
+          details: parsed.error.issues,
+          cause: parsed.error,
+        });
+      }
+      return await callCustomerRpc(
+        client,
+        "list_customers_cursor",
+        {
+          p_cursor: parsed.data.cursor ?? null,
+          p_limit: parsed.data.limit,
+          p_search: parsed.data.search?.trim() || null,
+          p_grade: parsed.data.grade ?? null,
+          p_status: parsed.data.status ?? null,
+          p_sort_field: parsed.data.sortField,
+          p_sort_order: parsed.data.sortOrder,
+        },
+        CustomerCursorPageSchema,
+        options,
+      );
+    },
+
     getCustomerDetail(id, options) {
       return callCustomerRpc(
         client,
@@ -394,6 +480,19 @@ export function createCustomerApi(client: CustomerRpcClient): CustomerApi {
           p_field_resolutions: input.fieldResolutions ?? {},
         },
         CustomerSchema,
+        options,
+      );
+    },
+
+    mergeContacts(sourceId, targetId, options) {
+      return callCustomerRpc(
+        client,
+        "merge_contacts",
+        {
+          p_source_id: sourceId,
+          p_target_id: targetId,
+        },
+        CustomerContactSchema,
         options,
       );
     },

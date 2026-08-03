@@ -9,7 +9,7 @@ export const DealColumn = ({
   stage,
   deals,
 }: {
-  stage: string;
+  stage: Deal["stage"];
   deals: Deal[];
 }) => {
   const totalAmount = deals.reduce((sum, deal) => sum + deal.amount, 0);

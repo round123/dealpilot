@@ -10,7 +10,7 @@
 
 import React, { useState } from "react";
 import { Clock, Loader2, X } from "lucide-react";
-import { createReminder, extensionErrorMessage } from "../../../src/lib/content-agent-client";
+import { createReminder, extensionErrorMessage } from "../../../src/lib/content-cloud-client";
 import { buildReminderCreate } from "../../../src/lib/reminder-draft";
 import { ReminderType } from "@dealpilot/shared";
 

@@ -1,0 +1,4 @@
+-- Intentionally empty.
+--
+-- This applied migration version is retained only to keep the demo Supabase
+-- migration history aligned. The V1 migration RPC surface is retired.

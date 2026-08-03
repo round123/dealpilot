@@ -7,21 +7,10 @@ import { VitePWA } from "vite-plugin-pwa";
 import createHtmlPlugin from "vite-plugin-simple-html";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    // Keep browser requests same-origin in Agent mode. Vite alone knows the
-    // local upstream; production assets are served directly by the Agent.
-    proxy:
-      mode === "agent"
-        ? {
-            "/api": {
-              target:
-                process.env.DEALPILOT_AGENT_ORIGIN ?? "http://127.0.0.1:31081",
-            },
-          }
-        : undefined,
   },
   plugins: [
     react(),
@@ -41,7 +30,9 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
+        globPatterns: ["**/*.{js,css,html,json,ico,png,svg,woff,woff2}"],
+        navigateFallback: "index.html",
+        cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
       },
       manifest: false, // Use existing manifest.json from public/
@@ -76,4 +67,4 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-}));
+});

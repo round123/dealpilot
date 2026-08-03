@@ -149,6 +149,22 @@ describe("private Storage facade", () => {
     expect(fixture.from).not.toHaveBeenCalled();
   });
 
+  it("rejects an upload without a current user before selecting a bucket", async () => {
+    const fixture = storageClient({
+      getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+    });
+    const storage = createPrivateStorageApi(fixture.client as never);
+
+    await expect(
+      storage.upload("attachments", "customers/logo.png", "data"),
+    ).rejects.toMatchObject({
+      code: API_ERROR_CODES.unauthorized,
+      status: 401,
+    });
+    expect(fixture.from).not.toHaveBeenCalled();
+    expect(fixture.bucket.upload).not.toHaveBeenCalled();
+  });
+
   it("normalizes Storage SDK failures to ApiError", async () => {
     const fixture = storageClient({
       upload: vi.fn().mockResolvedValue({

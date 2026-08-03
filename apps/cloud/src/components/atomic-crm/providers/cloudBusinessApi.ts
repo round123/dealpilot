@@ -1,4 +1,10 @@
-import type { ApiClient, StorageUploadBody } from "@dealpilot/api-client";
+import {
+  API_ERROR_CODES,
+  ApiError,
+  ContactIdSchema,
+  type ApiClient,
+  type StorageUploadBody,
+} from "@dealpilot/api-client";
 import { z } from "zod/v3";
 
 import type { ConfigurationContextValue } from "../root/ConfigurationContext";
@@ -26,23 +32,23 @@ type ConfigClient = {
     options: { idField: string; select: string },
   ): Promise<ConfigurationRecord>;
 };
-type FunctionInvoker = (
-  name: string,
-  schema: unknown,
-  options: { body: unknown },
-) => Promise<unknown>;
-
 export const createCloudBusinessApi = (client: ApiClient) => {
   const configClient = client as unknown as ConfigClient;
-  const invoke = client.invoke.bind(client) as FunctionInvoker;
 
   const currentUserId = async () => {
     const session = await client.auth.getSession();
-    if (!session) throw new Error("Authentication required");
+    if (!session) {
+      throw new ApiError({
+        code: API_ERROR_CODES.unauthorized,
+        message: "Authentication is required for cloud data access",
+        status: 401,
+      });
+    }
     return session.user.id;
   };
 
   const getAttachmentUrl = async (relativePath: string) => {
+    await currentUserId();
     const result = await client.storage.createSignedUrl(
       ATTACHMENTS_BUCKET,
       relativePath,
@@ -53,9 +59,10 @@ export const createCloudBusinessApi = (client: ApiClient) => {
 
   return {
     mergeContacts(sourceId: string, targetId: string) {
-      return invoke("merge_contacts", z.unknown(), {
-        body: { loserId: sourceId, winnerId: targetId },
-      });
+      return client.customers.mergeContacts(
+        ContactIdSchema.parse(sourceId),
+        ContactIdSchema.parse(targetId),
+      );
     },
 
     async getConfiguration(): Promise<ConfigurationContextValue> {
@@ -90,6 +97,7 @@ export const createCloudBusinessApi = (client: ApiClient) => {
       body: StorageUploadBody,
       contentType?: string,
     ) {
+      await currentUserId();
       await client.storage.upload(ATTACHMENTS_BUCKET, relativePath, body, {
         contentType,
       });

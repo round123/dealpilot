@@ -68,18 +68,11 @@ import {
   ImportParseResponseSchema,
   ImportCommitResponseSchema,
 } from "../schemas/import.js";
-import { SettingsSchema, SettingsUpdateSchema } from "../schemas/settings.js";
 import {
   BackupCreateSchema,
   BackupValidateResponseSchema,
   BackupRestoreResponseSchema,
 } from "../schemas/backup.js";
-import { StatsSchema } from "../schemas/stats.js";
-import {
-  ClearLocalDataResponseSchema,
-  ClearLocalDataSchema,
-  LocalDataInfoSchema,
-} from "../schemas/system.js";
 
 // Customer
 export type Customer = z.infer<typeof CustomerSchema>;
@@ -150,23 +143,9 @@ export type ImportCommitRequest = z.infer<typeof ImportCommitRequestSchema>;
 export type ImportParseResponse = z.infer<typeof ImportParseResponseSchema>;
 export type ImportCommitResponse = z.infer<typeof ImportCommitResponseSchema>;
 
-// Settings
-export type Settings = z.infer<typeof SettingsSchema>;
-export type SettingsUpdate = z.infer<typeof SettingsUpdateSchema>;
-
 // Backup
 export type BackupCreate = z.infer<typeof BackupCreateSchema>;
 export type BackupValidateResponse = z.infer<
   typeof BackupValidateResponseSchema
 >;
 export type BackupRestoreResponse = z.infer<typeof BackupRestoreResponseSchema>;
-
-// Stats
-export type Stats = z.infer<typeof StatsSchema>;
-
-// Local data lifecycle
-export type LocalDataInfo = z.infer<typeof LocalDataInfoSchema>;
-export type ClearLocalData = z.infer<typeof ClearLocalDataSchema>;
-export type ClearLocalDataResponse = z.infer<
-  typeof ClearLocalDataResponseSchema
->;

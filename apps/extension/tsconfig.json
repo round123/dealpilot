@@ -5,6 +5,7 @@
     "types": ["chrome"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "paths": {
+      "@dealpilot/api-client": ["../../packages/api-client/src/index.ts"],
       "@dealpilot/api-client/error": ["../../packages/api-client/src/error.ts"],
       "@dealpilot/shared": ["../../packages/shared/src"]
     }

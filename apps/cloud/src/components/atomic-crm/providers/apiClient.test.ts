@@ -1,14 +1,23 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ApiClient } from "@dealpilot/api-client";
 
 const mocks = vi.hoisted(() => ({
   createApiClient: vi.fn(() => ({ auth: {}, storage: {} })),
 }));
 
 vi.mock("@dealpilot/api-client", () => ({
+  API_ERROR_CODES: { invalidResponse: "INVALID_RESPONSE" },
+  ApiError: class MockApiError extends Error {},
   createApiClient: mocks.createApiClient,
 }));
 
-import { getCloudApiClient } from "./apiClient";
+let getCloudApiClient: () => ApiClient;
+
+beforeAll(async () => {
+  vi.stubEnv("VITE_SUPABASE_URL", "https://test.supabase.co");
+  vi.stubEnv("VITE_SB_PUBLISHABLE_KEY", "test-publishable-key");
+  ({ getCloudApiClient } = await import("./apiClient"));
+});
 
 describe("cloud API client", () => {
   beforeEach(() => mocks.createApiClient.mockClear());

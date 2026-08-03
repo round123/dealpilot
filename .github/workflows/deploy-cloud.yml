@@ -2,14 +2,35 @@ name: Deploy WebCloud
 
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Deployment channel
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - canary
+          - production
+      migration_approval:
+        description: Approval URL matching an exceptional migration marker
+        required: false
+        type: string
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
   push:
     branches:
-      - main
+      - "codex/**"
     paths:
       - ".github/workflows/deploy-cloud.yml"
       - "apps/cloud/**"
       - "packages/api-client/**"
       - "packages/shared/**"
+      - "scripts/check-migration-compatibility.mjs"
+      - "scripts/cloud-smoke.mjs"
       - "supabase/**"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -22,58 +43,175 @@ permissions:
   id-token: write
 
 concurrency:
-  group: webcloud-production
+  group: webcloud-${{ github.event_name == 'workflow_run' && 'production' || github.event_name == 'push' && 'preview' || inputs.channel || 'preview' }}
   cancel-in-progress: false
 
 jobs:
-  deploy-backend:
-    name: Deploy Supabase backend
+  plan:
+    name: Plan release and gate migrations
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    timeout-minutes: 10
+    outputs:
+      channel: ${{ steps.release.outputs.channel }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      - name: Resolve deployment channel
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REQUESTED_CHANNEL: ${{ inputs.channel || '' }}
+          CI_EVENT: ${{ github.event.workflow_run.event || '' }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          CI_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          channel="$REQUESTED_CHANNEL"
+          release_sha="$WORKFLOW_SHA"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "$CI_EVENT" != "push" ] || \
+               [ "$CI_CONCLUSION" != "success" ] || \
+               [ "$CI_HEAD_BRANCH" != "main" ]; then
+              echo "Production deployment requires a successful CI push run on main." >&2
+              exit 1
+            fi
+            channel="production"
+            release_sha="$CI_HEAD_SHA"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            channel="preview"
+          fi
+
+          case "$channel" in
+            preview|canary|production) ;;
+            *) echo "Unsupported deployment channel: $channel" >&2; exit 1 ;;
+          esac
+          if [ "$channel" = "production" ] && \
+             [ "$EVENT_NAME" != "workflow_run" ] && \
+             [ "$REF_NAME" != "main" ]; then
+            echo "Production deployment is restricted to the main workflow ref." >&2
+            exit 1
+          fi
+          if [[ ! "$release_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Release SHA must be a full lowercase commit SHA." >&2
+            exit 1
+          fi
+
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+      - name: Enforce forward-compatible PostgreSQL migrations
+        if: github.event_name != 'workflow_run'
+        shell: bash
+        env:
+          MIGRATION_APPROVAL: ${{ inputs.migration_approval || '' }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            mapfile -t migration_files < <(git ls-files 'supabase/migrations/*.sql')
+            node scripts/check-migration-compatibility.mjs \
+              --approval "$MIGRATION_APPROVAL" \
+              "${migration_files[@]}"
+          else
+            base_sha="${{ github.event.before }}"
+            if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+              base_sha="$(git rev-list --max-parents=0 HEAD)"
+            fi
+            node scripts/check-migration-compatibility.mjs \
+              --base "$base_sha" \
+              --head "$RELEASE_SHA" \
+              --approval "$MIGRATION_APPROVAL"
+          fi
+
+  deploy-backend:
+    name: Deploy ${{ needs.plan.outputs.channel }} PostgreSQL and Edge
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: cloud-${{ needs.plan.outputs.channel }}
+    env:
+      RELEASE_CHANNEL: ${{ needs.plan.outputs.channel }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ needs.plan.outputs.channel == 'production' && secrets.SUPABASE_DB_PASSWORD || needs.plan.outputs.channel == 'canary' && secrets.CANARY_SUPABASE_DB_PASSWORD || secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ needs.plan.outputs.channel == 'production' && secrets.SUPABASE_PROJECT_REF || needs.plan.outputs.channel == 'canary' && secrets.CANARY_SUPABASE_PROJECT_REF || secrets.PREVIEW_SUPABASE_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.release_sha }}
       - uses: supabase/setup-cli@v1
         with:
           version: 2.110.0
-      - name: Validate deployment secrets
+      - name: Validate isolated deployment target
         shell: bash
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN"
           test -n "$SUPABASE_DB_PASSWORD"
           test -n "$SUPABASE_PROJECT_REF"
-      - name: Link production project
+          if [ "$RELEASE_CHANNEL" != "production" ]; then
+            test -n "$PRODUCTION_PROJECT_REF"
+            if [ "$SUPABASE_PROJECT_REF" = "$PRODUCTION_PROJECT_REF" ]; then
+              echo "Preview/canary project must not equal the production project." >&2
+              exit 1
+            fi
+          fi
+      - name: Link selected Supabase project
         run: >-
           supabase link
           --project-ref "$SUPABASE_PROJECT_REF"
           --password "$SUPABASE_DB_PASSWORD"
-      - name: Apply database migrations
+      - name: Push Supabase Auth configuration
+        run: supabase config push --project-ref "$SUPABASE_PROJECT_REF" --yes
+      - name: Apply forward-only database migrations
         run: >-
           supabase db push
           --linked
           --include-all
           --password "$SUPABASE_DB_PASSWORD"
       - name: Deploy Edge Functions
-        run: >-
-          supabase functions deploy purge-expired-customers
-          --project-ref "$SUPABASE_PROJECT_REF"
-          --use-api
+        shell: bash
+        run: |
+          for function_path in supabase/functions/*; do
+            if [ ! -f "$function_path/index.ts" ]; then
+              continue
+            fi
+            function_name="$(basename "$function_path")"
+            supabase functions deploy "$function_name" \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              --use-api
+          done
 
   build-web:
-    name: Build Web/PWA
-    needs: deploy-backend
+    name: Build ${{ needs.plan.outputs.channel }} Web/PWA
+    needs:
+      - plan
+      - deploy-backend
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    environment:
+      name: cloud-${{ needs.plan.outputs.channel }}
     env:
+      RELEASE_CHANNEL: ${{ needs.plan.outputs.channel }}
+      RELEASE_SHA: ${{ needs.plan.outputs.release_sha }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
       VITE_IS_DEMO: "false"
-      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-      VITE_SB_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
+      VITE_SUPABASE_URL: ${{ needs.plan.outputs.channel == 'production' && secrets.VITE_SUPABASE_URL || needs.plan.outputs.channel == 'canary' && secrets.CANARY_VITE_SUPABASE_URL || secrets.PREVIEW_VITE_SUPABASE_URL }}
+      VITE_SB_PUBLISHABLE_KEY: ${{ needs.plan.outputs.channel == 'production' && secrets.VITE_SB_PUBLISHABLE_KEY || needs.plan.outputs.channel == 'canary' && secrets.CANARY_VITE_SB_PUBLISHABLE_KEY || secrets.PREVIEW_VITE_SB_PUBLISHABLE_KEY }}
       VITE_ATTACHMENTS_BUCKET: attachments
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.release_sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 9.0.0
@@ -82,6 +220,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: actions/configure-pages@v5
+        if: needs.plan.outputs.channel == 'production'
       - name: Validate public backend configuration
         shell: bash
         run: |
@@ -89,19 +228,125 @@ jobs:
           test -n "$VITE_SB_PUBLISHABLE_KEY"
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @dealpilot/cloud... build
-      - uses: actions/upload-pages-artifact@v3
+      - name: Record release identity
+        shell: bash
+        run: |
+          built_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          printf '{"sha":"%s","channel":"%s","built_at":"%s"}\n' \
+            "$RELEASE_SHA" "$RELEASE_CHANNEL" "$built_at" \
+            > apps/cloud/dist/release.json
+      - name: Upload production Pages artifact
+        if: needs.plan.outputs.channel == 'production'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: apps/cloud/dist
+      - name: Upload preview/canary artifact
+        if: needs.plan.outputs.channel != 'production'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-${{ needs.plan.outputs.channel }}-${{ needs.plan.outputs.release_sha }}
+          path: apps/cloud/dist
+          retention-days: 7
+      - name: Smoke preview/canary against isolated PostgreSQL
+        if: needs.plan.outputs.channel != 'production'
+        shell: bash
+        env:
+          CLOUD_WEB_URL: http://127.0.0.1:4188/
+          SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ env.VITE_SB_PUBLISHABLE_KEY }}
+        run: |
+          pnpm --filter @dealpilot/cloud exec vite preview \
+            --host 127.0.0.1 --port 4188 \
+            > /tmp/dealpilot-preview.log 2>&1 &
+          node scripts/cloud-smoke.mjs
+      - name: Install hosted Preview E2E browser
+        if: needs.plan.outputs.channel == 'preview'
+        run: pnpm --filter @dealpilot/cloud exec playwright install --with-deps chromium
+      - name: Gate Preview with hosted two-account acceptance
+        if: needs.plan.outputs.channel == 'preview'
+        env:
+          SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ env.VITE_SB_PUBLISHABLE_KEY }}
+          PREVIEW_E2E_ALPHA_EMAIL: ${{ secrets.PREVIEW_E2E_ALPHA_EMAIL }}
+          PREVIEW_E2E_ALPHA_PASSWORD: ${{ secrets.PREVIEW_E2E_ALPHA_PASSWORD }}
+          PREVIEW_E2E_BETA_EMAIL: ${{ secrets.PREVIEW_E2E_BETA_EMAIL }}
+          PREVIEW_E2E_BETA_PASSWORD: ${{ secrets.PREVIEW_E2E_BETA_PASSWORD }}
+        run: pnpm --filter @dealpilot/cloud test:e2e:preview
+      - name: Record preview/canary evidence
+        if: needs.plan.outputs.channel != 'production'
+        shell: bash
+        run: |
+          {
+            echo "### Cloud $RELEASE_CHANNEL release"
+            echo "- Release SHA: $RELEASE_SHA"
+            echo "- PostgreSQL target: isolated $RELEASE_CHANNEL project"
+            echo "- Web artifact: cloud-$RELEASE_CHANNEL-$RELEASE_SHA"
+            echo "- Pre-login smoke: passed"
+            if [ "$RELEASE_CHANNEL" = "preview" ]; then
+              echo "- Hosted two-account Customer acceptance: passed"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-web:
-    name: Deploy GitHub Pages
-    needs: build-web
+    name: Deploy production GitHub Pages
+    if: needs.plan.outputs.channel == 'production'
+    needs:
+      - plan
+      - build-web
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy Pages artifact
         id: deployment
         uses: actions/deploy-pages@v4
+
+  smoke-production:
+    name: Smoke production Web and current PostgreSQL
+    if: needs.plan.outputs.channel == 'production'
+    needs:
+      - plan
+      - deploy-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: cloud-production
+      url: ${{ needs.deploy-web.outputs.page_url }}
+    env:
+      CLOUD_WEB_URL: ${{ needs.deploy-web.outputs.page_url }}
+      SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
+      RELEASE_SHA: ${{ needs.plan.outputs.release_sha }}
+      CLOUD_SMOKE_REQUIRE_AUTHENTICATED: "true"
+      CLOUD_SMOKE_EMAIL: ${{ secrets.CLOUD_SMOKE_EMAIL }}
+      CLOUD_SMOKE_PASSWORD: ${{ secrets.CLOUD_SMOKE_PASSWORD }}
+      CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON: ${{ secrets.CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.release_sha }}
+      - name: Validate smoke configuration
+        shell: bash
+        run: |
+          test -n "$CLOUD_WEB_URL"
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
+          test -n "$CLOUD_SMOKE_EMAIL"
+          test -n "$CLOUD_SMOKE_PASSWORD"
+          test -n "$CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON"
+      - name: Run authenticated production smoke
+        run: node scripts/cloud-smoke.mjs
+      - name: Record production release evidence
+        shell: bash
+        run: |
+          {
+            echo "### Cloud production release"
+            echo "- Release SHA: $RELEASE_SHA"
+            echo "- Web: $CLOUD_WEB_URL"
+            echo "- PostgreSQL fact source: unchanged current production project"
+            echo "- Authenticated Customer count and related summary: passed"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -52,6 +52,18 @@ describe("personal auth provider", () => {
     expect(account.hasSession).not.toHaveBeenCalled();
   });
 
+  it.each(["#/privacy", "#/terms"])(
+    "allows the public legal route %s without a session check",
+    async (hash) => {
+      window.location.hash = hash;
+      const account = createAccount();
+      const provider = createPersonalAuthProvider({ account });
+
+      await expect(provider.checkAuth({} as never)).resolves.toBeUndefined();
+      expect(account.hasSession).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects team user management while allowing personal resources", async () => {
     const provider = createPersonalAuthProvider({
       account: createAccount(),

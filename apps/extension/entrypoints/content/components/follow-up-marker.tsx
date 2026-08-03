@@ -11,7 +11,7 @@
 import React, { useRef, useState } from "react";
 import { Bookmark, Plus, Loader2 } from "lucide-react";
 import type { FollowUpCreate } from "@dealpilot/shared";
-import { createFollowUp, extensionErrorMessage, generateIdempotencyKey } from "../../../src/lib/content-agent-client";
+import { createFollowUp, extensionErrorMessage, generateIdempotencyKey } from "../../../src/lib/content-cloud-client";
 import { getPlatformAdapter } from "./platform-adapter";
 
 interface FollowUpMarkerProps {
@@ -20,6 +20,30 @@ interface FollowUpMarkerProps {
   projectId?: string;
   /** 标记完成后的回调 */
   onSaved?: () => void;
+}
+
+export interface StableFollowUpAttempt {
+  data: FollowUpCreate;
+  key: string;
+}
+
+export interface FollowUpAttemptStore {
+  getOrCreate(factory: () => StableFollowUpAttempt): StableFollowUpAttempt;
+  clear(): void;
+}
+
+/** Keeps a failed write's exact payload and idempotency key for a retry. */
+export function createFollowUpAttemptStore(): FollowUpAttemptStore {
+  let attempt: StableFollowUpAttempt | null = null;
+  return {
+    getOrCreate(factory) {
+      attempt ??= factory();
+      return attempt;
+    },
+    clear() {
+      attempt = null;
+    },
+  };
 }
 
 /** 按钮样式 */
@@ -65,8 +89,8 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showManual, setShowManual] = useState(false);
   const [note, setNote] = useState("");
-  const messageAttempt = useRef<{ data: FollowUpCreate; key: string } | null>(null);
-  const manualAttempt = useRef<{ data: FollowUpCreate; key: string } | null>(null);
+  const messageAttempt = useRef<FollowUpAttemptStore | null>(null);
+  const manualAttempt = useRef<FollowUpAttemptStore | null>(null);
 
   /** 标记当前选中消息为跟进记录 */
   const handleMarkMessage = async () => {
@@ -82,7 +106,8 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
         setError("未检测到选中的消息，请先点击或选择一条消息");
         return;
       }
-      messageAttempt.current = {
+      const store = createFollowUpAttemptStore();
+      store.getOrCreate(() => ({
         data: {
           customer_id: customerId,
           project_id: projectId,
@@ -92,15 +117,20 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
           occurred_at: selectedMsg.timestamp ?? new Date().toISOString(),
         },
         key: generateIdempotencyKey(),
-      };
+      }));
+      messageAttempt.current = store;
     }
+
+    const attempt = messageAttempt.current.getOrCreate(() => {
+      throw new Error("message attempt was not initialized");
+    });
 
     setLoading(true);
     setError(null);
 
     try {
-      await createFollowUp(messageAttempt.current.data, messageAttempt.current.key);
-      messageAttempt.current = null;
+      await createFollowUp(attempt.data, attempt.key);
+      messageAttempt.current.clear();
       onSaved?.();
     } catch (err) {
       setError(extensionErrorMessage(err, "跟进保存失败，可重试"));
@@ -117,24 +147,29 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
     }
 
     if (!manualAttempt.current) {
-      manualAttempt.current = {
-        data: {
-          customer_id: customerId,
-          project_id: projectId,
-          type: "note",
-          note: note.trim(),
-          occurred_at: new Date().toISOString(),
-        },
-        key: generateIdempotencyKey(),
-      };
+      const store = createFollowUpAttemptStore();
+      store.getOrCreate(() => ({
+          data: {
+            customer_id: customerId,
+            project_id: projectId,
+            type: "note",
+            note: note.trim(),
+            occurred_at: new Date().toISOString(),
+          },
+          key: generateIdempotencyKey(),
+        }));
+      manualAttempt.current = store;
     }
+    const attempt = manualAttempt.current.getOrCreate(() => {
+      throw new Error("manual attempt was not initialized");
+    });
 
     setLoading(true);
     setError(null);
 
     try {
-      await createFollowUp(manualAttempt.current.data, manualAttempt.current.key);
-      manualAttempt.current = null;
+      await createFollowUp(attempt.data, attempt.key);
+      manualAttempt.current.clear();
       setNote("");
       setShowManual(false);
       onSaved?.();
@@ -152,7 +187,7 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
           value={note}
           onChange={(e) => {
             setNote(e.target.value);
-            manualAttempt.current = null;
+            manualAttempt.current?.clear();
           }}
           placeholder="输入跟进备注..."
           style={{
@@ -178,7 +213,7 @@ export const FollowUpMarker: React.FC<FollowUpMarkerProps> = ({
             onClick={() => {
               setShowManual(false);
               setError(null);
-              manualAttempt.current = null;
+              manualAttempt.current?.clear();
             }}
             disabled={loading}
           >

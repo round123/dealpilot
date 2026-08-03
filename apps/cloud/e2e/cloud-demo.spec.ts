@@ -1,10 +1,4 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import {
-  assertAgentUsedLoopbackOnly,
-  installAgentLoopbackNetworkGuard,
-} from "./agent-loopback-network";
 
 type BrowserDiagnostic = {
   type: "error" | "warning" | "pageerror";
@@ -16,48 +10,7 @@ type CustomerDraft = {
   company?: string;
 };
 
-test.beforeEach(async ({ page }) => {
-  await installAgentLoopbackNetworkGuard(page);
-  const agentDataDir = process.env.DEALPILOT_AGENT_E2E_DATA_DIR;
-  if (!agentDataDir) return;
-
-  const runtimeInfoPath = path.join(agentDataDir, "agent.runtime.json");
-  let token: string | undefined;
-  await expect
-    .poll(
-      async () => {
-        try {
-          const runtime = JSON.parse(
-            await readFile(runtimeInfoPath, "utf-8"),
-          ) as {
-            token?: unknown;
-          };
-          token = typeof runtime.token === "string" ? runtime.token : undefined;
-          return Boolean(token);
-        } catch {
-          return false;
-        }
-      },
-      { message: "Local Agent runtime token was not written" },
-    )
-    .toBe(true);
-
-  await page.goto(`/?token=${encodeURIComponent(token!)}#/`);
-
-  const privacyConfirmation = page.getByRole("button", {
-    name: "我已了解，开始使用",
-    exact: true,
-  });
-  await expect(privacyConfirmation).toBeVisible();
-  await privacyConfirmation.click();
-  await expect(privacyConfirmation).toBeHidden();
-});
-
-test.afterEach(async ({ page }, testInfo) => {
-  await assertAgentUsedLoopbackOnly(page, testInfo);
-});
-
-test("本地 Customer 完整行为在桌面端和移动端保持一致", async ({
+test("Demo Web Customer 完整行为在桌面端和移动端保持一致", async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
@@ -231,13 +184,13 @@ test("本地 Customer 完整行为在桌面端和移动端保持一致", async (
   expect(diagnostics, diagnostics.map(formatDiagnostic).join("\n")).toEqual([]);
 });
 
-test("本地域功能在桌面端和移动端可完整操作", async ({ page }, testInfo) => {
+test("Demo Web 业务功能在桌面端和移动端可完整操作", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
 
   const diagnostics = collectDiagnostics(page);
   const isMobile = testInfo.project.name.startsWith("mobile");
   const suffix = `${testInfo.project.name}-${Date.now().toString(36)}`;
-  const customer = `本地域客户-${suffix}`;
+  const customer = `Demo客户-${suffix}`;
   const followUpNote = `首次跟进-${suffix}`;
   const updatedFollowUpNote = `已更新跟进-${suffix}`;
   const project = `重点项目-${suffix}`;
@@ -246,7 +199,7 @@ test("本地域功能在桌面端和移动端可完整操作", async ({ page }, 
 
   await createCustomer(page, { name: customer });
 
-  await test.step("中文工作台提供本地域入口", async () => {
+  await test.step("中文工作台提供 Demo Web 入口", async () => {
     await page.goto("/#/");
     await expect(
       page.getByRole("heading", { name: "今日工作台", exact: true }),

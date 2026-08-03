@@ -4,9 +4,7 @@ export const DEAL_GRADES = ["S", "A", "B", "C"] as const;
 
 const CLOSED_DEAL_STAGES = new Set([
   "closed_lost",
-  "lost",
   "archived",
-  "closed",
 ]);
 
 const probabilityMessage = {

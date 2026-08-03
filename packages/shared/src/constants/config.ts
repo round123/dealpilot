@@ -13,10 +13,4 @@ export const OVERDUE_ESCALATION_DAYS = 3;
 export const IDEMPOTENCY_KEY_TTL_HOURS = 24;
 export const BACKUP_MIN_PASSWORD_LENGTH = 8;
 
-export const AGENT_DEFAULT_PORT = 31081;
-export const API_VERSION = "v1";
 export const APP_VERSION = "0.1.0";
-
-export const SQLITE_BUSY_TIMEOUT_MS = 5000;
-export const SQLITE_WAL_MODE = true;
-export const SQLITE_FOREIGN_KEYS = true;

@@ -48,6 +48,12 @@ export const AGENT_CRM_CAPABILITIES: CrmProviderCapabilities = Object.freeze({
   deals: Object.freeze({ notes: false }),
 });
 
+export const SUPABASE_CRM_CAPABILITIES: CrmProviderCapabilities = Object.freeze(
+  {
+    ...FULL_CRM_CAPABILITIES,
+  },
+);
+
 const CrmProviderCapabilitiesContext = createContext(FULL_CRM_CAPABILITIES);
 
 export const CrmProviderCapabilitiesProvider = ({

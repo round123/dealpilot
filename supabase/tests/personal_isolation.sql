@@ -313,9 +313,13 @@ $$;
 
 -- A user action after deletion wins over the old deletion snapshot. The marker
 -- trigger clears deletion_event_id as compare-and-set protection.
-update public.reminders
-set status = 'completed', resolution = 'Manually handled after deletion'
-where id = 'a5000000-0000-0000-0000-000000000003';
+select public.update_reminder_status_idempotent(
+  'a5000000-0000-0000-0000-000000000103',
+  'a5000000-0000-0000-0000-000000000003',
+  'completed',
+  null,
+  'Manually handled after deletion'
+);
 
 do $$
 declare

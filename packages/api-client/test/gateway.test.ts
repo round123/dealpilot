@@ -114,6 +114,17 @@ describe("public API gateway", () => {
     mocks.createClient.mockReset();
   });
 
+  it("does not expose a self-service account deletion API", () => {
+    mocks.createClient.mockReturnValue({ from: vi.fn(), functions: {} });
+
+    const api = createApiClient({
+      url: "https://example.supabase.co",
+      anonKey: "anon-key",
+    });
+
+    expect(api).not.toHaveProperty("account");
+  });
+
   it("constructs list queries inside the package and returns React Admin-shaped metadata", async () => {
     const query = createQuery({
       data: [{ id: "550e8400-e29b-41d4-a716-446655440000", name: "Acme" }],
@@ -327,5 +338,63 @@ describe("public API gateway", () => {
     await api.getOne("customers", "record-id", z.object({ id: z.string() }));
 
     expect(query.calls).toContainEqual(["eq", "id", "record-id"]);
+  });
+
+  it("deletes association rows by structured filters and parses every row", async () => {
+    const contactId = "c0000000-0000-4000-8000-000000000001";
+    const tagId = "70000000-0000-4000-8000-000000000001";
+    const query = createQuery({
+      data: [{ contact_id: contactId, tag_id: tagId }],
+      error: null,
+      status: 200,
+    });
+    mocks.createClient.mockReturnValue({
+      from: vi.fn(() => query),
+      functions: {},
+    });
+    const api = createApiClient({
+      url: "https://example.supabase.co",
+      anonKey: "anon-key",
+    });
+    const signal = new AbortController().signal;
+
+    await expect(
+      api.deleteWhere(
+        "contact_tags",
+        {
+          contact_id: { operator: "eq", value: contactId },
+          tag_id: { operator: "in", value: [tagId] },
+        },
+        z.object({ contact_id: z.string().uuid(), tag_id: z.string().uuid() }),
+        { signal },
+      ),
+    ).resolves.toEqual([{ contact_id: contactId, tag_id: tagId }]);
+
+    expect(query.calls).toEqual([
+      ["delete"],
+      ["eq", "contact_id", contactId],
+      ["in", "tag_id", [tagId]],
+      ["select", "*"],
+      ["abortSignal", signal],
+    ]);
+  });
+
+  it("rejects an unscoped filtered delete before constructing a query", async () => {
+    const from = vi.fn();
+    mocks.createClient.mockReturnValue({ from, functions: {} });
+    const api = createApiClient({
+      url: "https://example.supabase.co",
+      anonKey: "anon-key",
+    });
+
+    expect(() =>
+      api.deleteWhere("contact_tags", {}, z.object({ tag_id: z.string() })),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "VALIDATION_ERROR",
+        fields: { filters: ["At least one filter is required"] },
+      }),
+    );
+    expect(from).not.toHaveBeenCalled();
   });
 });

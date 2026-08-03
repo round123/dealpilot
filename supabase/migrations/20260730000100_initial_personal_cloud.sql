@@ -19,7 +19,6 @@ create type public.reminder_status as enum ('pending', 'completed', 'snoozed', '
 create type public.reminder_priority as enum ('low', 'normal', 'high', 'urgent');
 create type public.risk_severity as enum ('low', 'medium', 'high', 'critical');
 create type public.risk_status as enum ('open', 'handling', 'resolved', 'ignored');
-create type public.migration_job_status as enum ('pending', 'running', 'awaiting_confirmation', 'confirmed', 'abandoned', 'failed');
 create type public.customer_purge_job_status as enum (
   'pending', 'processing', 'retry', 'completed', 'cancelled'
 );
@@ -37,7 +36,7 @@ create table public.companies (
   id uuid primary key default extensions.gen_random_uuid(),
   owner_user_id uuid not null default auth.uid() references public.profiles(id) on delete cascade,
   name text not null check (btrim(name) <> ''),
-  -- Legacy V1 customer.company value; distinct from the Atomic company record name.
+  -- Legal/company label; distinct from the Atomic company record name.
   company text,
   sector text,
   size smallint check (size is null or size >= 0),
@@ -332,24 +331,6 @@ alter table public.reminders
   references public.audit_events(owner_user_id, id) on delete set null (deletion_event_id)
   deferrable initially deferred;
 
-create table public.migration_jobs (
-  id uuid primary key default extensions.gen_random_uuid(),
-  owner_user_id uuid not null default auth.uid() references public.profiles(id) on delete cascade,
-  idempotency_key text not null check (btrim(idempotency_key) <> ''),
-  source_fingerprint text not null check (btrim(source_fingerprint) <> ''),
-  status public.migration_job_status not null default 'pending',
-  counts jsonb not null default '{}'::jsonb check (jsonb_typeof(counts) = 'object'),
-  checksums jsonb not null default '{}'::jsonb check (jsonb_typeof(checksums) = 'object'),
-  error_code text,
-  started_at timestamptz,
-  completed_at timestamptz,
-  confirmed_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (owner_user_id, id),
-  unique (owner_user_id, idempotency_key)
-);
-
 -- This queue deliberately has no Customer foreign key: its path snapshot and
 -- retry history must survive the Customer cascade it coordinates.
 create table public.customer_purge_jobs (
@@ -383,7 +364,6 @@ create index reminders_owner_company_idx on public.reminders (owner_user_id, com
 create index deal_risks_owner_deal_idx on public.deal_risks (owner_user_id, deal_id, status);
 create index deal_milestones_owner_deal_idx on public.deal_milestones (owner_user_id, deal_id, due_date);
 create index audit_events_owner_entity_idx on public.audit_events (owner_user_id, entity_type, entity_id, occurred_at desc);
-create index migration_jobs_owner_created_idx on public.migration_jobs (owner_user_id, created_at desc);
 create index customer_purge_jobs_claim_idx
   on public.customer_purge_jobs (status, next_attempt_at, created_at);
 
@@ -525,7 +505,7 @@ begin
   foreach table_name in array array[
     'profiles', 'companies', 'contacts', 'contact_notes', 'deals', 'deal_notes',
     'tags', 'tasks', 'configuration', 'social_accounts', 'follow_ups', 'reminders',
-    'deal_risks', 'deal_milestones', 'migration_jobs', 'customer_purge_jobs'
+    'deal_risks', 'deal_milestones', 'customer_purge_jobs'
   ]
   loop
     execute format(
@@ -1268,7 +1248,7 @@ begin
     'profiles', 'companies', 'contacts', 'contact_tags', 'contact_notes', 'deals',
     'deal_contacts', 'deal_notes', 'tags', 'tasks', 'configuration', 'social_accounts',
     'follow_ups', 'reminders', 'deal_risks', 'deal_milestones', 'audit_events',
-    'migration_jobs', 'customer_purge_jobs'
+    'customer_purge_jobs'
   ]
   loop
     execute format('alter table public.%I enable row level security', table_name);
@@ -1289,7 +1269,7 @@ begin
   foreach table_name in array array[
     'companies', 'contacts', 'contact_tags', 'contact_notes', 'deals', 'deal_contacts',
     'deal_notes', 'tags', 'tasks', 'configuration', 'social_accounts', 'follow_ups',
-    'reminders', 'deal_risks', 'deal_milestones', 'audit_events', 'migration_jobs'
+    'reminders', 'deal_risks', 'deal_milestones', 'audit_events'
   ]
   loop
     execute format(
@@ -1319,6 +1299,7 @@ revoke all on table public.customer_purge_jobs
 
 grant usage on schema public to authenticated;
 grant usage on schema public to service_role;
+grant select, insert, update, delete on table public.companies to service_role;
 grant select, insert, update, delete on table
   public.companies,
   public.contacts,
@@ -1333,8 +1314,7 @@ grant select, insert, update, delete on table
   public.social_accounts,
   public.follow_ups,
   public.deal_risks,
-  public.deal_milestones,
-  public.migration_jobs
+  public.deal_milestones
 to authenticated;
 grant select, delete on table public.reminders to authenticated;
 grant insert (
@@ -1347,6 +1327,8 @@ grant update (
 ) on table public.reminders to authenticated;
 grant select, update on table public.profiles to authenticated;
 grant select on table public.audit_events to authenticated;
+revoke all on table public.companies_summary, public.contacts_summary
+  from public, anon, authenticated;
 grant select on table public.companies_summary, public.contacts_summary to authenticated;
 grant execute on function public.soft_delete_customer(uuid) to authenticated;
 grant execute on function public.restore_customer(uuid) to authenticated;

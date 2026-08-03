@@ -1,4 +1,5 @@
 import type { CustomerReminder, DealRisk } from "@dealpilot/api-client";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   BellRing,
@@ -10,48 +11,89 @@ import {
 import { useGetList } from "ra-core";
 import { Link } from "react-router";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import type { Company, Deal, FollowUp } from "../types";
-import { LocalBackupStatus } from "../settings/LocalBackupStatus";
+import { getCloudApiClient } from "../providers/apiClient";
 import { isUnscheduledPausedReminder } from "../reminders/reminderContract";
+import type { Company, Deal, FollowUp } from "../types";
+import { sortRemindersByPriority } from "./reminderPriority";
 
-const PAGE_SIZE = 10_000;
+const DASHBOARD_SUMMARY_QUERY_KEY = ["dashboard", "summary"] as const;
+const DEMO_PAGE_SIZE = 10_000;
 const OPEN_REMINDER_STATUSES = new Set<CustomerReminder["status"]>([
   "pending",
   "snoozed",
   "overdue",
 ]);
+const isDemoRuntime = () =>
+  import.meta.env.MODE === "demo" && import.meta.env.VITE_IS_DEMO === "true";
 
-export const DealPilotDashboard = () => {
-  const companiesQuery = useGetList<Company>("companies", listParams("name"));
+type DashboardReminderView = Pick<
+  CustomerReminder,
+  "id" | "due_at" | "snooze_until"
+> & {
+  company_name: string;
+  deal_name: string | null;
+};
+
+type DashboardViewSummary = {
+  open_reminder_count: number;
+  overdue_reminder_count: number;
+  high_risk_deal_count: number;
+  follow_up_count: number;
+  priority_reminders: DashboardReminderView[];
+};
+
+export const DealPilotDashboard = () =>
+  isDemoRuntime() ? <DemoDashboard /> : <CloudDashboard />;
+
+const CloudDashboard = () => {
+  const summaryQuery = useQuery({
+    queryKey: DASHBOARD_SUMMARY_QUERY_KEY,
+    queryFn: ({ signal }) =>
+      getCloudApiClient().dashboard.getSummary({ signal }),
+    retry: false,
+  });
+
+  if (summaryQuery.isError) return <DashboardError />;
+  if (summaryQuery.isPending) return <DashboardLoading />;
+
+  return <DashboardContent summary={summaryQuery.data} />;
+};
+
+const DemoDashboard = () => {
+  const companiesQuery = useGetList<Company>(
+    "companies",
+    demoListParams("name"),
+  );
   const dealsQuery = useGetList<Deal>(
     "deals",
-    listParams("updated_at", "DESC"),
+    demoListParams("updated_at", "DESC"),
   );
   const followUpsQuery = useGetList<FollowUp>(
     "follow_ups",
-    listParams("occurred_at", "DESC"),
+    demoListParams("occurred_at", "DESC"),
   );
   const remindersQuery = useGetList<CustomerReminder>(
     "reminders",
-    listParams("due_at"),
+    demoListParams("due_at"),
   );
   const risksQuery = useGetList<DealRisk>(
     "deal_risks",
-    listParams("created_at", "DESC"),
+    demoListParams("created_at", "DESC"),
   );
 
-  if (
-    companiesQuery.isPending ||
-    dealsQuery.isPending ||
-    followUpsQuery.isPending ||
-    remindersQuery.isPending ||
-    risksQuery.isPending
-  ) {
-    return <DashboardLoading />;
-  }
+  const queries = [
+    companiesQuery,
+    dealsQuery,
+    followUpsQuery,
+    remindersQuery,
+    risksQuery,
+  ];
+  if (queries.some((query) => query.isError)) return <DashboardError />;
+  if (queries.some((query) => query.isPending)) return <DashboardLoading />;
 
   const companies = companiesQuery.data ?? [];
   const deals = dealsQuery.data ?? [];
@@ -59,16 +101,21 @@ export const DealPilotDashboard = () => {
   const reminders = remindersQuery.data ?? [];
   const risks = risksQuery.data ?? [];
   const now = new Date();
-  const openReminders = reminders
-    .filter(
-      (reminder) =>
-        OPEN_REMINDER_STATUSES.has(reminder.status) &&
-        !isUnscheduledPausedReminder(reminder),
-    )
-    .sort((left, right) => getReminderTime(left) - getReminderTime(right));
-  const overdueReminders = openReminders.filter(
-    (reminder) => getReminderTime(reminder) < now.getTime(),
+  const openReminders = reminders.filter(
+    (reminder) =>
+      OPEN_REMINDER_STATUSES.has(reminder.status) &&
+      !isUnscheduledPausedReminder(reminder),
   );
+  const prioritizedReminders = sortRemindersByPriority(openReminders, {
+    companies,
+    deals,
+    risks,
+    now,
+  });
+  const companyById = new Map(
+    companies.map((company) => [String(company.id), company]),
+  );
+  const dealById = new Map(deals.map((deal) => [String(deal.id), deal]));
   const highRiskDealIds = new Set(
     risks
       .filter(
@@ -78,10 +125,36 @@ export const DealPilotDashboard = () => {
       )
       .map((risk) => String(risk.deal_id)),
   );
-  const companyById = new Map(
-    companies.map((company) => [String(company.id), company]),
+
+  return (
+    <DashboardContent
+      summary={{
+        open_reminder_count: openReminders.length,
+        overdue_reminder_count: openReminders.filter(
+          (reminder) => getReminderTime(reminder) < now.getTime(),
+        ).length,
+        high_risk_deal_count: highRiskDealIds.size,
+        follow_up_count: followUps.length,
+        priority_reminders: prioritizedReminders
+          .slice(0, 5)
+          .map((reminder) => ({
+            id: reminder.id,
+            due_at: reminder.due_at,
+            snooze_until: reminder.snooze_until,
+            company_name:
+              companyById.get(String(reminder.company_id))?.name ??
+              `客户 ${reminder.company_id}`,
+            deal_name: reminder.deal_id
+              ? (dealById.get(String(reminder.deal_id))?.name ?? null)
+              : null,
+          })),
+      }}
+    />
   );
-  const dealById = new Map(deals.map((deal) => [String(deal.id), deal]));
+};
+
+const DashboardContent = ({ summary }: { summary: DashboardViewSummary }) => {
+  const now = new Date();
 
   return (
     <div className="space-y-8 py-2">
@@ -108,8 +181,6 @@ export const DealPilotDashboard = () => {
         </div>
       </header>
 
-      <LocalBackupStatus />
-
       <section
         aria-label="业务概览"
         className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border lg:grid-cols-4"
@@ -117,24 +188,24 @@ export const DealPilotDashboard = () => {
         <Metric
           icon={BellRing}
           label="待处理提醒"
-          value={openReminders.length}
+          value={summary.open_reminder_count}
         />
         <Metric
           icon={AlertTriangle}
           label="已逾期"
-          value={overdueReminders.length}
-          urgent={overdueReminders.length > 0}
+          value={summary.overdue_reminder_count}
+          urgent={summary.overdue_reminder_count > 0}
         />
         <Metric
           icon={FolderPlus}
           label="高风险项目"
-          value={highRiskDealIds.size}
-          urgent={highRiskDealIds.size > 0}
+          value={summary.high_risk_deal_count}
+          urgent={summary.high_risk_deal_count > 0}
         />
         <Metric
           icon={MessageSquareText}
           label="跟进记录"
-          value={followUps.length}
+          value={summary.follow_up_count}
         />
       </section>
 
@@ -151,13 +222,9 @@ export const DealPilotDashboard = () => {
               <Link to="/reminders">查看全部</Link>
             </Button>
           </div>
-          {openReminders.length ? (
+          {summary.priority_reminders.length ? (
             <div className="divide-y border-y">
-              {openReminders.slice(0, 5).map((reminder) => {
-                const company = companyById.get(String(reminder.company_id));
-                const deal = reminder.deal_id
-                  ? dealById.get(String(reminder.deal_id))
-                  : undefined;
+              {summary.priority_reminders.map((reminder) => {
                 const overdue = getReminderTime(reminder) < now.getTime();
                 return (
                   <div
@@ -175,10 +242,10 @@ export const DealPilotDashboard = () => {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {company?.name ?? `客户 ${reminder.company_id}`}
+                        {reminder.company_name}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {deal?.name ? `${deal.name} · ` : ""}
+                        {reminder.deal_name ? `${reminder.deal_name} · ` : ""}
                         {formatDateTime(
                           reminder.snooze_until ?? reminder.due_at,
                         )}
@@ -288,14 +355,25 @@ const DashboardLoading = () => (
   </div>
 );
 
-const listParams = (field: string, order: "ASC" | "DESC" = "ASC") => ({
+const DashboardError = () => (
+  <Alert variant="destructive" role="alert" className="my-4">
+    <AlertTriangle />
+    <AlertTitle>工作台数据加载失败</AlertTitle>
+    <AlertDescription>
+      暂时无法从云服务获取业务数据，请检查网络后刷新页面重试。
+    </AlertDescription>
+  </Alert>
+);
+
+const demoListParams = (field: string, order: "ASC" | "DESC" = "ASC") => ({
   filter: {},
-  pagination: { page: 1, perPage: PAGE_SIZE },
+  pagination: { page: 1, perPage: DEMO_PAGE_SIZE },
   sort: { field, order },
 });
 
-const getReminderTime = (reminder: CustomerReminder) =>
-  new Date(reminder.snooze_until ?? reminder.due_at).getTime();
+const getReminderTime = (
+  reminder: Pick<CustomerReminder, "due_at" | "snooze_until">,
+) => new Date(reminder.snooze_until ?? reminder.due_at).getTime();
 
 const formatDateTime = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", {

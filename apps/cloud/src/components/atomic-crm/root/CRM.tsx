@@ -7,11 +7,11 @@ import type {
 import { CustomRoutes, localStorageStore, Resource } from "ra-core";
 import { useEffect, useMemo } from "react";
 import { Route } from "react-router";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { Admin } from "@/components/admin/admin";
 import { ForgotPasswordPage } from "@/components/supabase/forgot-password-page";
 import { SetPasswordPage } from "@/components/supabase/set-password-page";
+import { PrivacyPolicyPage } from "@/components/legal/PrivacyPolicyPage";
+import { TermsOfServicePage } from "@/components/legal/TermsOfServicePage";
 
 import companies from "../companies";
 import contacts from "../contacts";
@@ -31,7 +31,7 @@ import {
 } from "../providers/supabase";
 import { SettingsPageMobile } from "../settings/SettingsPageMobile";
 import { SettingsPage } from "../settings/SettingsPage";
-import { LocalDataToolsPage } from "../settings/LocalDataToolsPage";
+import { CloudDataToolsPage } from "../settings/CloudDataToolsPage";
 import {
   CONFIGURATION_STORE_KEY,
   type ConfigurationContextValue,
@@ -63,20 +63,19 @@ import { clearAccountState, createCloudQueryClient } from "./accountState";
 import { cloudCustomerOperations } from "../providers/cloudCustomerOperations";
 import { CustomerOperationsProvider } from "../providers/CustomerOperationsContext";
 import type { CustomerOperations } from "../providers/customerOperations";
-import { createLocalCustomerOperations } from "../providers/localCustomerOperations";
+import { createDemoCustomerOperations } from "../providers/demoCustomerOperations";
 import {
   ImportOperationsProvider,
   type CustomerImportOperations,
 } from "../providers/importOperations";
-import {
-  LocalDataOperationsProvider,
-  type LocalDataOperations,
-} from "../providers/localDataOperations";
 import { CrmProviderCapabilitiesProvider } from "../providers/capabilities";
-import { LocalPrivacyGuard } from "../settings/LocalPrivacyNotice";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 const defaultQueryClient = createCloudQueryClient();
+const isDemoRuntime =
+  import.meta.env.DEV &&
+  import.meta.env.MODE === "demo" &&
+  import.meta.env.VITE_IS_DEMO === "true";
 
 export type CRMProps = {
   dataProvider?: CrmDataProvider;
@@ -88,7 +87,6 @@ export type CRMProps = {
   layout?: LayoutComponent;
   customerOperations?: CustomerOperations;
   importOperations?: CustomerImportOperations;
-  localDataOperations?: LocalDataOperations;
 } & Partial<ConfigurationContextValue>;
 
 /**
@@ -151,7 +149,6 @@ export const CRM = ({
   disableTelemetry: _disableTelemetry,
   customerOperations,
   importOperations,
-  localDataOperations,
   ...rest
 }: CRMProps) => {
   // Seed the store with CRM prop values if not already stored
@@ -179,8 +176,8 @@ export const CRM = ({
   const resolvedCustomerOperations = useMemo(
     () =>
       customerOperations ??
-      (import.meta.env.VITE_IS_DEMO === "true"
-        ? createLocalCustomerOperations(dataProvider)
+      (isDemoRuntime
+        ? createDemoCustomerOperations(dataProvider)
         : cloudCustomerOperations),
     [customerOperations, dataProvider],
   );
@@ -235,29 +232,25 @@ export const CRM = ({
   const ResponsiveAdmin = isMobile ? MobileAdmin : DesktopAdmin;
 
   return (
-    <LocalDataOperationsProvider operations={localDataOperations}>
-      <LocalPrivacyGuard>
-        <ImportOperationsProvider operations={importOperations}>
-          <CustomerOperationsProvider operations={resolvedCustomerOperations}>
-            <CrmProviderCapabilitiesProvider
-              capabilities={dataProvider.capabilities}
-            >
-              <ResponsiveAdmin
-                dataProvider={dataProvider}
-                authProvider={wrappedAuthProvider}
-                i18nProvider={i18nProvider}
-                store={store}
-                queryClient={queryClient}
-                loginPage={StartPage}
-                requireAuth
-                disableTelemetry={true}
-                {...rest}
-              />
-            </CrmProviderCapabilitiesProvider>
-          </CustomerOperationsProvider>
-        </ImportOperationsProvider>
-      </LocalPrivacyGuard>
-    </LocalDataOperationsProvider>
+    <ImportOperationsProvider operations={importOperations}>
+      <CustomerOperationsProvider operations={resolvedCustomerOperations}>
+        <CrmProviderCapabilitiesProvider
+          capabilities={dataProvider.capabilities}
+        >
+          <ResponsiveAdmin
+            dataProvider={dataProvider}
+            authProvider={wrappedAuthProvider}
+            i18nProvider={i18nProvider}
+            store={store}
+            queryClient={queryClient}
+            loginPage={StartPage}
+            requireAuth
+            disableTelemetry={true}
+            {...rest}
+          />
+        </CrmProviderCapabilitiesProvider>
+      </CustomerOperationsProvider>
+    </ImportOperationsProvider>
   );
 };
 
@@ -284,13 +277,18 @@ const DesktopAdmin = (
           path={ForgotPasswordPage.path}
           element={<ForgotPasswordPage />}
         />
+        <Route path={PrivacyPolicyPage.path} element={<PrivacyPolicyPage />} />
+        <Route
+          path={TermsOfServicePage.path}
+          element={<TermsOfServicePage />}
+        />
       </CustomRoutes>
 
       <CustomRoutes>
         <Route path={SettingsPage.path} element={<SettingsPage />} />
         <Route
-          path={LocalDataToolsPage.path}
-          element={<LocalDataToolsPage />}
+          path={CloudDataToolsPage.path}
+          element={<CloudDataToolsPage />}
         />
         <Route path={ImportPage.path} element={<ImportPage />} />
         <Route path={ChangelogPage.path} element={<ChangelogPage />} />
@@ -322,66 +320,63 @@ const MobileAdmin = (
   },
 ) => {
   const queryClient = props.queryClient ?? defaultQueryClient;
-  const asyncStoragePersister = createAsyncStoragePersister({
-    storage: localStorage,
-  });
 
   return (
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{ persister: asyncStoragePersister }}
+    <Admin
+      queryClient={queryClient}
+      layout={props.layout ?? MobileLayout}
+      dashboard={props.dashboard ?? MobileDashboard}
+      {...props}
     >
-      <Admin
-        queryClient={queryClient}
-        layout={props.layout ?? MobileLayout}
-        dashboard={props.dashboard ?? MobileDashboard}
-        {...props}
+      <CustomRoutes noLayout>
+        <Route path={SignupPage.path} element={<SignupPage />} />
+        <Route
+          path={ConfirmationRequired.path}
+          element={<ConfirmationRequired />}
+        />
+        <Route path={SetPasswordPage.path} element={<SetPasswordPage />} />
+        <Route
+          path={ForgotPasswordPage.path}
+          element={<ForgotPasswordPage />}
+        />
+        <Route path={PrivacyPolicyPage.path} element={<PrivacyPolicyPage />} />
+        <Route
+          path={TermsOfServicePage.path}
+          element={<TermsOfServicePage />}
+        />
+      </CustomRoutes>
+      <CustomRoutes>
+        <Route
+          path={SettingsPageMobile.path}
+          element={<SettingsPageMobile />}
+        />
+        <Route
+          path={CloudDataToolsPage.path}
+          element={<CloudDataToolsPage />}
+        />
+        <Route path={ImportPage.path} element={<ImportPage />} />
+        <Route path={ChangelogPage.path} element={<ChangelogPage />} />
+        <Route
+          path={DeletedCustomersPage.path}
+          element={<DeletedCustomersPage />}
+        />
+      </CustomRoutes>
+      <Resource
+        name="contacts"
+        list={ContactListMobile}
+        show={ContactShow}
+        recordRepresentation={contacts.recordRepresentation}
       >
-        <CustomRoutes noLayout>
-          <Route path={SignupPage.path} element={<SignupPage />} />
-          <Route
-            path={ConfirmationRequired.path}
-            element={<ConfirmationRequired />}
-          />
-          <Route path={SetPasswordPage.path} element={<SetPasswordPage />} />
-          <Route
-            path={ForgotPasswordPage.path}
-            element={<ForgotPasswordPage />}
-          />
-        </CustomRoutes>
-        <CustomRoutes>
-          <Route
-            path={SettingsPageMobile.path}
-            element={<SettingsPageMobile />}
-          />
-          <Route
-            path={LocalDataToolsPage.path}
-            element={<LocalDataToolsPage />}
-          />
-          <Route path={ImportPage.path} element={<ImportPage />} />
-          <Route path={ChangelogPage.path} element={<ChangelogPage />} />
-          <Route
-            path={DeletedCustomersPage.path}
-            element={<DeletedCustomersPage />}
-          />
-        </CustomRoutes>
-        <Resource
-          name="contacts"
-          list={ContactListMobile}
-          show={ContactShow}
-          recordRepresentation={contacts.recordRepresentation}
-        >
-          <Route path=":id/notes/:noteId" element={<NoteShowPage />} />
-        </Resource>
-        <Resource name="companies" {...companies} list={CompanyListMobile} />
-        <Resource name="deals" {...deals} />
-        <Resource name="follow_ups" {...followUps} />
-        <Resource name="reminders" {...reminders} />
-        <Resource name="deal_risks" />
-        <Resource name="deal_milestones" />
-        <Resource name="social_accounts" />
-        <Resource name="tasks" list={MobileTasksList} />
-      </Admin>
-    </PersistQueryClientProvider>
+        <Route path=":id/notes/:noteId" element={<NoteShowPage />} />
+      </Resource>
+      <Resource name="companies" {...companies} list={CompanyListMobile} />
+      <Resource name="deals" {...deals} />
+      <Resource name="follow_ups" {...followUps} />
+      <Resource name="reminders" {...reminders} />
+      <Resource name="deal_risks" />
+      <Resource name="deal_milestones" />
+      <Resource name="social_accounts" />
+      <Resource name="tasks" list={MobileTasksList} />
+    </Admin>
   );
 };

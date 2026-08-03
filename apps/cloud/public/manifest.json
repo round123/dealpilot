@@ -1,6 +1,9 @@
 {
-  "short_name": "Atomic CRM",
-  "name": "Atomic CRM",
+  "short_name": "DealPilot",
+  "name": "DealPilot 外贸客户工作台",
+  "id": "./",
+  "description": "面向个人外贸经理的客户、项目、跟进与提醒工作台",
+  "lang": "zh-CN",
   "icons": [
     {
       "src": "favicon.ico",
@@ -66,8 +69,9 @@
       "type": "image/png"
     }
   ],
-  "start_url": ".",
+  "start_url": "./",
   "display": "standalone",
+  "scope": "./",
   "orientation": "portrait",
   "theme_color": "#000000",
   "background_color": "#ffffff"

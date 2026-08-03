@@ -35,7 +35,7 @@ export const ContactInputs = () => {
   const capabilities = useCrmProviderCapabilities();
 
   if (!capabilities.contacts.extendedProfile) {
-    return <AgentContactInputs />;
+    return <BasicContactInputs />;
   }
 
   return (
@@ -60,7 +60,7 @@ export const ContactInputs = () => {
   );
 };
 
-const AgentContactInputs = () => {
+const BasicContactInputs = () => {
   const translate = useTranslate();
   const record = useRecordContext<Contact>();
   const capabilities = useCrmProviderCapabilities();

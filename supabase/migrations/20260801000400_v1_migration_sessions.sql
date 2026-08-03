@@ -1,0 +1,6 @@
+-- Intentionally empty.
+--
+-- This migration version was applied to the demo Supabase project before the
+-- V1 SQLite import flow was retired. Keep the file so local and remote migration
+-- histories remain aligned. Fresh databases never create the retired objects;
+-- existing demo databases remove them in 20260803000100.

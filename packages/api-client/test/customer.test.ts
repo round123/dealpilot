@@ -3,6 +3,7 @@ import {
   API_ERROR_CODES,
   ApiError,
   ContactIdSchema,
+  CustomerCursorPageSchema,
   CustomerIdSchema,
   CustomerMergeChoicesSchema,
   CustomerSchema,
@@ -23,6 +24,7 @@ const CUSTOMER_ID = "a0000000-0000-4000-8000-000000000001";
 const SOURCE_ID = "a0000000-0000-4000-8000-000000000002";
 const USER_ID = "b0000000-0000-4000-8000-000000000001";
 const CONTACT_ID = "c0000000-0000-4000-8000-000000000001";
+const SOURCE_CONTACT_ID = "c0000000-0000-4000-8000-000000000002";
 const SOCIAL_ID = "d0000000-0000-4000-8000-000000000001";
 const DEAL_ID = "e0000000-0000-4000-8000-000000000001";
 const FOLLOW_UP_ID = "f0000000-0000-4000-8000-000000000001";
@@ -197,6 +199,80 @@ const createHarness = () => {
 };
 
 describe("Customer API facade", () => {
+  it("lists Customers through the opaque cursor RPC and parses the page", async () => {
+    const { api, rpc } = createHarness();
+    const signal = new AbortController().signal;
+    rpc.mockResolvedValue({
+      items: [customerSummaryRecord],
+      next_cursor: "opaque-page-2",
+      total: 51,
+    });
+
+    await expect(
+      api.listCustomers(
+        {
+          cursor: null,
+          limit: 25,
+          search: " Acme ",
+          grade: "A",
+          status: "active",
+          sortField: "updated_at",
+          sortOrder: "desc",
+        },
+        { signal },
+      ),
+    ).resolves.toEqual(
+      CustomerCursorPageSchema.parse({
+        items: [customerSummaryRecord],
+        next_cursor: "opaque-page-2",
+        total: 51,
+      }),
+    );
+    expect(rpc).toHaveBeenCalledWith(
+      "list_customers_cursor",
+      {
+        p_cursor: null,
+        p_limit: 25,
+        p_search: "Acme",
+        p_grade: "A",
+        p_status: "active",
+        p_sort_field: "updated_at",
+        p_sort_order: "desc",
+      },
+      expect.anything(),
+      { signal },
+    );
+  });
+
+  it("rejects malformed cursor page responses at the API boundary", async () => {
+    const { api, rpc } = createHarness();
+    rpc.mockResolvedValue({ items: [customerSummaryRecord], total: 1 });
+
+    await expect(
+      api.listCustomers({
+        limit: 25,
+        sortField: "name",
+        sortOrder: "asc",
+      }),
+    ).rejects.toMatchObject({ code: API_ERROR_CODES.invalidResponse });
+  });
+
+  it("normalizes invalid cursor queries before transport", async () => {
+    const { api, rpc } = createHarness();
+
+    await expect(
+      api.listCustomers({
+        limit: 101,
+        sortField: "name",
+        sortOrder: "asc",
+      }),
+    ).rejects.toMatchObject({
+      code: API_ERROR_CODES.validation,
+      fields: { limit: expect.any(Array) },
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("requires name in the resolved merge field contract", () => {
     expect(() =>
       ResolvedCustomerMergeFieldsSchema.parse({
@@ -371,6 +447,45 @@ describe("Customer API facade", () => {
       expect.anything(),
       undefined,
     );
+  });
+
+  it("merges Contacts through the owner-scoped database RPC", async () => {
+    const { api, rpc } = createHarness();
+    const signal = new AbortController().signal;
+    rpc.mockResolvedValue(customerDetailRecord.contacts[0]);
+
+    await expect(
+      api.mergeContacts(
+        ContactIdSchema.parse(SOURCE_CONTACT_ID),
+        ContactIdSchema.parse(CONTACT_ID),
+        { signal },
+      ),
+    ).resolves.toMatchObject({ id: ContactIdSchema.parse(CONTACT_ID) });
+
+    expect(rpc).toHaveBeenCalledWith(
+      "merge_contacts",
+      {
+        p_source_id: SOURCE_CONTACT_ID,
+        p_target_id: CONTACT_ID,
+      },
+      expect.anything(),
+      { signal },
+    );
+  });
+
+  it("rejects a malformed successful Contact merge response", async () => {
+    const { api, rpc } = createHarness();
+    rpc.mockResolvedValue({
+      ...customerDetailRecord.contacts[0],
+      email_jsonb: "ada@example.com",
+    });
+
+    await expect(
+      api.mergeContacts(
+        ContactIdSchema.parse(SOURCE_CONTACT_ID),
+        ContactIdSchema.parse(CONTACT_ID),
+      ),
+    ).rejects.toMatchObject({ code: API_ERROR_CODES.invalidResponse });
   });
 
   it("maps a malformed successful RPC payload to INVALID_RESPONSE", async () => {

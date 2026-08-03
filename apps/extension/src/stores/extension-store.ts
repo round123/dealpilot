@@ -17,6 +17,8 @@ interface ExtensionState {
   expanded: boolean;
   /** 当前匹配状态 */
   matchState: MatchState;
+  /** 当前匹配来源，用于区分自动命中与人工绑定 */
+  matchMethod: MatchResolveResponse["match_method"];
   /** 当前会话信息 */
   conversation: ConversationInfo | null;
   /** 匹配到的客户（唯一命中时） */
@@ -40,6 +42,7 @@ interface ExtensionState {
 export const useExtensionStore = create<ExtensionState>((set) => ({
   expanded: true,
   matchState: "idle",
+  matchMethod: null,
   conversation: null,
   currentCustomer: null,
   candidates: [],
@@ -50,7 +53,7 @@ export const useExtensionStore = create<ExtensionState>((set) => ({
   toggleExpanded: () => set((state) => ({ expanded: !state.expanded })),
 
   setConversation: (conversation) =>
-    set({ conversation, matchState: "idle", currentCustomer: null, candidates: [], error: null }),
+    set({ conversation, matchState: "idle", matchMethod: null, currentCustomer: null, candidates: [], error: null }),
 
   setMatchLoading: () => set({ matchState: "loading", error: null }),
 
@@ -58,15 +61,15 @@ export const useExtensionStore = create<ExtensionState>((set) => ({
 
   setMatchResult: (result) => {
     if (!result) {
-      set({ matchState: "idle", currentCustomer: null, candidates: [] });
+      set({ matchState: "idle", matchMethod: null, currentCustomer: null, candidates: [] });
       return;
     }
     if (result.status === "unique") {
-      set({ matchState: "unique", currentCustomer: result.customer ?? null, candidates: [] });
+      set({ matchState: "unique", matchMethod: result.match_method, currentCustomer: result.customer, candidates: [] });
     } else if (result.status === "multiple") {
-      set({ matchState: "multiple", currentCustomer: null, candidates: result.candidates ?? [] });
+      set({ matchState: "multiple", matchMethod: result.match_method, currentCustomer: null, candidates: result.candidates });
     } else {
-      set({ matchState: "none", currentCustomer: null, candidates: [] });
+      set({ matchState: "none", matchMethod: null, currentCustomer: null, candidates: [] });
     }
   },
 
@@ -76,6 +79,7 @@ export const useExtensionStore = create<ExtensionState>((set) => ({
     set({
       expanded: true,
       matchState: "idle",
+      matchMethod: null,
       conversation: null,
       currentCustomer: null,
       candidates: [],

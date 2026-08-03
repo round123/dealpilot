@@ -21,15 +21,14 @@ describe("deal validation", () => {
   );
 
   it("requires a reason only when the deal is lost or closed", () => {
-    expect(validateClosedReason("", { stage: "lost" }, {})).toBeTruthy();
     expect(validateClosedReason("", { stage: "closed_lost" }, {})).toBeTruthy();
     expect(validateClosedReason("", { stage: "archived" }, {})).toBeTruthy();
     expect(
-      validateClosedReason("Customer postponed", { stage: "lost" }, {}),
+      validateClosedReason("Customer postponed", { stage: "closed_lost" }, {}),
     ).toBeUndefined();
     expect(validateClosedReason("", { stage: "proposal" }, {})).toBeUndefined();
-    expect(isClosedDealStage("lost")).toBe(true);
-    expect(isClosedDealStage("won")).toBe(false);
+    expect(isClosedDealStage("closed_lost")).toBe(true);
+    expect(isClosedDealStage("closed_won")).toBe(false);
   });
 
   it("accepts only three-letter uppercase currency codes", () => {

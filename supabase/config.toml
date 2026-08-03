@@ -40,13 +40,15 @@ file_size_limit = "50MiB"
 
 [auth]
 enabled = true
-site_url = "http://localhost:5173"
+site_url = "https://round123.github.io/dealpilot/"
 additional_redirect_urls = [
   "http://localhost:5173/**",
   "http://127.0.0.1:4174/**",
   "http://localhost:4174/**",
   "http://127.0.0.1:4188/**",
-  "http://localhost:4188/**"
+  "http://localhost:4188/**",
+  "https://round123.github.io/dealpilot/**",
+  "https://round123.github.io/dealpilot/set-password"
 ]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
@@ -56,7 +58,7 @@ enable_signup = true
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false
+enable_confirmations = true
 
 [auth.sms]
 enable_signup = false
@@ -68,4 +70,7 @@ vector_port = 54328
 backend = "postgres"
 
 [functions.purge-expired-customers]
+verify_jwt = true
+
+[functions.delete-account]
 verify_jwt = true

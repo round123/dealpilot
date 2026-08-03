@@ -12,6 +12,42 @@ export type ReminderAction =
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
+export interface ReminderActionAttempt {
+  action: ReminderAction;
+  idempotencyKey: string;
+  update: ReminderStatusUpdate;
+}
+
+export function createReminderActionAttemptStore(
+  generateKey: () => string = () => crypto.randomUUID(),
+) {
+  const attempts = new Map<string, ReminderActionAttempt>();
+  const attemptId = (reminderId: string, action: ReminderAction) =>
+    `${reminderId}:${action}`;
+
+  return {
+    get(
+      reminderId: string,
+      action: ReminderAction,
+      now = new Date(),
+    ): ReminderActionAttempt {
+      const id = attemptId(reminderId, action);
+      const existing = attempts.get(id);
+      if (existing) return existing;
+      const attempt = {
+        action,
+        idempotencyKey: generateKey(),
+        update: buildReminderStatusUpdate(action, now),
+      };
+      attempts.set(id, attempt);
+      return attempt;
+    },
+    complete(reminderId: string, action: ReminderAction): void {
+      attempts.delete(attemptId(reminderId, action));
+    },
+  };
+}
+
 export function buildReminderStatusUpdate(
   action: ReminderAction,
   now = new Date(),

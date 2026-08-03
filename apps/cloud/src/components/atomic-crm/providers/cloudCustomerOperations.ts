@@ -6,6 +6,7 @@ import {
 } from "@dealpilot/api-client";
 
 import { getCloudApiClient } from "./apiClient";
+import { invalidateCustomerCursors } from "./customerCursorState";
 import type { CustomerOperations } from "./customerOperations";
 
 const DELETED_AFTER_EPOCH = "1970-01-01T00:00:00.000Z";
@@ -27,15 +28,19 @@ export const cloudCustomerOperations: CustomerOperations = {
       };
     }
 
-    return getCloudApiClient().list("companies_summary", CustomerSummarySchema, {
-      filters,
-      sort: [
-        { field: "name", order: "asc" },
-        { field: "id", order: "asc" },
-      ],
-      pagination: { page, perPage },
-      signal,
-    }) as unknown as ReturnType<CustomerOperations["listMergeCandidates"]>;
+    return getCloudApiClient().list(
+      "companies_summary",
+      CustomerSummarySchema,
+      {
+        filters,
+        sort: [
+          { field: "name", order: "asc" },
+          { field: "id", order: "asc" },
+        ],
+        pagination: { page, perPage },
+        signal,
+      },
+    ) as unknown as ReturnType<CustomerOperations["listMergeCandidates"]>;
   },
 
   listDeletedCustomers({ page, perPage, signal }) {
@@ -52,16 +57,26 @@ export const cloudCustomerOperations: CustomerOperations = {
     }) as unknown as ReturnType<CustomerOperations["listDeletedCustomers"]>;
   },
 
-  softDeleteCustomer(id, options) {
-    return getCloudApiClient().customers.softDeleteCustomer(id, options);
+  async softDeleteCustomer(id, options) {
+    const customer = await getCloudApiClient().customers.softDeleteCustomer(
+      id,
+      options,
+    );
+    invalidateCustomerCursors();
+    return customer;
   },
 
-  restoreCustomer(id, options) {
-    return getCloudApiClient().customers.restoreCustomer(id, options);
+  async restoreCustomer(id, options) {
+    const customer = await getCloudApiClient().customers.restoreCustomer(
+      id,
+      options,
+    );
+    invalidateCustomerCursors();
+    return customer;
   },
 
-  mergeCustomers(source, target, choices, options) {
-    return getCloudApiClient().customers.mergeCustomers(
+  async mergeCustomers(source, target, choices, options) {
+    const customer = await getCloudApiClient().customers.mergeCustomers(
       {
         sourceId: source.id,
         targetId: target.id,
@@ -69,5 +84,7 @@ export const cloudCustomerOperations: CustomerOperations = {
       },
       options,
     );
+    invalidateCustomerCursors();
+    return customer;
   },
 };

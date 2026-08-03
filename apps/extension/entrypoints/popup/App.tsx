@@ -9,7 +9,7 @@
  * 验收标准 AC-18: popup 待办按逾期/高风险/分级/到期时间排序
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Compass,
   UserPlus,
@@ -18,22 +18,26 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   Users,
+  LogOut,
 } from "lucide-react";
 import {
   extensionErrorMessage,
   fetchPopupReminders,
+  getCloudSession,
+  signInToCloud,
+  signOutFromCloud,
   updateReminderStatus,
 } from "../../src/lib/api-client";
-import { requestAgentStatus } from "../../src/lib/native-messaging";
 import { NewCustomerPage } from "./new-customer";
 import type { PopupReminder } from "@dealpilot/shared";
+import type { AuthSession } from "@dealpilot/api-client";
 import { isOverdue, formatRelativeTime } from "@dealpilot/shared";
 import { POPUP_REMINDER_LIMIT } from "@dealpilot/shared";
 import { openWorkbench } from "../../src/lib/workbench-links";
 import { openReminderConversation, type ConversationLaunchMode } from "../../src/lib/conversation-links";
 import { ReminderActions } from "../../src/components/reminder-actions";
 import {
-  buildReminderStatusUpdate,
+  createReminderActionAttemptStore,
   type ReminderAction,
 } from "../../src/lib/reminder-actions";
 
@@ -157,14 +161,52 @@ const ReminderCard: React.FC<{
   );
 };
 
+const CloudSignIn: React.FC<{
+  onSignedIn: (session: AuthSession) => void;
+}> = ({ onSignedIn }) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      onSignedIn(await signInToCloud(email.trim(), password));
+    } catch (cause) {
+      setError(extensionErrorMessage(cause, "登录失败，请检查邮箱和密码"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} style={{ width: "360px", height: "480px", padding: "32px 24px", display: "flex", flexDirection: "column", gap: "12px", fontFamily: "var(--font-sans)", background: "var(--color-bg-page)" }}>
+      <strong style={{ fontSize: "18px" }}>登录 DealPilot</strong>
+      <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>使用与云端工作台相同的账号</span>
+      <label htmlFor="cloud-email" style={{ fontSize: "12px" }}>邮箱</label>
+      <input id="cloud-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} style={{ padding: "9px" }} />
+      <label htmlFor="cloud-password" style={{ fontSize: "12px" }}>密码</label>
+      <input id="cloud-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} style={{ padding: "9px" }} />
+      {error && <span style={{ fontSize: "12px", color: "var(--color-error)" }}>{error}</span>}
+      <button type="submit" disabled={submitting} style={{ padding: "9px", border: 0, borderRadius: "var(--radius-md)", background: "var(--color-primary)", color: "white" }}>
+        {submitting ? "正在登录..." : "登录"}
+      </button>
+    </form>
+  );
+};
+
 export default function App() {
   const [reminders, setReminders] = useState<PopupReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
-  const [agentRunning, setAgentRunning] = useState(false);
+  const [session, setSession] = useState<AuthSession | null>();
   const [busyReminderId, setBusyReminderId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const reminderAttempts = useRef(createReminderActionAttemptStore()).current;
 
   /** 加载 popup 待办 */
   const loadReminders = async () => {
@@ -181,23 +223,33 @@ export default function App() {
   };
 
   useEffect(() => {
-    loadReminders();
-    requestAgentStatus().then(setAgentRunning);
+    void getCloudSession()
+      .then(setSession)
+      .catch(() => setSession(null));
   }, []);
+
+  useEffect(() => {
+    if (session) void loadReminders();
+  }, [session]);
 
   const handleReminderAction = async (
     reminder: PopupReminder,
     action: ReminderAction,
   ) => {
     if (busyReminderId) return;
-    const update = buildReminderStatusUpdate(action);
+    const attempt = reminderAttempts.get(reminder.id, action);
     const snapshot = reminders;
     setBusyReminderId(reminder.id);
     setActionError(null);
     setReminders((current) => current.filter((item) => item.id !== reminder.id));
 
     try {
-      await updateReminderStatus(reminder.id, update);
+      await updateReminderStatus(
+        reminder.id,
+        attempt.update,
+        attempt.idempotencyKey,
+      );
+      reminderAttempts.complete(reminder.id, action);
     } catch (error) {
       setReminders(snapshot);
       setActionError({
@@ -213,6 +265,11 @@ export default function App() {
       setBusyReminderId(null);
     }
   };
+
+  if (session === undefined) {
+    return <div style={{ width: "360px", height: "480px", display: "grid", placeItems: "center" }}>正在检查登录状态...</div>;
+  }
+  if (session === null) return <CloudSignIn onSignedIn={setSession} />;
 
   // 新建客户页面
   if (showNewCustomer) {
@@ -363,20 +420,25 @@ export default function App() {
           <BriefcaseBusiness size={15} />
         </button>
 
-        {/* Agent 状态指示 */}
-        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <button
+          type="button"
+          title="退出登录"
+          onClick={() => void signOutFromCloud().finally(() => setSession(null))}
+          style={{ display: "flex", alignItems: "center", gap: "4px", border: "none", background: "transparent", cursor: "pointer" }}
+        >
+          <LogOut size={13} style={{ color: "var(--color-text-tertiary)" }} />
           <div
             style={{
               width: "6px",
               height: "6px",
               borderRadius: "50%",
-              backgroundColor: agentRunning ? "var(--color-success)" : "var(--color-warning)",
+              backgroundColor: "var(--color-success)",
             }}
           />
           <span style={{ fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-            {agentRunning ? "Agent 运行中" : "Agent 未运行"}
+            云端已连接
           </span>
-        </div>
+        </button>
       </div>
     </div>
   );

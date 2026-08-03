@@ -21,7 +21,7 @@ describe("ContactCreate", () => {
       .toBeInTheDocument();
   });
 
-  it("shows only Agent-supported fields with one email and phone", async () => {
+  it("shows only provider-supported fields with one email and phone", async () => {
     const screen = await render(
       <ContactCreateBasic
         dataProvider={{ capabilities: AGENT_CRM_CAPABILITIES }}
@@ -110,8 +110,8 @@ describe("ContactCreate", () => {
       expect.anything(),
       expect.objectContaining({
         data: expect.objectContaining({
-          email_jsonb: null,
-          phone_jsonb: null,
+          email_jsonb: [],
+          phone_jsonb: [],
         }),
       }),
     );
@@ -146,7 +146,7 @@ describe("ContactCreate", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           email_jsonb: [{ email: "ada@example.com", type: "Work" }],
-          phone_jsonb: null,
+          phone_jsonb: [],
         }),
       }),
     );

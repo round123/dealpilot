@@ -1,0 +1,63 @@
+name: Purge expired customers
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: purge-expired-customers-production
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: Process 30-day customer retention queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: cloud-production
+    env:
+      SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Validate scheduler secrets
+        shell: bash
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_SERVICE_ROLE_KEY"
+      - name: Enqueue and purge expired customers
+        shell: bash
+        run: |
+          response_file="$(mktemp)"
+          status_code="$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            --header "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            --header "Content-Type: application/json" \
+            --data '{"enqueue_limit":500,"claim_limit":100}' \
+            "$SUPABASE_URL/functions/v1/purge-expired-customers")"
+          if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
+            echo "Customer purge failed with HTTP $status_code." >&2
+            cat "$response_file" >&2
+            exit 1
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (!body || typeof body.data !== "object") {
+              throw new Error("Purge response is missing the data envelope");
+            }
+          ' "$response_file"
+      - name: Record scheduler evidence
+        run: |
+          {
+            echo "### Customer retention cleanup"
+            echo "- Schedule: daily at 02:17 UTC"
+            echo "- PostgreSQL fact source: production Supabase"
+            echo "- Result: queue processed successfully"
+          } >> "$GITHUB_STEP_SUMMARY"

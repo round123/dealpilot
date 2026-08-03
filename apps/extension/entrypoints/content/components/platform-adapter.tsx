@@ -13,8 +13,14 @@
 
 import type { ConversationInfo } from "../../../src/lib/platform-detect";
 import { MessageDirection, FollowUpType } from "@dealpilot/shared";
+import {
+  canReuseRememberedMessage,
+  conversationIdentity,
+} from "../../../src/lib/conversation-identity";
 
-let lastInteractedMessage: Element | null = null;
+let lastInteractedMessage:
+  | { element: Element; conversationIdentity: string | null }
+  | null = null;
 
 function rememberMessageTarget(event: Event) {
   const target = event.target;
@@ -22,7 +28,12 @@ function rememberMessageTarget(event: Event) {
   const message = target.closest(
     ".message-in, .message-out, [class*='message'][class*='bubble']",
   );
-  if (message) lastInteractedMessage = message;
+  if (message) {
+    lastInteractedMessage = {
+      element: message,
+      conversationIdentity: currentConversationIdentity(),
+    };
+  }
 }
 
 document.addEventListener("pointerdown", rememberMessageTarget, true);
@@ -40,6 +51,25 @@ function safeTimestamp(value: string | null | undefined): string | null {
   if (!value) return null;
   const timestamp = new Date(value);
   return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+}
+
+function currentConversationIdentity(): string | null {
+  return conversationIdentity(getPlatformAdapter()?.getConversation() ?? null);
+}
+
+function rememberedMessage(selector: string): Element | null {
+  if (!lastInteractedMessage) return null;
+  if (
+    !canReuseRememberedMessage(
+      lastInteractedMessage.conversationIdentity,
+      currentConversationIdentity(),
+      lastInteractedMessage.element.isConnected,
+    )
+  ) {
+    lastInteractedMessage = null;
+    return null;
+  }
+  return lastInteractedMessage.element.closest(selector);
 }
 
 /** 平台适配器接口 */
@@ -97,7 +127,7 @@ const whatsappAdapter: PlatformAdapter = {
     const selectedEl = document.querySelector(
       '.message-in[aria-selected="true"], .message-out[aria-selected="true"], .message-in.selected, .message-out.selected',
     ) ?? selectedTextMessage(".message-in, .message-out")
-      ?? lastInteractedMessage?.closest(".message-in, .message-out");
+      ?? rememberedMessage(".message-in, .message-out");
 
     if (!selectedEl) return null;
 
@@ -161,7 +191,7 @@ const telegramAdapter: PlatformAdapter = {
     const selectedEl = document.querySelector(
       `${messageSelector}[aria-selected="true"], ${messageSelector}.selected, ${messageSelector}.is-selected`,
     ) ?? selectedTextMessage(messageSelector)
-      ?? lastInteractedMessage?.closest(messageSelector);
+      ?? rememberedMessage(messageSelector);
     if (!selectedEl) return null;
 
     const bodyEl = selectedEl.querySelector('[class*="text-content"], [class*="message-text"]');

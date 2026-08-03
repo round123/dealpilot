@@ -1,5 +1,6 @@
 import type { Identifier, RaRecord } from "ra-core";
 import type { ComponentType } from "react";
+import type { DealStage as DealStageValue } from "@dealpilot/api-client";
 
 import type {
   COMPANY_CREATED,
@@ -122,9 +123,13 @@ export type Deal = {
   company_id: Identifier;
   contact_ids: Identifier[];
   category: string;
-  stage: string;
+  stage: DealStageValue;
   description: string;
   amount: number;
+  currency?: string;
+  probability?: number | null;
+  grade?: "S" | "A" | "B" | "C";
+  close_reason?: string | null;
   created_at: string;
   updated_at: string;
   archived_at?: string;
@@ -289,7 +294,7 @@ export interface LabeledValue {
   label: string;
 }
 
-export type DealStage = LabeledValue;
+export type DealStage = LabeledValue & { value: DealStageValue };
 
 export interface NoteStatus extends LabeledValue {
   color: string;

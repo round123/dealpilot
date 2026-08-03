@@ -1,4 +1,9 @@
 import type { ConfigurationContextValue } from "./ConfigurationContext";
+import {
+  DEAL_STAGE_VALUES,
+  type DealStage as DealStageValue,
+} from "@dealpilot/api-client";
+import type { DealStage } from "../types";
 // Import the logos as module assets so Vite resolves their URL relative to the
 // JS chunk (import.meta.url), not the current route. A plain "./logos/..." path
 // breaks on nested routes like /oauth/consent and under a deployment sub-path.
@@ -27,15 +32,78 @@ export const defaultCompanySectors = [
 ];
 
 export const defaultDealStages = [
-  { value: "opportunity", label: "Opportunity" },
-  { value: "proposal-sent", label: "Proposal Sent" },
-  { value: "in-negociation", label: "In Negotiation" },
-  { value: "delayed", label: "Delayed" },
-  { value: "won", label: "Won" },
-  { value: "lost", label: "Lost" },
-];
+  { value: "lead", label: "Lead" },
+  { value: "qualified", label: "Qualified" },
+  { value: "proposal", label: "Proposal" },
+  { value: "negotiation", label: "Negotiation" },
+  { value: "closed_won", label: "Closed won" },
+  { value: "closed_lost", label: "Closed lost" },
+  { value: "archived", label: "Archived" },
+] satisfies DealStage[];
 
-export const defaultDealPipelineStatuses = ["won"];
+export const defaultDealPipelineStatuses: DealStageValue[] = ["closed_won"];
+
+const legacyDealStages: Record<
+  string,
+  { value: DealStageValue; defaultLabels: readonly string[] }
+> = {
+  opportunity: { value: "lead", defaultLabels: ["Opportunity", "需求确认"] },
+  "proposal-sent": {
+    value: "qualified",
+    defaultLabels: ["Proposal Sent", "方案/样品"],
+  },
+  "in-negociation": {
+    value: "proposal",
+    defaultLabels: ["In Negotiation", "报价"],
+  },
+  delayed: { value: "negotiation", defaultLabels: ["Delayed", "谈判"] },
+  won: { value: "closed_won", defaultLabels: ["Won", "成交", "已成交"] },
+  lost: { value: "closed_lost", defaultLabels: ["Lost", "失单", "已流失"] },
+};
+
+const dealStageValues = new Set<string>(DEAL_STAGE_VALUES);
+const defaultStageByValue = new Map(
+  defaultDealStages.map((stage) => [stage.value, stage]),
+);
+
+const toCanonicalStage = (stage: { value: string; label: string }) => {
+  if (dealStageValues.has(stage.value)) {
+    return { ...stage, value: stage.value as DealStageValue };
+  }
+  const legacy = legacyDealStages[stage.value];
+  if (!legacy) return undefined;
+  const label = legacy.defaultLabels.includes(stage.label)
+    ? defaultStageByValue.get(legacy.value)!.label
+    : stage.label;
+  return { value: legacy.value, label };
+};
+
+export const normalizeDealStageConfiguration = (
+  config: ConfigurationContextValue,
+): ConfigurationContextValue => {
+  const migrated = new Map<DealStageValue, DealStage>();
+  for (const stage of config.dealStages ?? []) {
+    const canonical = toCanonicalStage(stage);
+    if (canonical && !migrated.has(canonical.value)) {
+      migrated.set(canonical.value, canonical);
+    }
+  }
+
+  const dealStages = defaultDealStages.map(
+    (stage) => migrated.get(stage.value) ?? stage,
+  );
+  const dealPipelineStatuses = Array.from(
+    new Set(
+      (config.dealPipelineStatuses ?? [])
+        .map((value) =>
+          dealStageValues.has(value) ? value : legacyDealStages[value]?.value,
+        )
+        .filter((value): value is DealStageValue => value !== undefined),
+    ),
+  );
+
+  return { ...config, dealStages, dealPipelineStatuses };
+};
 
 export const defaultDealCategories = [
   { value: "other", label: "Other" },

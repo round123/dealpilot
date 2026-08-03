@@ -15,6 +15,11 @@ import type { PersonalAuthProvider } from "@/components/atomic-crm/providers/sup
 import { Layout } from "@/components/supabase/layout";
 import { Button } from "@/components/ui/button";
 
+import {
+  getPasswordRecoveryCode,
+  removeTopLevelRecoveryCode,
+} from "./password-recovery-url";
+
 interface SetPasswordFormData {
   password: string;
   confirmPassword: string;
@@ -27,7 +32,7 @@ export const SetPasswordPage = () => {
   const navigate = useNavigate();
   const notify = useNotify();
   const translate = useTranslate();
-  const code = new URLSearchParams(location.search).get("code");
+  const code = getPasswordRecoveryCode(location.search, window.location.search);
 
   const validate = (values: FieldValues) =>
     values.password === values.confirmPassword
@@ -52,6 +57,11 @@ export const SetPasswordPage = () => {
         throw new Error("crm.auth.authentication_unavailable");
       }
       await authProvider.setPassword({ code, password: values.password });
+      window.history.replaceState(
+        window.history.state,
+        "",
+        removeTopLevelRecoveryCode(window.location.href),
+      );
       notify("crm.profile.password_updated", {
         type: "success",
       });

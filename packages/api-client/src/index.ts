@@ -40,6 +40,22 @@ export type {
   SignUpOptions,
   SignUpResult,
 } from "./auth.js";
+export {
+  BackupCreateInputSchema,
+  BackupExportSchema,
+  BackupPayloadRestoreInputSchema,
+  BackupRestoreResultSchema,
+  BackupSnapshotSchema,
+  createBackupApi,
+} from "./backup.js";
+export type {
+  BackupApi,
+  BackupCreateInput,
+  BackupExport,
+  BackupPayloadRestoreInput,
+  BackupRestoreResult,
+  BackupSnapshot,
+} from "./backup.js";
 export type {
   PrivateStorageApi,
   SignedStorageUrl,
@@ -54,6 +70,11 @@ export {
   createCustomerApi,
   resolveCustomerMergeFields,
   CustomerContactSchema,
+  CustomerCursorPageInputSchema,
+  CustomerCursorPageSchema,
+  CustomerCursorSortFieldSchema,
+  DEAL_STAGE_VALUES,
+  DealStageSchema,
   CustomerDealSchema,
   CustomerDetailSchema,
   CustomerFollowUpSchema,
@@ -70,10 +91,46 @@ export {
   CustomerSummarySchema,
   ResolvedCustomerMergeFieldsSchema,
 } from "./customer.js";
+export {
+  CloudImportCommitInputSchema,
+  CloudImportCommitResultSchema,
+  CloudImportResolutionSchema,
+  CloudImportRowSchema,
+  CloudImportWarningSchema,
+  createImportApi,
+} from "./import.js";
+export {
+  createReminderApi,
+  ReminderStatusMutationInputSchema,
+} from "./reminder.js";
+export type { ReminderApi, ReminderStatusMutationInput } from "./reminder.js";
+export {
+  createDealApi,
+  DealCreateWithContactsInputSchema,
+  DealUpdateWithContactsInputSchema,
+  DealWithContactsRpcDataSchema,
+} from "./deal.js";
+export type {
+  DealApi,
+  DealCreateWithContactsInput,
+  DealUpdateWithContactsInput,
+  DealWithContacts,
+} from "./deal.js";
+export type {
+  CloudImportCommitInput,
+  CloudImportCommitResult,
+  CloudImportResolution,
+  CloudImportRow,
+  ImportApi,
+} from "./import.js";
 export type {
   Customer,
   CustomerApi,
   CustomerContact,
+  CustomerCursorPage,
+  CustomerCursorPageInput,
+  CustomerCursorSortField,
+  DealStage,
   CustomerDeal,
   CustomerDetail,
   CustomerFollowUp,
@@ -91,6 +148,16 @@ export type {
   MergeCustomersInput,
   ResolvedCustomerMergeFields,
 } from "./customer.js";
+export {
+  createDashboardApi,
+  DashboardPriorityReminderSchema,
+  DashboardSummarySchema,
+} from "./dashboard.js";
+export type {
+  DashboardApi,
+  DashboardPriorityReminder,
+  DashboardSummary,
+} from "./dashboard.js";
 export {
   ContactIdSchema,
   CustomerIdSchema,
@@ -125,3 +192,38 @@ export {
   milestoneReminderKey,
 } from "./deal-domain.js";
 export type { DealMilestone, DealRisk } from "./deal-domain.js";
+export {
+  CloudPrdResourceSchemas,
+  ContactCreateInputSchema,
+  ContactSummarySchema,
+  ContactTagIdsSchema,
+  ContactTagSchema,
+  ContactUpdateInputSchema,
+  CustomerCreateInputSchema,
+  CustomerUpdateInputSchema,
+  DealContactIdsSchema,
+  DealContactSchema,
+  DealCreateInputSchema,
+  DealUpdateInputSchema,
+  LegacyAtomicRecordSchema,
+  cloudRecordSchemaFor,
+  isCloudPrdResource,
+  toContactCreateInput,
+  toContactUpdateInput,
+  toCustomerCreateInput,
+  toCustomerUpdateInput,
+  toDealCreateInput,
+  toDealUpdateInput,
+} from "./resource-contracts.js";
+export type {
+  CloudPrdResourceName,
+  ContactCreateInput,
+  ContactSummary,
+  ContactTag,
+  ContactUpdateInput,
+  CustomerCreateInput,
+  CustomerUpdateInput,
+  DealContact,
+  DealCreateInput,
+  DealUpdateInput,
+} from "./resource-contracts.js";

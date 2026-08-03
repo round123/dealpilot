@@ -2,7 +2,6 @@ import { useGetIdentity, useListContext, useTranslate } from "ra-core";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
 import { List } from "@/components/admin/list";
-import { ListPagination } from "@/components/admin/list-pagination";
 import { SortButton } from "@/components/admin/sort-button";
 import { Button } from "@/components/ui/button";
 import { ArchiveRestore } from "lucide-react";
@@ -11,6 +10,7 @@ import { Link } from "react-router";
 import { TopToolbar } from "../layout/TopToolbar";
 import { CompanyEmpty } from "./CompanyEmpty";
 import { CompanyListFilter } from "./CompanyListFilter";
+import { CustomerCursorPagination } from "./CustomerCursorPagination";
 import { DeletedCustomersPage } from "./DeletedCustomersPage";
 import { ImageList } from "./GridList";
 import {
@@ -28,9 +28,7 @@ export const CompanyList = () => {
       filter={ACTIVE_CUSTOMER_FILTER}
       sort={{ field: "created_at", order: "DESC" }}
       actions={<CompanyListActions />}
-      // RA keeps page-number navigation, while the server supplies stable
-      // pagination. The wire protocol is not V1's opaque cursor contract.
-      pagination={<ListPagination rowsPerPageOptions={[10, 25, 50, 100]} />}
+      pagination={<CustomerCursorPagination />}
     >
       <CompanyListLayout />
     </List>
