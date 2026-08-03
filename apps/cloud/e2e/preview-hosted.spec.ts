@@ -112,6 +112,7 @@ test("hosted Preview preserves account isolation and the Customer Web lifecycle"
       await alphaPage.goto(`/#/companies/${createdTargetId}`);
       const customerNameInput = alphaPage.locator('input[name="name"]');
       const customerCompanyInput = alphaPage.locator('input[name="company"]');
+      await expect(customerNameInput).toHaveValue(createdTargetName);
       await customerNameInput.fill(targetName);
       await customerCompanyInput.fill(`Target ${suffix}`);
       await customerCompanyInput.blur();

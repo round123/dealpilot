@@ -108,8 +108,8 @@ describe("personal auth provider", () => {
     );
   });
 
-  it("handles an auth callback with the code from the current URL", async () => {
-    window.history.pushState({}, "", "/auth-callback?code=pkce-code");
+  it("handles the top-level PKCE code preserved by the callback bridge", async () => {
+    window.history.pushState({}, "", "/?code=pkce-code#/auth-callback");
     const account = createAccount();
     const provider = createPersonalAuthProvider({ account });
 

@@ -37,6 +37,7 @@ describe("personalAccount registration consent", () => {
       "ming.li@example.com",
       "secure-pass-123",
       {
+        emailRedirectTo: `${window.location.origin}/auth-callback.html`,
         metadata: {
           display_name: "明 李",
           first_name: "明",
