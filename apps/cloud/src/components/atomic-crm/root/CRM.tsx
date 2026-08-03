@@ -10,6 +10,8 @@ import { Route } from "react-router";
 import { Admin } from "@/components/admin/admin";
 import { ForgotPasswordPage } from "@/components/supabase/forgot-password-page";
 import { SetPasswordPage } from "@/components/supabase/set-password-page";
+import { PrivacyPolicyPage } from "@/components/legal/PrivacyPolicyPage";
+import { TermsOfServicePage } from "@/components/legal/TermsOfServicePage";
 
 import companies from "../companies";
 import contacts from "../contacts";
@@ -275,6 +277,11 @@ const DesktopAdmin = (
           path={ForgotPasswordPage.path}
           element={<ForgotPasswordPage />}
         />
+        <Route path={PrivacyPolicyPage.path} element={<PrivacyPolicyPage />} />
+        <Route
+          path={TermsOfServicePage.path}
+          element={<TermsOfServicePage />}
+        />
       </CustomRoutes>
 
       <CustomRoutes>
@@ -331,6 +338,11 @@ const MobileAdmin = (
         <Route
           path={ForgotPasswordPage.path}
           element={<ForgotPasswordPage />}
+        />
+        <Route path={PrivacyPolicyPage.path} element={<PrivacyPolicyPage />} />
+        <Route
+          path={TermsOfServicePage.path}
+          element={<TermsOfServicePage />}
         />
       </CustomRoutes>
       <CustomRoutes>

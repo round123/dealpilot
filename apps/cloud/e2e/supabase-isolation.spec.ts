@@ -354,6 +354,7 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   await expect(cursorCustomerNames).toHaveCount(25);
 
   await page.getByRole("button", { name: "A", exact: true }).click();
+  await expect(cursorCustomerNames).toHaveCount(13);
   await expect(
     page.getByText(`${cursorToken}-00`, { exact: true }),
   ).toBeVisible();
@@ -377,9 +378,23 @@ test("Customer behavior remains complete on the real Supabase provider", async (
   await page.getByRole("button", { name: "A", exact: true }).click();
   const unfilteredResponse = await unfilteredCustomersResponse;
   expect(unfilteredResponse.ok()).toBe(true);
-  await unfilteredResponse.finished();
+  const unfilteredPayload = (await unfilteredResponse.json()) as {
+    data?: {
+      items?: Array<{ grade?: string; name?: string }>;
+      total?: number;
+    };
+  };
+  expect(unfilteredPayload.data?.total).toBe(26);
+  expect(unfilteredPayload.data?.items).toHaveLength(25);
+  const visibleGradeBCustomer = unfilteredPayload.data?.items?.find(
+    ({ grade, name }) => grade === "B" && typeof name === "string",
+  );
+  if (!visibleGradeBCustomer?.name) {
+    throw new Error("Unfiltered Customer page did not contain a grade B row");
+  }
+  await expect(cursorCustomerNames).toHaveCount(25);
   await expect(
-    page.getByText(`${cursorToken}-01`, { exact: true }),
+    page.getByText(visibleGradeBCustomer.name, { exact: true }),
   ).toBeVisible();
 
   await page

@@ -1,19 +1,26 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useNotify, useTranslate } from "ra-core";
-import { useForm, type SubmitHandler } from "react-hook-form";
+import { Controller, useForm, type SubmitHandler } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
 
 import { Notification } from "@/components/admin/notification";
 import { getErrorMessageKey } from "@/components/admin/error-message";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PrivacyPolicyPage } from "@/components/legal/PrivacyPolicyPage";
+import { TermsOfServicePage } from "@/components/legal/TermsOfServicePage";
 
 import { personalAccount } from "../providers/personalAccount";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { SignUpData } from "../types";
 import { ConfirmationRequired } from "./ConfirmationRequired";
+
+type SignUpFormData = SignUpData & {
+  legalConsent: boolean;
+};
 
 export const SignupPage = () => {
   const queryClient = useQueryClient();
@@ -23,10 +30,14 @@ export const SignupPage = () => {
   const translate = useTranslate();
   const {
     register,
+    control,
     handleSubmit,
     formState: { isValid },
-  } = useForm<SignUpData>({
+  } = useForm<SignUpFormData>({
     mode: "onChange",
+    defaultValues: {
+      legalConsent: false,
+    },
   });
 
   const signup = useMutation({
@@ -49,7 +60,10 @@ export const SignupPage = () => {
       }),
   });
 
-  const onSubmit: SubmitHandler<SignUpData> = (data) => signup.mutate(data);
+  const onSubmit: SubmitHandler<SignUpFormData> = ({
+    legalConsent: _legalConsent,
+    ...data
+  }) => signup.mutate(data);
 
   return (
     <div className="min-h-screen p-8">
@@ -63,7 +77,7 @@ export const SignupPage = () => {
         <h1 className="text-xl font-semibold">{title}</h1>
       </div>
       <div className="min-h-[calc(100vh-6rem)]">
-        <div className="max-w-sm mx-auto min-h-[calc(100vh-6rem)] flex flex-col justify-center gap-4">
+        <div className="max-w-md mx-auto min-h-[calc(100vh-6rem)] flex flex-col justify-center gap-4">
           <h1 className="text-2xl font-bold mb-4">
             {translate("crm.auth.signup.create_account")}
           </h1>
@@ -110,6 +124,51 @@ export const SignupPage = () => {
                 minLength={8}
                 required
               />
+            </div>
+            <div className="flex items-start gap-3 rounded-md border bg-muted/20 p-3">
+              <Controller
+                name="legalConsent"
+                control={control}
+                rules={{ required: true }}
+                render={({ field }) => (
+                  <Checkbox
+                    id="legal-consent"
+                    checked={field.value}
+                    onCheckedChange={(checked) =>
+                      field.onChange(checked === true)
+                    }
+                    onBlur={field.onBlur}
+                    aria-label="同意隐私政策与服务条款"
+                    aria-required="true"
+                    aria-describedby="legal-consent-details"
+                  />
+                )}
+              />
+              <div className="space-y-1 text-sm leading-6">
+                <Label
+                  htmlFor="legal-consent"
+                  className="font-normal leading-6"
+                >
+                  我已阅读并同意
+                  <Link
+                    to={PrivacyPolicyPage.path}
+                    className="mx-1 font-medium text-primary hover:underline"
+                  >
+                    《隐私政策》
+                  </Link>
+                  和
+                  <Link
+                    to={TermsOfServicePage.path}
+                    className="mx-1 font-medium text-primary hover:underline"
+                  >
+                    《服务条款》
+                  </Link>
+                </Label>
+                <p id="legal-consent-details" className="text-muted-foreground">
+                  我知悉账号和 CRM 数据将存储在新加坡的 Supabase
+                  托管服务，可能涉及跨境处理；邮件、静态托管等供应商及数据保留规则详见隐私政策。
+                </p>
+              </div>
             </div>
             <Button
               type="submit"

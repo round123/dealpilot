@@ -19,6 +19,37 @@ test("quality CI tests and runs the V2 production audit after install", () => {
   assert.ok(audit > install);
 });
 
+test("database security CI gates Dashboard summaries and backup isolation", () => {
+  const databaseSecurity = ci.slice(ci.indexOf("  database-security:"));
+  const reset = databaseSecurity.indexOf("supabase db reset");
+  const dashboard = databaseSecurity.indexOf(
+    "-f supabase/tests/dashboard_summary.sql",
+  );
+  const backup = databaseSecurity.indexOf(
+    "-f supabase/tests/backup_isolation.sql",
+  );
+  const browserBuild = databaseSecurity.indexOf(
+    "Build Cloud against local Supabase",
+  );
+  const dashboardStep =
+    databaseSecurity.match(
+      /- name: Verify Dashboard summary aggregation and account isolation[\s\S]*?(?=\n      - name:)/,
+    )?.[0] ?? "";
+  const backupStep =
+    databaseSecurity.match(
+      /- name: Verify backup restore and account isolation[\s\S]*?(?=\n      - name:)/,
+    )?.[0] ?? "";
+
+  assert.ok(reset >= 0);
+  assert.ok(dashboard > reset);
+  assert.ok(backup > dashboard);
+  assert.ok(browserBuild > backup);
+  assert.match(dashboardStep, /-v ON_ERROR_STOP=1/);
+  assert.match(dashboardStep, /-f supabase\/tests\/dashboard_summary\.sql/);
+  assert.match(backupStep, /-v ON_ERROR_STOP=1/);
+  assert.match(backupStep, /-f supabase\/tests\/backup_isolation\.sql/);
+});
+
 test("normal release orders link, Auth config, migrations, Edge, Web and smoke", () => {
   const link = deploy.indexOf("Link selected Supabase project");
   const authConfig = deploy.indexOf("Push Supabase Auth configuration");

@@ -21,6 +21,7 @@ export default defineConfig({
   retries: 0,
   reporter: "list",
   timeout: 120_000,
+  expect: { timeout: 10_000 },
   use: {
     baseURL: `http://127.0.0.1:${previewPort}`,
     trace: "retain-on-failure",

@@ -4,6 +4,9 @@ import { z } from "zod/v3";
 import type { SignUpData } from "../types";
 import { getCloudApiClient } from "./apiClient";
 
+const PRIVACY_POLICY_VERSION = "2026-08-03";
+const TERMS_OF_SERVICE_VERSION = "2026-08-03";
+
 type Profile = {
   id: string;
   display_name: string | null;
@@ -80,11 +83,17 @@ export const personalAccount: PersonalAccountApi = {
     const displayName = [first_name.trim(), last_name.trim()]
       .filter(Boolean)
       .join(" ");
+    const acceptedAt = new Date().toISOString();
     return getCloudApiClient().auth.signUp(email, password, {
       metadata: {
         display_name: displayName,
         first_name: first_name.trim(),
         last_name: last_name.trim(),
+        legal_consent: {
+          privacy_policy_version: PRIVACY_POLICY_VERSION,
+          terms_of_service_version: TERMS_OF_SERVICE_VERSION,
+          accepted_at: acceptedAt,
+        },
       },
     });
   },
@@ -131,5 +140,4 @@ export const personalAccount: PersonalAccountApi = {
   async updatePassword(password, signal) {
     await getCloudApiClient().auth.updatePassword(password, { signal });
   },
-
 };

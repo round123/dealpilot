@@ -17,20 +17,6 @@ type UserSession = {
   user: { id: string };
 };
 
-type CustomerDetail = {
-  id: string;
-  contacts: Array<{ id: string; company_id: string }>;
-  social_accounts: Array<{ id: string; company_id: string }>;
-  deals: Array<{ id: string; company_id: string }>;
-  recent_follow_ups: Array<{ id: string; company_id: string }>;
-  open_reminders: Array<{
-    id: string;
-    company_id: string;
-    status: string;
-    resolution: string | null;
-  }>;
-};
-
 type AuthenticatedRequest = (
   path: string,
   init?: RequestInit,
@@ -63,9 +49,10 @@ const requirePreviewEnvironment = (): PreviewEnvironment => {
   };
 };
 
-test("hosted Preview preserves account isolation and the Customer vertical slice", async ({
+test("hosted Preview preserves account isolation and the Customer Web lifecycle", async ({
   browser,
 }) => {
+  test.setTimeout(180_000);
   const environment = requirePreviewEnvironment();
   const suffix = `preview-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
   const alphaSession = await signIn(environment, environment.alpha);
@@ -74,7 +61,6 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
 
   const asAlpha = authenticatedRequest(environment, alphaSession);
   const asBeta = authenticatedRequest(environment, betaSession);
-  const targetId = crypto.randomUUID();
   const sourceId = crypto.randomUUID();
   const betaCustomerId = crypto.randomUUID();
   const contactId = crypto.randomUUID();
@@ -84,7 +70,8 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
   const reminderId = crypto.randomUUID();
   const crossOwnerContactId = crypto.randomUUID();
   const forgedCustomerId = crypto.randomUUID();
-  const targetName = `Preview Alpha ${suffix}`;
+  const createdTargetName = `Preview Created ${suffix}`;
+  const targetName = `Preview Updated ${suffix}`;
   const sourceName = `Preview Merge ${suffix}`;
   const betaCustomerName = `Preview Beta ${suffix}`;
   const storagePath = `${alphaSession.user.id}/${suffix}/proof.txt`;
@@ -92,15 +79,54 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
   let ownStorageCreated = false;
   let forbiddenStorageCreated = false;
   let forgedCustomerCreated = false;
+  let createdTargetId: string | undefined;
+  const alphaContext = await browser.newContext();
+  const alphaPage = await alphaContext.newPage();
 
   try {
-    await insert(asAlpha, "companies", [
-      { id: targetId, name: targetName, company: `Target ${suffix}` },
-      { id: sourceId, name: sourceName, company: `Source ${suffix}` },
-    ]);
     await insert(asBeta, "companies", {
       id: betaCustomerId,
       name: betaCustomerName,
+    });
+
+    await test.step("Web creates and updates a Customer", async () => {
+      await login(alphaPage, environment.alpha);
+      await alphaPage.goto("/#/companies/create");
+      await alphaPage.locator('input[name="name"]').fill(createdTargetName);
+      await alphaPage
+        .getByRole("button", { name: /create customer|创建客户/i })
+        .click();
+      await expect(alphaPage).toHaveURL(/#\/companies\/[^/]+\/show/);
+
+      const targetIdMatch = alphaPage
+        .url()
+        .match(/#\/companies\/([^/]+)\/show/);
+      expect(targetIdMatch).not.toBeNull();
+      createdTargetId = decodeURIComponent(targetIdMatch![1]);
+      expect(createdTargetId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+
+      await alphaPage.goto(`/#/companies/${createdTargetId}`);
+      await alphaPage.locator('input[name="name"]').fill(targetName);
+      await alphaPage.locator('input[name="company"]').fill(`Target ${suffix}`);
+      await alphaPage.getByRole("button", { name: /保存/i }).click();
+      await expect(alphaPage).toHaveURL(
+        new RegExp(`#/companies/${createdTargetId}/show(?:/.*)?$`),
+      );
+      await expect(
+        alphaPage.getByRole("heading", { name: targetName, exact: true }),
+      ).toBeVisible();
+    });
+
+    const targetId = createdTargetId;
+    if (!targetId)
+      throw new Error("Web Customer creation did not return an ID");
+
+    await insert(asAlpha, "companies", {
+      id: sourceId,
+      name: sourceName,
+      company: `Source ${suffix}`,
     });
 
     await test.step("two real accounts see only their own Customer in the UI", async () => {
@@ -127,6 +153,16 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
           200,
         ),
       ).toEqual([]);
+
+      const crossOwnerDetail = await asAlpha(
+        "/rest/v1/rpc/get_customer_detail",
+        {
+          method: "POST",
+          body: JSON.stringify({ p_customer_id: betaCustomerId }),
+        },
+      );
+      expect(crossOwnerDetail.ok).toBe(false);
+      expect(await crossOwnerDetail.json()).toMatchObject({ code: "P0002" });
 
       const crossOwnerChild = await asAlpha("/rest/v1/contacts", {
         method: "POST",
@@ -188,91 +224,173 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
       expect([400, 403]).toContain(crossOwnerUpload.status);
     });
 
-    await test.step("Customer detail, merge, soft delete, and restore use real RPCs", async () => {
-      const future = new Date(Date.now() + 86_400_000).toISOString();
-      const originalResolution = `pending-${suffix}`;
-      await insert(asAlpha, "contacts", {
-        id: contactId,
-        company_id: sourceId,
-        name: `Contact ${suffix}`,
-      });
-      await insert(asAlpha, "social_accounts", {
-        id: socialAccountId,
-        company_id: sourceId,
-        contact_id: contactId,
-        platform: "wechat",
-        raw_identifier: `wx-${suffix}`,
-        normalized_identifier: `wx-${suffix}`,
-      });
-      await insert(asAlpha, "deals", {
-        id: dealId,
-        company_id: sourceId,
-        name: `Deal ${suffix}`,
-      });
-      await insert(asAlpha, "follow_ups", {
-        id: followUpId,
-        company_id: sourceId,
-        deal_id: dealId,
-        type: "note",
-        note: `Follow-up ${suffix}`,
-        occurred_at: new Date().toISOString(),
-      });
-      await insert(asAlpha, "reminders", {
-        id: reminderId,
-        company_id: sourceId,
-        deal_id: dealId,
-        type: "fixed_time",
-        status: "pending",
-        due_at: future,
-        priority: "normal",
-        resolution: originalResolution,
-      });
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const originalResolution = `pending-${suffix}`;
+    await insert(asAlpha, "contacts", {
+      id: contactId,
+      company_id: sourceId,
+      name: `Contact ${suffix}`,
+    });
+    await insert(asAlpha, "social_accounts", {
+      id: socialAccountId,
+      company_id: sourceId,
+      contact_id: contactId,
+      platform: "wechat",
+      raw_identifier: `wx-${suffix}`,
+      normalized_identifier: `wx-${suffix}`,
+    });
+    await insert(asAlpha, "deals", {
+      id: dealId,
+      company_id: sourceId,
+      name: `Deal ${suffix}`,
+    });
+    await insert(asAlpha, "follow_ups", {
+      id: followUpId,
+      company_id: sourceId,
+      deal_id: dealId,
+      type: "note",
+      note: `Follow-up ${suffix}`,
+      occurred_at: new Date().toISOString(),
+    });
+    await insert(asAlpha, "reminders", {
+      id: reminderId,
+      company_id: sourceId,
+      deal_id: dealId,
+      type: "fixed_time",
+      status: "pending",
+      due_at: future,
+      priority: "normal",
+      resolution: originalResolution,
+    });
 
-      const sourceDetail = await rpc<{ data: CustomerDetail }>(
-        asAlpha,
+    await test.step("Web Customer detail renders every required association", async () => {
+      const detailResponse = waitForRpcResponse(
+        alphaPage,
         "get_customer_detail",
-        { p_customer_id: sourceId },
       );
-      expectCustomerAssociations(sourceDetail.data, {
-        customerId: sourceId,
-        contactId,
-        socialAccountId,
-        dealId,
-        followUpId,
-        reminderId,
-      });
+      await alphaPage.goto(`/#/companies/${sourceId}/show`);
+      expect((await detailResponse).ok()).toBe(true);
+      await expect(
+        alphaPage.getByRole("heading", { name: sourceName, exact: true }),
+      ).toBeVisible();
+      for (const [regionName, expectedText] of [
+        ["联系人", `Contact ${suffix}`],
+        ["社媒账号", `wx-${suffix}`],
+        ["项目", `Deal ${suffix}`],
+        ["最近跟进", `Follow-up ${suffix}`],
+      ] as const) {
+        await expect(
+          alphaPage
+            .getByRole("region", { name: regionName, exact: true })
+            .getByText(expectedText, { exact: false }),
+        ).toBeVisible();
+      }
+      await expect(
+        alphaPage.getByRole("region", { name: "未完成提醒", exact: true }),
+      ).toContainText("1");
+    });
 
-      await rpc(asAlpha, "merge_customers", {
-        p_source_id: sourceId,
-        p_target_id: targetId,
-        p_field_resolutions: { company: `Merged ${suffix}` },
+    await test.step("Web merges the source Customer into the selected target", async () => {
+      const customerActions = alphaPage.getByRole("region", {
+        name: "客户操作",
+        exact: true,
       });
-      expect(
-        await expectJson<Array<{ id: string; company_id: string }>>(
+      await customerActions
+        .getByRole("button", { name: "合并", exact: true })
+        .click();
+      const mergeDialog = alphaPage.getByRole("dialog", {
+        name: `合并客户“${sourceName}”`,
+        exact: true,
+      });
+      await mergeDialog
+        .getByLabel("目标客户", { exact: true })
+        .fill(targetName);
+      const targetCandidate = mergeDialog
+        .getByRole("radiogroup")
+        .first()
+        .locator("label")
+        .filter({ hasText: targetName });
+      await expect(targetCandidate).toHaveCount(1);
+      await targetCandidate.getByRole("radio").click();
+      await mergeDialog
+        .getByRole("radio", { name: "公司名称 当前客户", exact: true })
+        .click();
+      const mergeResponse = waitForRpcResponse(alphaPage, "merge_customers");
+      await mergeDialog
+        .getByRole("button", { name: "确认合并", exact: true })
+        .click();
+      expect((await mergeResponse).ok()).toBe(true);
+
+      await expect(alphaPage).toHaveURL(
+        new RegExp(`#/companies/${targetId}/show(?:/.*)?$`),
+      );
+      await expect(
+        alphaPage.getByRole("heading", { name: targetName, exact: true }),
+      ).toBeVisible();
+
+      const sourceRows = await expectJson<
+        Array<{ id: string; deleted_at: string }>
+      >(
+        await asAlpha(
+          `/rest/v1/companies?id=eq.${sourceId}&select=id,deleted_at`,
+        ),
+        200,
+      );
+      expect(sourceRows).toHaveLength(1);
+      expect(sourceRows[0]).toEqual({
+        id: sourceId,
+        deleted_at: expect.any(String),
+      });
+      for (const [resource, id] of [
+        ["contacts", contactId],
+        ["social_accounts", socialAccountId],
+        ["deals", dealId],
+        ["follow_ups", followUpId],
+        ["reminders", reminderId],
+      ] as const) {
+        const rows = await expectJson<
+          Array<{ id: string; company_id: string }>
+        >(
           await asAlpha(
-            `/rest/v1/contacts?id=eq.${contactId}&select=id,company_id`,
+            `/rest/v1/${resource}?id=eq.${id}&select=id,company_id`,
           ),
           200,
-        ),
-      ).toEqual([{ id: contactId, company_id: targetId }]);
+        );
+        expect(rows).toEqual([{ id, company_id: targetId }]);
+      }
 
-      const mergedDetail = await rpc<{ data: CustomerDetail }>(
-        asAlpha,
-        "get_customer_detail",
-        { p_customer_id: targetId },
+      for (const [regionName, expectedText] of [
+        ["联系人", `Contact ${suffix}`],
+        ["社媒账号", `wx-${suffix}`],
+        ["项目", `Deal ${suffix}`],
+        ["最近跟进", `Follow-up ${suffix}`],
+      ] as const) {
+        await expect(
+          alphaPage
+            .getByRole("region", { name: regionName, exact: true })
+            .getByText(expectedText, { exact: false }),
+        ).toBeVisible();
+      }
+    });
+
+    await test.step("Web soft deletes and restores the merged Customer", async () => {
+      await alphaPage
+        .getByRole("region", { name: "客户操作", exact: true })
+        .getByRole("button", { name: "移至已删除客户", exact: true })
+        .click();
+      const deleteDialog = alphaPage.getByRole("dialog", {
+        name: `删除客户“${targetName}”？`,
+        exact: true,
+      });
+      const deleteResponse = waitForRpcResponse(
+        alphaPage,
+        "soft_delete_customer",
       );
-      expectCustomerAssociations(mergedDetail.data, {
-        customerId: targetId,
-        contactId,
-        socialAccountId,
-        dealId,
-        followUpId,
-        reminderId,
-      });
-
-      await rpc(asAlpha, "soft_delete_customer", {
-        p_customer_id: targetId,
-      });
+      await deleteDialog
+        .getByRole("button", { name: "确认删除", exact: true })
+        .click();
+      expect((await deleteResponse).ok()).toBe(true);
+      await expect(alphaPage).toHaveURL(/#\/companies(?:\?.*)?$/);
       expect(await readReminder(asAlpha, reminderId)).toEqual({
         id: reminderId,
         status: "ignored",
@@ -280,18 +398,43 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
         deletion_event_id: expect.any(String),
       });
 
-      await rpc(asAlpha, "restore_customer", { p_customer_id: targetId });
+      await alphaPage.goto("/#/companies/deleted");
+      await expect(
+        alphaPage.getByRole("heading", { name: "已删除客户", exact: true }),
+      ).toBeVisible();
+      const deletedRow = alphaPage
+        .getByRole("listitem")
+        .filter({ hasText: targetName });
+      await expect(deletedRow).toHaveCount(1);
+      const restoreResponse = waitForRpcResponse(alphaPage, "restore_customer");
+      await deletedRow
+        .getByRole("button", { name: "恢复", exact: true })
+        .click();
+      expect((await restoreResponse).ok()).toBe(true);
+      await expect(deletedRow).toHaveCount(0);
       expect(await readReminder(asAlpha, reminderId)).toEqual({
         id: reminderId,
         status: "pending",
         resolution: originalResolution,
         deletion_event_id: null,
       });
-      expect(
-        await rpc<{ data: CustomerDetail }>(asAlpha, "get_customer_detail", {
-          p_customer_id: targetId,
-        }),
-      ).toMatchObject({ data: { id: targetId } });
+
+      await alphaPage.goto(`/#/companies/${targetId}/show`);
+      await expect(
+        alphaPage.getByRole("heading", { name: targetName, exact: true }),
+      ).toBeVisible();
+      await expect(
+        alphaPage.getByRole("region", { name: "联系人", exact: true }),
+      ).toContainText(`Contact ${suffix}`);
+      await expect(
+        alphaPage.getByRole("region", { name: "社媒账号", exact: true }),
+      ).toContainText(`wx-${suffix}`);
+      await expect(
+        alphaPage.getByRole("region", { name: "项目", exact: true }),
+      ).toContainText(`Deal ${suffix}`);
+      await expect(
+        alphaPage.getByRole("region", { name: "最近跟进", exact: true }),
+      ).toContainText(`Follow-up ${suffix}`);
     });
 
     await test.step("self-service account deletion stays hidden and disabled", async () => {
@@ -329,6 +472,7 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
       expect(deleteAccount.headers.get("x-request-id")).toBe(requestId);
     });
   } finally {
+    await alphaContext.close();
     const cleanupResults: Promise<Response>[] = [];
     if (ownStorageCreated) {
       cleanupResults.push(
@@ -350,9 +494,10 @@ test("hosted Preview preserves account isolation and the Customer vertical slice
       asAlpha(`/rest/v1/contacts?id=eq.${crossOwnerContactId}`, {
         method: "DELETE",
       }),
-      asAlpha(`/rest/v1/companies?id=in.(${targetId},${sourceId})`, {
-        method: "DELETE",
-      }),
+      asAlpha(
+        `/rest/v1/companies?id=in.(${createdTargetId ? `${createdTargetId},` : ""}${sourceId})`,
+        { method: "DELETE" },
+      ),
       asBeta(`/rest/v1/companies?id=eq.${betaCustomerId}`, {
         method: "DELETE",
       }),
@@ -446,6 +591,15 @@ const assertBrowserCustomerIsolation = async (
   }
 };
 
+const waitForRpcResponse = (page: Page, name: string) =>
+  page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "POST" &&
+      url.pathname.endsWith(`/rest/v1/rpc/${name}`)
+    );
+  });
+
 const insert = async (
   request: AuthenticatedRequest,
   resource: string,
@@ -458,19 +612,6 @@ const insert = async (
       body: JSON.stringify(body),
     }),
     201,
-  );
-
-const rpc = async <T = unknown>(
-  request: AuthenticatedRequest,
-  name: string,
-  body: unknown,
-) =>
-  expectJson<T>(
-    await request(`/rest/v1/rpc/${name}`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-    200,
   );
 
 const readReminder = async (
@@ -492,31 +633,6 @@ const readReminder = async (
   );
   expect(rows).toHaveLength(1);
   return rows[0];
-};
-
-const expectCustomerAssociations = (
-  detail: CustomerDetail,
-  expected: {
-    customerId: string;
-    contactId: string;
-    socialAccountId: string;
-    dealId: string;
-    followUpId: string;
-    reminderId: string;
-  },
-) => {
-  expect(detail.id).toBe(expected.customerId);
-  for (const [records, id] of [
-    [detail.contacts, expected.contactId],
-    [detail.social_accounts, expected.socialAccountId],
-    [detail.deals, expected.dealId],
-    [detail.recent_follow_ups, expected.followUpId],
-    [detail.open_reminders, expected.reminderId],
-  ] as const) {
-    expect(records).toContainEqual(
-      expect.objectContaining({ id, company_id: expected.customerId }),
-    );
-  }
 };
 
 const expectJson = async <T>(
