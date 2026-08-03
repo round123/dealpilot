@@ -57,9 +57,9 @@ export async function runCloudSmoke({
     },
   );
 
-  for (const functionName of functions) {
-    const expectedStatuses =
-      functionName === "delete-account" ? [404] : [401, 403];
+  for (const functionName of functions.filter(
+    (name) => name !== "delete-account",
+  )) {
     await retry(
       `Unavailable Edge function (${functionName})`,
       attempts,
@@ -76,9 +76,53 @@ export async function runCloudSmoke({
             body: "{}",
           },
         );
-        if (!expectedStatuses.includes(response.status)) {
+        if (![401, 403].includes(response.status)) {
+          throw new Error(`expected 401/403, received ${response.status}`);
+        }
+      },
+    );
+  }
+
+  let accessToken;
+  if (authenticatedCustomer) {
+    validateExpectedCustomer(authenticatedCustomer.expected);
+    accessToken = await signInSmokeAccount({
+      apiBase,
+      publishableKey,
+      authenticatedCustomer,
+      attempts,
+      retryDelayMs,
+      fetchImpl,
+    });
+  }
+
+  if (functions.includes("delete-account")) {
+    await retry(
+      "Disabled Edge function (delete-account)",
+      attempts,
+      retryDelayMs,
+      async () => {
+        const response = await fetchImpl(
+          `${apiBase}/functions/v1/delete-account`,
+          {
+            method: "POST",
+            headers: {
+              apikey: publishableKey,
+              ...(accessToken
+                ? { authorization: `Bearer ${accessToken}` }
+                : {}),
+              "content-type": "application/json",
+            },
+            body: "{}",
+          },
+        );
+        const payload = await readJson(response);
+        if (
+          response.status !== 404 ||
+          payload?.error?.code !== "FEATURE_DISABLED"
+        ) {
           throw new Error(
-            `expected ${expectedStatuses.join("/")}, received ${response.status}`,
+            `expected HTTP 404 with code FEATURE_DISABLED, received HTTP ${response.status}`,
           );
         }
       },
@@ -90,6 +134,7 @@ export async function runCloudSmoke({
       apiBase,
       publishableKey,
       authenticatedCustomer,
+      accessToken,
       attempts,
       retryDelayMs,
       fetchImpl,
@@ -103,7 +148,7 @@ export async function runCloudSmoke({
   };
 }
 
-async function verifyAuthenticatedCustomer({
+async function signInSmokeAccount({
   apiBase,
   publishableKey,
   authenticatedCustomer,
@@ -111,8 +156,7 @@ async function verifyAuthenticatedCustomer({
   retryDelayMs,
   fetchImpl,
 }) {
-  const { email, password, expected } = authenticatedCustomer;
-  validateExpectedCustomer(expected);
+  const { email, password } = authenticatedCustomer;
 
   let accessToken;
   await retry("Smoke account sign-in", attempts, retryDelayMs, async () => {
@@ -134,6 +178,19 @@ async function verifyAuthenticatedCustomer({
     }
     accessToken = payload.access_token;
   });
+  return accessToken;
+}
+
+async function verifyAuthenticatedCustomer({
+  apiBase,
+  publishableKey,
+  authenticatedCustomer,
+  accessToken,
+  attempts,
+  retryDelayMs,
+  fetchImpl,
+}) {
+  const { expected } = authenticatedCustomer;
 
   const authenticatedHeaders = {
     apikey: publishableKey,

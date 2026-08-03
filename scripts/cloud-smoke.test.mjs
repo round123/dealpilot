@@ -54,7 +54,16 @@ test("expects the retired account deletion endpoint to remain unavailable", asyn
     }
     if (request.url === "/functions/v1/delete-account") {
       response.statusCode = 404;
-      response.end();
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          error: {
+            code: "FEATURE_DISABLED",
+            message: "Self-service account deletion is not available",
+            request_id: "request-id",
+          },
+        }),
+      );
       return;
     }
     if (respondWithAnonymousPermissionDenial(request, response)) return;
@@ -75,6 +84,47 @@ test("expects the retired account deletion endpoint to remain unavailable", asyn
     functions: ["delete-account"],
     attempts: 1,
   });
+});
+
+test("rejects a 404 that is not the disabled account deletion response", async () => {
+  await assert.rejects(
+    runCloudSmoke({
+      webUrl: "https://example.test",
+      supabaseUrl: "https://example.test",
+      publishableKey: "public-key",
+      releaseSha: "release-sha",
+      functions: ["delete-account"],
+      attempts: 1,
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname === "/release.json") {
+          return Response.json({ sha: "release-sha" });
+        }
+        if (url.pathname === "/auth/v1/health") return new Response(null);
+        if (url.pathname === "/rest/v1/companies") {
+          return new Response(
+            JSON.stringify({
+              code: "42501",
+              message: "permission denied for table companies",
+            }),
+            { status: 401 },
+          );
+        }
+        if (url.pathname === "/functions/v1/delete-account") {
+          return Response.json(
+            { error: { code: "NOT_FOUND", message: "Not found" } },
+            { status: 404 },
+          );
+        }
+        throw new Error(`Unexpected smoke request: ${url}`);
+      },
+    }),
+    (error) => {
+      assert.match(error.message, /Disabled Edge function/);
+      assert.match(error.cause.message, /FEATURE_DISABLED/);
+      return true;
+    },
+  );
 });
 
 test("rejects a stale Web release marker", async () => {
@@ -201,9 +251,22 @@ test("authenticates and verifies the Customer count and related summary", async 
       );
       return;
     }
-    if (request.url?.startsWith("/functions/v1/")) {
+    if (request.url === "/functions/v1/purge-expired-customers") {
       response.statusCode = 401;
       response.end("{}");
+      return;
+    }
+    if (request.url === "/functions/v1/delete-account") {
+      response.statusCode = 404;
+      response.end(
+        JSON.stringify({
+          error: {
+            code: "FEATURE_DISABLED",
+            message: "Self-service account deletion is not available",
+            request_id: "request-id",
+          },
+        }),
+      );
       return;
     }
     response.statusCode = 200;
@@ -220,7 +283,7 @@ test("authenticates and verifies the Customer count and related summary", async 
     supabaseUrl: baseUrl,
     publishableKey: "public-key",
     releaseSha: "release-sha",
-    functions: [],
+    functions: ["purge-expired-customers", "delete-account"],
     attempts: 1,
     authenticatedCustomer: {
       email: "smoke@example.test",
@@ -239,15 +302,26 @@ test("authenticates and verifies the Customer count and related summary", async 
   });
 
   assert.equal(result.checkedCustomerId, "customer-id");
-  const customerRequests = seen.filter(({ authorization }) => authorization);
-  assert.equal(customerRequests.length, 2);
+  const signInRequests = seen.filter(
+    ({ url }) => url === "/auth/v1/token?grant_type=password",
+  );
+  assert.equal(signInRequests.length, 1);
+  const purgeRequest = seen.find(
+    ({ url }) => url === "/functions/v1/purge-expired-customers",
+  );
+  assert.equal(purgeRequest.authorization, undefined);
+  const authenticatedRequests = seen.filter(({ authorization }) =>
+    authorization?.startsWith("Bearer "),
+  );
+  assert.equal(authenticatedRequests.length, 3);
   assert.ok(
-    customerRequests.every(
+    authenticatedRequests.every(
       ({ authorization }) => authorization === "Bearer smoke-token",
     ),
   );
+  assert.equal(authenticatedRequests[0].url, "/functions/v1/delete-account");
   assert.equal(
-    customerRequests.at(-1).body,
+    authenticatedRequests.at(-1).body,
     JSON.stringify({ p_customer_id: "customer-id" }),
   );
 });
