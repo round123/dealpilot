@@ -22,7 +22,7 @@ import {
 import {
   CONTENT_CLOUD_REQUEST,
   type ContentCloudOperation,
-} from "./content-agent-client";
+} from "./content-cloud-client";
 import { ApiError } from "./extension-errors";
 import { openWorkbench } from "./workbench-links";
 

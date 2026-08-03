@@ -1,7 +1,7 @@
 # ADR-V2-002：采用 Atomic CRM 构建个人云版本
 
 > 状态：Accepted
-> 日期：2026-07-30
+> 日期：2026-08-03
 > 决策人：DealPilot 项目负责人
 > 取代：`ADR-V2-001-cloud-modular-monolith.md` 中的 NestJS、Drizzle PostgreSQL、Keycloak、workspace 和 OpenAPI 客户端决策
 
@@ -18,14 +18,14 @@ Atomic CRM 不能原样上线：其当前业务表没有个人所有权字段，
 ## Decision
 
 1. 使用固定 commit 的 Atomic CRM 作为 V2 Web/PWA 和 Supabase/PostgreSQL 基线，保留上游来源与 MIT 许可证。
-2. 在现有 monorepo 中新增 `apps/cloud`，P3 Customer 门槛前完整保留 `apps/web` 作为 V1 行为基线和确认前回退路径。
+2. 在现有 monorepo 中以 `apps/cloud` 作为唯一 Web/PWA 产品入口。`apps/web` 已从当前工作树删除；历史实现只保存在 `v1-local-final` Git tag，不在当前工作树维护第二套 Web。
 3. 使用 Supabase Auth 管理个人账号。首版支持邮箱注册、验证、登录、密码重置和会话，不部署 Keycloak。
 4. 不建设 workspace、成员关系或角色。所有云端业务表包含 `owner_user_id`，通过 `auth.uid()` RLS、用户内唯一约束和复合外键实现账号隔离。
 5. 普通 CRUD 使用受 RLS 保护的 PostgREST；跨表关键操作使用原子 PostgreSQL RPC，文件和长流程使用 Edge Functions 编排。
 6. 新增 `packages/api-client` 作为 Web/PWA/extension 的唯一云端网络边界，包装 Supabase Auth、PostgREST、RPC 和 Edge Functions，并负责运行时解析、取消和错误归一化。
 7. Atomic React Admin DataProvider 必须依赖该客户端适配器；业务组件不得直接调用 `fetch` 或 Supabase SDK。
 8. Customer 合并、软删除、恢复、提醒状态联动和迁移提交必须在数据库事务内完成。
-9. 现有 Agent 在 V2 仅保留 SQLite 到 PostgreSQL 的迁移、迁移前后快照、数据核对、取证导出和失败重试工具；用户确认迁移后不再承担云端业务 API 或主数据库职责。托盘、系统通知和 Native Messaging 属于 V1 本地兼容代码，不再是 V2 当前职责或云端部署依赖；Web/PWA 是 V2 唯一主界面。
+9. 删除现有 Agent、托盘、系统通知、Native Messaging、EXE 和 NSIS 构建链。SQLite 到 PostgreSQL 的只读提取、快照、核对和取证由独立 `packages/migration` 承担；Web/PWA 是唯一主界面。
 10. PostgreSQL 在用户确认迁移后永久成为唯一事实源，不建设回写 SQLite 的同步链路。
 
 ## Dependency Rules
@@ -64,7 +64,7 @@ PostgreSQL constraints + RLS + transaction functions
 - Atomic 与 V1 数据模型不同，需要明确映射和行为对照。
 - Supabase/PostgREST 与原计划 OpenAPI 包络不同，需要自有客户端适配层稳定调用语义。
 - 上游升级可能与 DealPilot 的 schema、认证和业务事务改造冲突。
-- 日常开发依赖受控 Supabase 开发项目；CI 的临时 Supabase 只用于自动化门禁。V2 Web/PWA 不依赖 Agent 的托盘、系统通知或 Native Messaging，Agent 迁移工具也不能替代云端 API 验收。
+- 日常开发依赖受控 Supabase 开发项目；CI 的临时 Supabase 只用于自动化门禁。V2 Web/PWA 不包含 Agent、托盘、系统通知或 Native Messaging；独立迁移包也不能替代云端 API 验收。
 
 ## Rejected Alternatives
 
@@ -82,7 +82,7 @@ PostgreSQL constraints + RLS + transaction functions
 |------|------|
 | 云端开发环境 | 受控开发项目提供 PostgreSQL、Auth、Storage 和所需函数；CI 从空库验证 migration、RLS、事务函数与目标云端配置一致 |
 | 主界面 | Web/PWA 在受控开发项目完成登录、Customer 纵向切片和错误/权限验收；不以 V1 工作台、托盘、系统通知或 Native Messaging 作为 V2 通过条件 |
-| Agent 边界 | Agent 只能执行 SQLite 迁移、快照、核对、取证和重试；确认迁移后 PostgreSQL 是唯一事实源，不提供反向写回 |
+| 迁移边界 | `packages/migration` 只能只读提取 SQLite、生成快照和 bundle；确认迁移后 PostgreSQL 是唯一事实源，不提供反向写回或业务 API |
 | P3 门槛 | 两用户隔离矩阵、Customer 行为等价、原子合并/删除/恢复、唯一客户端边界、SQLite 迁移预演和应用版本回滚全部通过 |
 
 只有上述 P3 门槛全部通过后，才允许批量迁移其他领域；原生移动端不在首版范围内，正式云环境部署、试点和浏览器扩展商店审核另行验收。

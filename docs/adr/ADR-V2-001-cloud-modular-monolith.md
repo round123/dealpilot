@@ -6,7 +6,7 @@
 > 取代：V1 “SQLite 是永久唯一业务数据源”的架构决策
 > 被取代于：`ADR-V2-002-atomic-crm-personal-cloud.md`
 
-> 说明：PostgreSQL 在迁移确认后成为唯一事实源、Agent 收敛为本机能力桥接等结论继续有效；NestJS、Drizzle PostgreSQL、Keycloak、workspace 和 OpenAPI 生成客户端等结论已由 ADR-V2-002 取代。
+> 说明：本文已被 ADR-V2-002 完整取代。当前 V2 不保留 Agent 本机能力桥接；PostgreSQL 在迁移确认后是唯一事实源，V1 SQLite 只由独立迁移包读取。
 
 ## Context
 
@@ -23,8 +23,8 @@ V1 面向单人 Windows 本地使用，Bun Agent 同时承载业务 HTTP API、S
 5. 跨模块能力通过目标模块导出的应用服务或查询服务调用，不直接查询其他模块的表。
 6. REST + OpenAPI 是跨端公共契约；生成客户端和运行时解析器是 Web、PWA、mobile 和 extension 的唯一网络边界。
 7. 身份使用 Keycloak OIDC。OIDC 只证明主体，workspace 成员关系和角色由应用数据库授权。
-8. 本地 Agent 保留 Bun/Hono，只负责设备配对、迁移、托盘、通知和 Native Messaging，不再承担云端业务 API 或主数据库职责。
-9. 本地开发使用容器化 PostgreSQL 和 Keycloak；Cloud Beta 的生产首选区域为新加坡，真实数据上线前受独立生产发布门约束。
+8. V2 主界面为 Web/PWA，浏览器扩展通过统一 API Client 访问云端；不保留桌面 Agent、托盘、通知或 Native Messaging 运行时。
+9. 本地开发只运行 Vite，业务后端使用受控 Supabase 项目；真实数据上线前受独立生产发布门约束。
 
 ## Dependency Rules
 

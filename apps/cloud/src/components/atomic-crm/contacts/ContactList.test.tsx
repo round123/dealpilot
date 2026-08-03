@@ -76,7 +76,7 @@ describe("ContactList", () => {
       .toBeVisible();
   });
 
-  it("does not expose tag and task actions in Agent mode", async () => {
+  it("does not expose tag and task actions for a restricted provider", async () => {
     const screen = await render(
       <StoryWrapper
         data={{ contacts: [buildContact({ id: 10 })] }}

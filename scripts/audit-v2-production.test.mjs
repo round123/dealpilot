@@ -18,13 +18,13 @@ test("normalizes Windows paths and identifies the workspace importer", () => {
   );
 });
 
-test("excludes V1 Agent findings and blocks active V2 high findings", () => {
+test("ignores non-production findings and blocks active V2 high findings", () => {
   const result = evaluateAuditReport(
     report([
       advisory({
-        id: "GHSA-agent",
+        id: "GHSA-non-production",
         moduleName: "xlsx",
-        paths: ["apps\\agent > xlsx@0.18.5"],
+        paths: ["tools\\fixture-builder > xlsx@0.18.5"],
       }),
       advisory({
         id: "GHSA-extension",
@@ -36,7 +36,10 @@ test("excludes V1 Agent findings and blocks active V2 high findings", () => {
   );
 
   assert.equal(result.ignored.length, 1);
-  assert.equal(result.ignored[0].dependencyPath, "apps/agent > xlsx@0.18.5");
+  assert.equal(
+    result.ignored[0].dependencyPath,
+    "tools/fixture-builder > xlsx@0.18.5",
+  );
   assert.equal(result.blocked.length, 1);
   assert.equal(result.blocked[0].advisoryId, "GHSA-extension");
 });
@@ -142,9 +145,9 @@ test("invokes pnpm with the official registry and accepts audit finding exit cod
         stdout: JSON.stringify(
           report([
             advisory({
-              id: "GHSA-agent",
+              id: "GHSA-non-production",
               moduleName: "xlsx",
-              paths: ["apps/agent > xlsx@0.18.5"],
+              paths: ["tools/fixture-builder > xlsx@0.18.5"],
             }),
           ]),
         ),

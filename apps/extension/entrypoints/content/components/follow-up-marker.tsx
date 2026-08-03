@@ -11,7 +11,7 @@
 import React, { useRef, useState } from "react";
 import { Bookmark, Plus, Loader2 } from "lucide-react";
 import type { FollowUpCreate } from "@dealpilot/shared";
-import { createFollowUp, extensionErrorMessage, generateIdempotencyKey } from "../../../src/lib/content-agent-client";
+import { createFollowUp, extensionErrorMessage, generateIdempotencyKey } from "../../../src/lib/content-cloud-client";
 import { getPlatformAdapter } from "./platform-adapter";
 
 interface FollowUpMarkerProps {

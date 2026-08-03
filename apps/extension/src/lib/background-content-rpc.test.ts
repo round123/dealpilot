@@ -6,7 +6,7 @@ import {
   handleContentCloudRequest,
   isAllowedContentSender,
 } from "./background-content-rpc";
-import { CONTENT_CLOUD_REQUEST } from "./content-agent-client";
+import { CONTENT_CLOUD_REQUEST } from "./content-cloud-client";
 
 const originalChrome = globalThis.chrome;
 const allowedSender = {

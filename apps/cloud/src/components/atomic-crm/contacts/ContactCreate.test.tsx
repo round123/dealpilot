@@ -21,7 +21,7 @@ describe("ContactCreate", () => {
       .toBeInTheDocument();
   });
 
-  it("shows only Agent-supported fields with one email and phone", async () => {
+  it("shows only provider-supported fields with one email and phone", async () => {
     const screen = await render(
       <ContactCreateBasic
         dataProvider={{ capabilities: AGENT_CRM_CAPABILITIES }}

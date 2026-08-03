@@ -19,7 +19,7 @@
     - 项目 `FolderKanban` → `/projects`
     - 待办 `ListTodo` → `/reminders`
     - 设置 `Settings` → `/settings`
-  - 底部：Agent 状态指示（绿点 + "Agent 运行中" 或 橙点 + "Agent 未运行"），点击展开"启动 Agent / 停止 Agent"
+  - 底部：当前账号入口和版本信息；不展示本地运行时、进程或设备状态
 - **Header**（高 56px，背景 `--color-bg-card`，下边框 `--color-border-default`）
   - 左：面包屑（当前页名 + 父级）
   - 中：全局搜索框（Lucide `Search` 16px + 输入区，placeholder "搜索客户、项目、待办"）
@@ -441,7 +441,7 @@
 ## 页面 9: 设置 `/settings`
 
 **路由**：`/settings`
-**对应 API**：GET /settings, PUT /settings
+**对应 API**：Profile preferences 与云端备份 API（统一由 `packages/api-client` 调用）
 **主题**：浅色
 
 ### 布局结构
@@ -454,28 +454,21 @@
    - 标题 "通用设置"
    - 语言选择（下拉：简体中文 / English）—— V1 仅展示简体中文
    - 时区显示（只读，跟随系统）
-2. **启动与托盘卡**
-   - 开关：开机自启（`Toggle` 组件，开启 `--color-primary`）
-   - 开关：最小化到系统托盘
-   - 开关：关闭窗口时保持 Agent 运行
-   - 开关：启动时自动打开浏览器到工作台
-3. **数据位置卡**
-   - 标题 "数据存储位置"
-   - 路径显示（只读输入框，`--color-gray-100` 背景）+ `Button` "更改位置"（`FolderOpen` 16px）
-   - 当前数据量：客户 N / 跟进 N / 项目 N / 占用 N MB
-   - 危险区（红色边框 `--color-error`）：
-     - `Button` "清空全部数据"（`Trash2` 16px，`--color-error` 描边按钮）
-     - 二次确认模态框："此操作将立即删除本地数据库且不可撤销。请输入 CLEAR 确认"
+2. **云端数据与备份卡**
+   - 显示当前账号、云端数据状态和最近一次云端备份时间
+   - 创建加密云端快照、导出加密备份文件、从备份恢复
+   - 恢复前强制二次确认（模态框，需输入 "RESTORE" 确认）
+   - 不展示本地路径、SQLite、托盘、开机自启或 Agent 状态
 4. **关于卡**
-   - 版本号 + Agent 状态 + 检查更新按钮
+   - 版本号 + Web/PWA 更新提示
 
 ### 数据展示方式
 表单卡片
 
 ### 交互说明
-1. 开关切换立即保存（Toast "已保存"）
-2. 更改数据位置需 Agent 重启
-3. 清空数据需输入确认词
+1. 偏好设置保存后显示 Toast "已保存"
+2. 创建或恢复云端备份显示明确的成功/失败状态
+3. 恢复数据需输入确认词
 
 ### 响应式
 - 1366x768：单列卡片
@@ -575,7 +568,6 @@
    - Lucide `CheckCircle2` 32px（`--color-success`）+ "暂无待办" + "全部已完成"
 4. **底部操作栏**（高 48px，上边框 `--color-border-default`）
    - `Button` "查看全部"（`ArrowRight` 16px）→ 打开工作台 `/reminders`（新标签页）
-   - Agent 状态指示：绿点 + "Agent 运行中" 或 橙点 + "Agent 未运行"
 
 ### 数据展示方式
 卡片列表

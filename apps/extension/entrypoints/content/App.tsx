@@ -28,7 +28,7 @@ import {
   searchCustomers,
   unbindMatch,
   updateContentReminderStatus,
-} from "../../src/lib/content-agent-client";
+} from "../../src/lib/content-cloud-client";
 import { onConversationChange, type ConversationInfo } from "../../src/lib/platform-detect";
 import { CustomerCard } from "./components/customer-card";
 import { FollowUpMarker } from "./components/follow-up-marker";

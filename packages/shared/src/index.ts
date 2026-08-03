@@ -16,16 +16,12 @@ export * from "./schemas/risk.js";
 export * from "./schemas/milestone.js";
 export * from "./schemas/match.js";
 export * from "./schemas/import.js";
-export * from "./schemas/settings.js";
 export * from "./schemas/backup.js";
-export * from "./schemas/stats.js";
-export * from "./schemas/system.js";
 
 // Types
 export * from "./types/index.js";
 
 // Constants
-export * from "./constants/api-paths.js";
 export * from "./constants/platforms.js";
 export * from "./constants/config.js";
 

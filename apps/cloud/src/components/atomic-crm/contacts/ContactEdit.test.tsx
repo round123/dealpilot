@@ -30,7 +30,7 @@ describe("ContactEdit", () => {
         .toBeInTheDocument();
     });
 
-    it("shows the mapped name and prevents company reassignment in Agent mode", async () => {
+    it("shows the mapped name and prevents company reassignment for a restricted provider", async () => {
       const screen = await render(
         <ContactEditBasic
           silent

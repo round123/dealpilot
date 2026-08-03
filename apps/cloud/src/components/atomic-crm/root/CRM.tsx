@@ -61,20 +61,19 @@ import { clearAccountState, createCloudQueryClient } from "./accountState";
 import { cloudCustomerOperations } from "../providers/cloudCustomerOperations";
 import { CustomerOperationsProvider } from "../providers/CustomerOperationsContext";
 import type { CustomerOperations } from "../providers/customerOperations";
-import { createLocalCustomerOperations } from "../providers/localCustomerOperations";
+import { createDemoCustomerOperations } from "../providers/demoCustomerOperations";
 import {
   ImportOperationsProvider,
   type CustomerImportOperations,
 } from "../providers/importOperations";
-import {
-  LocalDataOperationsProvider,
-  type LocalDataOperations,
-} from "../providers/localDataOperations";
 import { CrmProviderCapabilitiesProvider } from "../providers/capabilities";
-import { LocalPrivacyGuard } from "../settings/LocalPrivacyNotice";
 
 const defaultStore = localStorageStore(undefined, "CRM");
 const defaultQueryClient = createCloudQueryClient();
+const isDemoRuntime =
+  import.meta.env.DEV &&
+  import.meta.env.MODE === "demo" &&
+  import.meta.env.VITE_IS_DEMO === "true";
 
 export type CRMProps = {
   dataProvider?: CrmDataProvider;
@@ -86,7 +85,6 @@ export type CRMProps = {
   layout?: LayoutComponent;
   customerOperations?: CustomerOperations;
   importOperations?: CustomerImportOperations;
-  localDataOperations?: LocalDataOperations;
 } & Partial<ConfigurationContextValue>;
 
 /**
@@ -149,7 +147,6 @@ export const CRM = ({
   disableTelemetry: _disableTelemetry,
   customerOperations,
   importOperations,
-  localDataOperations,
   ...rest
 }: CRMProps) => {
   // Seed the store with CRM prop values if not already stored
@@ -177,8 +174,8 @@ export const CRM = ({
   const resolvedCustomerOperations = useMemo(
     () =>
       customerOperations ??
-      (import.meta.env.VITE_IS_DEMO === "true"
-        ? createLocalCustomerOperations(dataProvider)
+      (isDemoRuntime
+        ? createDemoCustomerOperations(dataProvider)
         : cloudCustomerOperations),
     [customerOperations, dataProvider],
   );
@@ -233,29 +230,25 @@ export const CRM = ({
   const ResponsiveAdmin = isMobile ? MobileAdmin : DesktopAdmin;
 
   return (
-    <LocalDataOperationsProvider operations={localDataOperations}>
-      <LocalPrivacyGuard>
-        <ImportOperationsProvider operations={importOperations}>
-          <CustomerOperationsProvider operations={resolvedCustomerOperations}>
-            <CrmProviderCapabilitiesProvider
-              capabilities={dataProvider.capabilities}
-            >
-              <ResponsiveAdmin
-                dataProvider={dataProvider}
-                authProvider={wrappedAuthProvider}
-                i18nProvider={i18nProvider}
-                store={store}
-                queryClient={queryClient}
-                loginPage={StartPage}
-                requireAuth
-                disableTelemetry={true}
-                {...rest}
-              />
-            </CrmProviderCapabilitiesProvider>
-          </CustomerOperationsProvider>
-        </ImportOperationsProvider>
-      </LocalPrivacyGuard>
-    </LocalDataOperationsProvider>
+    <ImportOperationsProvider operations={importOperations}>
+      <CustomerOperationsProvider operations={resolvedCustomerOperations}>
+        <CrmProviderCapabilitiesProvider
+          capabilities={dataProvider.capabilities}
+        >
+          <ResponsiveAdmin
+            dataProvider={dataProvider}
+            authProvider={wrappedAuthProvider}
+            i18nProvider={i18nProvider}
+            store={store}
+            queryClient={queryClient}
+            loginPage={StartPage}
+            requireAuth
+            disableTelemetry={true}
+            {...rest}
+          />
+        </CrmProviderCapabilitiesProvider>
+      </CustomerOperationsProvider>
+    </ImportOperationsProvider>
   );
 };
 

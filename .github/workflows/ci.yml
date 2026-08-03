@@ -39,6 +39,8 @@ jobs:
           scripts/check-migration-compatibility.test.mjs
           scripts/cloud-smoke.test.mjs
           scripts/release-workflows.test.mjs
+      - name: Verify retired V1 runtime stays absent
+        run: pnpm audit:retirement
       - uses: pnpm/action-setup@v4
         with:
           version: 9.0.0

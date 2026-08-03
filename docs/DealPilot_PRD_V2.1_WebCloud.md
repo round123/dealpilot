@@ -22,9 +22,11 @@
 5. 首版是个人云 CRM：每个账号拥有自己的业务数据。不建设团队 workspace、成员、角色、邀请或企业 SSO。
 6. 用户确认迁移后，PostgreSQL 永久成为唯一事实源，不提供云端回写 SQLite 的运行模式。
 
-当前实现口径（2026-08-01）：Web/PWA、统一 API 客户端、Customer 与业务域界面、
+当前实现口径（2026-08-03）：Web/PWA、统一 API 客户端、Customer 与业务域界面、
 导入/导出、加密云备份、V1 一次性迁移、浏览器扩展及发布/回滚自动化已完成静态实现和
-本地门禁。托管 Supabase 的空库 migration、双账号隔离、真实 Auth、外部平台 DOM、
+CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider 已从当前工作树删除；
+历史实现仅由 `v1-local-final` Git tag 保存，SQLite 只读提取由独立 `packages/migration` 承担。
+托管 Supabase 的空库 migration、双账号隔离、真实 Auth、外部平台 DOM、
 迁移确认与生产回滚演练仍是发布前验收项；在这些证据产生前不得宣称云端发布完成。
 
 ## 2. 分阶段运行形态
@@ -118,6 +120,7 @@
 ## 6. 明确不做
 
 - 不做 `dealpilot-agent.exe`、NSIS 安装包、桌面快捷方式或桌面壳。
+- 当前工作树不得重新引入 `apps/web`、`apps/agent`、Agent provider 或本地业务 API；CI 必须执行退役门禁。
 - 首版不做 Capacitor 或原生移动应用；手机使用响应式 Web/PWA。
 - 不做系统托盘、开机自启、Explorer 重启恢复、Windows 系统通知或浏览器关闭后的通知承诺。
 - 不把 Agent/SQLite 作为正式业务后端，不做 PostgreSQL 与 SQLite 长期双写。

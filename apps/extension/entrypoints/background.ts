@@ -9,7 +9,7 @@ import {
   handleContentCloudRequest,
   isAllowedContentSender,
 } from "../src/lib/background-content-rpc";
-import { CONTENT_CLOUD_REQUEST } from "../src/lib/content-agent-client";
+import { CONTENT_CLOUD_REQUEST } from "../src/lib/content-cloud-client";
 import { safeUninstallUrl } from "../src/lib/uninstall-url";
 import { openWorkbench } from "../src/lib/workbench-links";
 

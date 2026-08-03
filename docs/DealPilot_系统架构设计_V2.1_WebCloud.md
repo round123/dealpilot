@@ -1,7 +1,7 @@
 # DealPilot 系统架构设计 V2.1：Web 与云端优先
 
 > 状态：当前有效架构
-> 日期：2026-07-31
+> 日期：2026-08-03
 > 产品需求：[DealPilot PRD V2.1](./DealPilot_PRD_V2.1_WebCloud.md)
 > 云端计划：[cloud-multiplatform-refactor-plan.md](./cloud-multiplatform-refactor-plan.md)
 > 数据字典：[PostgreSQL 数据字典 V2.1](./DealPilot_PostgreSQL_数据字典_V2.1.md)
@@ -12,7 +12,7 @@ DealPilot 采用 Web/PWA + 云端模块化单体 + PostgreSQL 的单一后端架
 
 云端开发、测试和生产使用同一套托管 Supabase 架构；开发者电脑只运行 Web/PWA 的 Vite 前端服务，直接连接受控 Supabase 开发项目。环境之间只替换服务地址、密钥和运行配置，不替换业务后端边界，也不维护本地 PostgreSQL/Supabase 业务实例。
 
-SQLite 和旧 Agent 只承担一次性迁移、快照读取和取证工具职责。它们不提供当前产品的业务 API，不作为 PostgreSQL 的第二事实源，也不参与长期双写。
+当前工作树不包含旧 Agent 或 V1 Web。一次性 SQLite 迁移、快照读取和取证由独立的 `packages/migration` 基础设施适配器承担；它不提供业务 API，不作为 PostgreSQL 的第二事实源，也不参与长期双写。旧实现仅保存在 `v1-local-final` Git tag 中。
 
 ## 2. 运行拓扑
 
@@ -114,6 +114,7 @@ HTTP / Edge adapter
 - 桌面壳、`dealpilot-agent.exe`、NSIS 安装器和桌面快捷方式。
 - 系统托盘、开机自启、Windows 系统通知和 Explorer 重启恢复。
 - Agent 业务 API、SQLite 运行时主库和 PostgreSQL/SQLite 长期双写。
+- 当前工作树中的 V1 Web、Agent provider、EXE/NSIS 构建链和 Native Messaging host。
 - 团队 workspace、成员角色、邀请、共享客户和企业 SSO。
 - 微服务拆分、Kubernetes 和第二套云端 CRUD API。
 
@@ -126,5 +127,6 @@ HTTP / Edge adapter
 - Customer 行为等价、导入导出、提醒、备份恢复和迁移 E2E。
 - API 客户端成功/失败包络、字段错误、网络/取消、过期会话和不可解析 2xx 测试。
 - `type-check`、`lint`、单元测试、构建和浏览器 E2E 全部通过。
+- `pnpm audit:retirement` 通过，证明旧运行时路径和引用没有重新进入当前工作树。
 
 历史 V1 文档：[外贸经理个人工作台_PRD_V1.5.md](./外贸经理个人工作台_PRD_V1.5.md)、[外贸经理个人工作台_系统架构设计_V1.3.md](./外贸经理个人工作台_系统架构设计_V1.3.md)。

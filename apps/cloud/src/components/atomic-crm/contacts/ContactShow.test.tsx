@@ -50,7 +50,7 @@ describe("ContactShow", () => {
       .toBe(false);
   });
 
-  it("hides unsupported Agent features on mobile", async () => {
+  it("hides unsupported provider features on mobile", async () => {
     const contact = buildContact({ id: 7, name: "Ada Lovelace" } as any);
     const screen = await render(
       <StoryWrapper

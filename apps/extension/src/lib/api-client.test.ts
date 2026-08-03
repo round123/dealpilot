@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("Cloud extension API boundary", () => {
-  test("contains no independent fetch or Agent loopback transport", () => {
+  test("contains no independent fetch or local loopback transport", () => {
     const source = readFileSync(new URL("./api-client.ts", import.meta.url), "utf8");
     expect(source).not.toContain("fetch(");
     expect(source).not.toContain("127.0.0.1");

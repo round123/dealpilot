@@ -25,6 +25,15 @@ describe("Cloud runtime boundary", () => {
 
   it("does not register local SQLite tools in production routes", () => {
     expect(crmSource).not.toContain("LocalDataToolsPage");
+    expect(crmSource).not.toContain("LocalDataOperations");
+    expect(crmSource).not.toContain("LocalPrivacyGuard");
+    expect(crmSource).not.toContain("createLocalCustomerOperations");
     expect(crmSource).not.toContain("VITE_DATA_BACKEND");
+  });
+
+  it("gates demo customer operations behind the demo development runtime", () => {
+    expect(crmSource).toContain("import.meta.env.DEV");
+    expect(crmSource).toContain('import.meta.env.MODE === "demo"');
+    expect(crmSource).toContain('import.meta.env.VITE_IS_DEMO === "true"');
   });
 });

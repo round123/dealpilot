@@ -22,8 +22,9 @@ development project, and validate changes against real Auth, PostgreSQL, RLS,
 Storage, RPC, and Edge Function behavior. Never use production customer data
 in the development project.
 
-Demo and Agent configurations remain only for isolated regression tests and
-V1 SQLite migration fixtures; they are not product startup modes.
+Demo configuration remains only for isolated UI regression tests; it is not a
+product startup mode. V1 SQLite input is handled only by the standalone
+`packages/migration` package.
 
 ## Validation
 

@@ -1,4 +1,4 @@
-import { ExternalLink, FolderOpen, Puzzle, RefreshCw } from "lucide-react";
+import { Cloud, ExternalLink, Puzzle, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -45,25 +45,15 @@ export const ExtensionInstallGuide = ({
               )}
             </div>
           ) : (
-            <div className="space-y-2">
-              <p className="flex items-start gap-2">
-                <FolderOpen className="mt-1 size-4 shrink-0" />
-                商店版本尚未配置。打开浏览器扩展管理页，启用“开发者模式”，选择“加载已解压的扩展”。
-              </p>
-              <p>
-                默认目录：
-                <code className="ml-1 break-all rounded bg-muted px-1 py-0.5 text-xs text-foreground">
-                  %LOCALAPPDATA%\Programs\DealPilot\extension
-                </code>
-              </p>
-            </div>
+            <p>商店版本尚未发布，正式上架后可在这里安装。</p>
           )}
           <p className="flex items-start gap-2">
-            <RefreshCw className="mt-1 size-4 shrink-0" />
-            保持 Agent 运行，安装或重新安装扩展后会自动配对。本地客户数据不会因卸载扩展而删除。
+            <Cloud className="mt-1 size-4 shrink-0" />
+            扩展使用同一 DealPilot 账号连接云端；卸载扩展不会删除云端客户数据。
           </p>
-          <p className="text-xs">
-            浏览器会在卸载后立即终止扩展代码，因此扩展无法再弹出本地提示；重装入口和配对说明始终保留在此页面。
+          <p className="flex items-start gap-2 text-xs">
+            <RefreshCw className="mt-1 size-3.5 shrink-0" />
+            重新安装后，请在扩展中重新登录并授权当前浏览器。
           </p>
         </div>
       </div>
