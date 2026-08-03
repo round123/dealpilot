@@ -29,10 +29,21 @@ Preview 和 canary 不部署 GitHub Pages，因为公开 Pages 的 PR preview �
 
 Supabase PAT 不能按单个项目收窄权限，因此项目隔离不依赖 PAT。工作流按发布通道选择独立的 project ref 和数据库密码，并用 `PRODUCTION_SUPABASE_PROJECT_REF` 变量校验 preview/canary 目标不得等于 production；任何目标变量缺失也会在 link 或 migration 前失败。
 
+Supabase Auth 的站点 URL 和允许回调地址以 `supabase/config.toml` 为事实源。每个发布通道在 link 目标项目后运行 `supabase config push`，因此不要在 Dashboard 中维护与仓库不一致的 URL 配置；需要新增回调地址时，应修改配置文件并通过正常发布流程推送。
+
 生产 smoke 账号只用于读取一条稳定的合成 Customer，不得使用真实客户数据。`CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON` 固定该账号可见的活动 Customer 总数和样本关联摘要，例如：
 
 ```json
-{"id":"00000000-0000-4000-8000-000000000001","name":"Release Smoke Customer","active_customer_count":1,"contacts":1,"social_accounts":1,"deals":1,"recent_follow_ups":1,"open_reminders":1}
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "Release Smoke Customer",
+  "active_customer_count": 1,
+  "contacts": 1,
+  "social_accounts": 1,
+  "deals": 1,
+  "recent_follow_ups": 1,
+  "open_reminders": 1
+}
 ```
 
 ## 3. Migration 兼容门禁
@@ -74,10 +85,11 @@ Canary 不分流生产用户；它是在独立、生产等价环境执行的人�
 `main` push 自动执行，或从 `main` 手动选择 `production`：
 
 1. 迁移兼容门禁。
-2. `supabase db push` 向前应用 migration。
-3. 部署当前 Edge Functions。
-4. 构建并部署 GitHub Pages Web/PWA，同时写入 `release.json`。
-5. 对 Web release SHA、Supabase Auth、PostgREST 和未登录 Edge 拒绝执行 smoke。
+2. link 目标 Supabase 项目并运行 `supabase config push`，同步 Auth URL 配置。
+3. `supabase db push` 向前应用 migration。
+4. 部署当前 Edge Functions。
+5. 构建并部署 GitHub Pages Web/PWA，同时写入 `release.json`。
+6. 对 Web release SHA、Supabase Auth、PostgREST 和未登录 Edge 拒绝执行 smoke。
 
 任何一步失败都停止后续步骤。数据库 migration 已成功但应用发布失败时，不回退数据库；修复应用或执行下面的兼容应用版本回滚。
 

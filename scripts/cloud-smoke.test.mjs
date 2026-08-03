@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { runCloudSmoke } from "./cloud-smoke.mjs";
 
-test("checks release identity, PostgreSQL services and pre-login Edge denial", async (t) => {
+test("checks release identity, protected PostgREST and pre-login Edge denial", async (t) => {
   const seen = [];
   const server = createServer((request, response) => {
     seen.push(`${request.method} ${request.url}`);
@@ -18,6 +18,7 @@ test("checks release identity, PostgreSQL services and pre-login Edge denial", a
       response.end();
       return;
     }
+    if (respondWithAnonymousPermissionDenial(request, response)) return;
     response.statusCode = 200;
     response.end("ok");
   });
@@ -39,7 +40,7 @@ test("checks release identity, PostgreSQL services and pre-login Edge denial", a
   assert.deepEqual(seen, [
     "GET /release.json",
     "GET /auth/v1/health",
-    "GET /rest/v1/",
+    "GET /rest/v1/companies?select=id&limit=1",
     "POST /functions/v1/example",
   ]);
 });
@@ -56,6 +57,7 @@ test("expects the retired account deletion endpoint to remain unavailable", asyn
       response.end();
       return;
     }
+    if (respondWithAnonymousPermissionDenial(request, response)) return;
     response.statusCode = 200;
     response.end("ok");
   });
@@ -93,6 +95,71 @@ test("rejects a stale Web release marker", async () => {
   );
 });
 
+test("rejects an invalid publishable key instead of treating it as PostgREST health", async () => {
+  await assert.rejects(
+    runCloudSmoke({
+      webUrl: "https://example.test",
+      supabaseUrl: "https://example.test",
+      publishableKey: "invalid-key",
+      releaseSha: "release-sha",
+      functions: [],
+      attempts: 1,
+      fetchImpl: smokeFetchWithPostgrestResponse(
+        new Response(
+          JSON.stringify({ code: "UNAUTHORIZED_INVALID_API_KEY_TYPE" }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    }),
+    (error) => {
+      assert.match(error.message, /PostgREST anonymous access guard failed/);
+      assert.match(error.cause.message, /UNAUTHORIZED_INVALID_API_KEY_TYPE/);
+      return true;
+    },
+  );
+});
+
+test("rejects a non-JSON PostgREST gateway failure", async () => {
+  await assert.rejects(
+    runCloudSmoke({
+      webUrl: "https://example.test",
+      supabaseUrl: "https://example.test",
+      publishableKey: "public-key",
+      releaseSha: "release-sha",
+      functions: [],
+      attempts: 1,
+      fetchImpl: smokeFetchWithPostgrestResponse(
+        new Response("Bad Gateway", { status: 502 }),
+      ),
+    }),
+    (error) => {
+      assert.match(error.message, /PostgREST anonymous access guard failed/);
+      assert.match(error.cause.message, /HTTP 502 returned invalid JSON/);
+      return true;
+    },
+  );
+});
+
+test("rejects an unexpectedly public companies endpoint", async () => {
+  await assert.rejects(
+    runCloudSmoke({
+      webUrl: "https://example.test",
+      supabaseUrl: "https://example.test",
+      publishableKey: "public-key",
+      releaseSha: "release-sha",
+      functions: [],
+      attempts: 1,
+      fetchImpl: smokeFetchWithPostgrestResponse(
+        new Response("[]", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    }),
+    /PostgREST anonymous access guard failed/,
+  );
+});
+
 test("authenticates and verifies the Customer count and related summary", async (t) => {
   const seen = [];
   const server = createServer(async (request, response) => {
@@ -108,6 +175,7 @@ test("authenticates and verifies the Customer count and related summary", async 
       response.end(JSON.stringify({ sha: "release-sha" }));
       return;
     }
+    if (respondWithAnonymousPermissionDenial(request, response)) return;
     if (request.url === "/auth/v1/token?grant_type=password") {
       response.end(JSON.stringify({ access_token: "smoke-token" }));
       return;
@@ -190,6 +258,8 @@ test("rejects a changed authenticated Customer summary", async (t) => {
     response.setHeader("content-type", "application/json");
     if (request.url === "/release.json") {
       response.end(JSON.stringify({ sha: "release-sha" }));
+    } else if (respondWithAnonymousPermissionDenial(request, response)) {
+      return;
     } else if (request.url === "/auth/v1/token?grant_type=password") {
       response.end(JSON.stringify({ access_token: "smoke-token" }));
     } else if (
@@ -254,3 +324,28 @@ const readRequestBody = async (request) => {
   for await (const chunk of request) chunks.push(chunk);
   return Buffer.concat(chunks).toString("utf8");
 };
+
+function respondWithAnonymousPermissionDenial(request, response) {
+  if (request.url !== "/rest/v1/companies?select=id&limit=1") return false;
+  response.statusCode = 401;
+  response.setHeader("content-type", "application/json");
+  response.end(
+    JSON.stringify({
+      code: "42501",
+      message: "permission denied for table companies",
+    }),
+  );
+  return true;
+}
+
+function smokeFetchWithPostgrestResponse(postgrestResponse) {
+  return async (input) => {
+    const url = new URL(input);
+    if (url.pathname === "/release.json") {
+      return Response.json({ sha: "release-sha" });
+    }
+    if (url.pathname === "/auth/v1/health") return new Response(null);
+    if (url.pathname === "/rest/v1/companies") return postgrestResponse;
+    throw new Error(`Unexpected smoke request: ${url}`);
+  };
+}

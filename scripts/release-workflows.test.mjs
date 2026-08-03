@@ -19,24 +19,36 @@ test("quality CI tests and runs the V2 production audit after install", () => {
   assert.ok(audit > install);
 });
 
-test("normal release orders migrations, Edge, Web and smoke", () => {
+test("normal release orders link, Auth config, migrations, Edge, Web and smoke", () => {
+  const link = deploy.indexOf("Link selected Supabase project");
+  const authConfig = deploy.indexOf("Push Supabase Auth configuration");
   const migration = deploy.indexOf("Apply forward-only database migrations");
   const edge = deploy.indexOf("Deploy Edge Functions");
   const web = deploy.indexOf("Deploy Pages artifact");
   const smoke = deploy.indexOf("Run authenticated production smoke");
-  assert.ok(migration > 0);
+  assert.ok(link > 0);
+  assert.ok(authConfig > link);
+  assert.ok(migration > authConfig);
   assert.ok(edge > migration);
   assert.ok(web > edge);
   assert.ok(smoke > web);
+  assert.match(
+    deploy,
+    /supabase config push --project-ref "\$SUPABASE_PROJECT_REF" --yes/,
+  );
 });
 
 test("production deploys only a successful completed CI push for main", () => {
-  assert.match(deploy, /workflow_run:\s+workflows:\s+- CI\s+types:\s+- completed/);
+  assert.match(
+    deploy,
+    /workflow_run:\s+workflows:\s+- CI\s+types:\s+- completed/,
+  );
   assert.match(
     deploy,
     /github\.event\.workflow_run\.event == 'push'[\s\S]+github\.event\.workflow_run\.conclusion == 'success'[\s\S]+github\.event\.workflow_run\.head_branch == 'main'/,
   );
-  const pushTrigger = deploy.match(/  push:\n([\s\S]*?)\n\npermissions:/)?.[1] ?? "";
+  const pushTrigger =
+    deploy.match(/  push:\n([\s\S]*?)\n\npermissions:/)?.[1] ?? "";
   assert.match(pushTrigger, /"codex\/\*\*"/);
   assert.doesNotMatch(pushTrigger, /- main/);
 });
@@ -49,8 +61,7 @@ test("every deploy job checks out the immutable planned release SHA", () => {
   assert.match(deploy, /release_sha="\$CI_HEAD_SHA"/);
   assert.match(deploy, /echo "release_sha=\$release_sha"/);
   assert.equal(
-    deploy.match(/ref: \$\{\{ needs\.plan\.outputs\.release_sha \}\}/g)
-      ?.length,
+    deploy.match(/ref: \$\{\{ needs\.plan\.outputs\.release_sha \}\}/g)?.length,
     3,
   );
 });
@@ -67,7 +78,10 @@ test("manual production dispatch is restricted to main", () => {
 });
 
 test("non-main releases use isolated preview/canary credentials", () => {
-  assert.match(deploy, /elif \[ "\$EVENT_NAME" = "push" \]; then\s+channel="preview"/);
+  assert.match(
+    deploy,
+    /elif \[ "\$EVENT_NAME" = "push" \]; then\s+channel="preview"/,
+  );
   assert.match(
     deploy,
     /SUPABASE_ACCESS_TOKEN: \$\{\{ secrets\.SUPABASE_ACCESS_TOKEN \}\}/,
@@ -97,7 +111,10 @@ test("production requires an authenticated Customer smoke baseline", () => {
   assert.match(deploy, /secrets\.CLOUD_SMOKE_PASSWORD/);
   assert.match(deploy, /secrets\.CLOUD_SMOKE_EXPECTED_CUSTOMER_JSON/);
   assert.match(deploy, /Run authenticated production smoke/);
-  assert.match(deploy, /Authenticated Customer count and related summary: passed/);
+  assert.match(
+    deploy,
+    /Authenticated Customer count and related summary: passed/,
+  );
 });
 
 test("rollback redeploys only immutable Edge and Web application code", () => {

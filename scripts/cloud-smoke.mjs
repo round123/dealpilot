@@ -35,12 +35,27 @@ export async function runCloudSmoke({
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
   });
 
-  await retry("PostgREST health", attempts, retryDelayMs, async () => {
-    const response = await fetchImpl(`${apiBase}/rest/v1/`, {
-      headers: { apikey: publishableKey },
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  });
+  await retry(
+    "PostgREST anonymous access guard",
+    attempts,
+    retryDelayMs,
+    async () => {
+      const response = await fetchImpl(
+        `${apiBase}/rest/v1/companies?select=id&limit=1`,
+        {
+          headers: { apikey: publishableKey },
+        },
+      );
+      const payload = await readJson(response);
+      if (![401, 403].includes(response.status) || payload?.code !== "42501") {
+        const code =
+          typeof payload?.code === "string" ? `, code ${payload.code}` : "";
+        throw new Error(
+          `expected HTTP 401/403 with code 42501, received HTTP ${response.status}${code}`,
+        );
+      }
+    },
+  );
 
   for (const functionName of functions) {
     const expectedStatuses =

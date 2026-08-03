@@ -15,6 +15,8 @@ import type { PersonalAuthProvider } from "@/components/atomic-crm/providers/sup
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/supabase/layout";
 
+import { getPasswordRecoveryRedirectUrl } from "./password-recovery-url";
+
 interface FormData {
   email: string;
 }
@@ -34,7 +36,10 @@ export const ForgotPasswordPage = () => {
       }
       await authProvider.resetPassword({
         email: values.email,
-        redirectTo: new URL("/set-password", window.location.origin).toString(),
+        redirectTo: getPasswordRecoveryRedirectUrl(
+          import.meta.env.BASE_URL,
+          window.location.href,
+        ),
       });
       redirect("/login?passwordRecoveryEmailSent=1");
     } catch (error) {
