@@ -116,3 +116,46 @@ test("returns the request ID header on success", async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-request-id"), requestId);
 });
+
+test("returns 503 when a claimed purge job is queued for retry", async () => {
+  const rpcCalls: string[] = [];
+  const response = await createHandler({
+    createClient: () => ({
+      rpc: async (name) => {
+        rpcCalls.push(name);
+        if (name === "purge_expired_customers") {
+          return { data: 1, error: null };
+        }
+        if (name === "claim_customer_purge_jobs") {
+          return {
+            data: {
+              data: [{ id: "job-1", object_paths: ["owner/customer/file"] }],
+            },
+            error: null,
+          };
+        }
+        return { data: { data: { status: "retry" } }, error: null };
+      },
+      storage: {
+        from: () => ({
+          remove: async () => ({ error: { message: "storage unavailable" } }),
+        }),
+      },
+    }),
+  })(
+    new Request("http://local.test", {
+      method: "POST",
+      headers: { authorization: serviceAuthorization },
+      body: "{}",
+    }),
+  );
+
+  assert.equal(response.status, 503);
+  const error = await readError(response);
+  assert.equal(error.code, "PURGE_PARTIAL_FAILURE");
+  assert.deepEqual(rpcCalls, [
+    "purge_expired_customers",
+    "claim_customer_purge_jobs",
+    "fail_customer_purge_job",
+  ]);
+});

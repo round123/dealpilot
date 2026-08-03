@@ -10,24 +10,24 @@
 
 本文记录 V2 WebCloud 当前 PostgreSQL、RLS、RPC 和 Storage 的实际实现，供开发、测试、安全审计、schema 核对和故障恢复使用。字段、约束或权限与本文不一致时，以仓库中按文件名顺序执行后的 PostgreSQL migration 为准，并应在同一变更中更新本文。
 
-本版本共包含 12 个枚举、20 张 `public` 表、2 个视图、16 个认证用户可执行 RPC、4 个仅后台服务可执行 RPC，以及 5 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
+本版本共包含 13 个枚举、21 张 `public` 表、2 个视图、16 个认证用户可执行 RPC、9 个仅后台服务可执行 RPC，以及 5 个不可由客户端直接执行的内部函数。V2 是个人云 CRM，不包含 workspace、成员或角色表；数据隔离键为账号身份 `auth.uid()`。
 
 ## 2. 敏感级别
 
-| 级别      | 定义                                             | 典型数据                                              | 处理要求                                                                    |
-| --------- | ------------------------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------------- |
+| 级别      | 定义                                             | 典型数据                                       | 处理要求                                                                    |
+| --------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------------------------------------------- |
 | S3 高敏感 | 可直接识别个人、还原沟通内容或大批量恢复业务数据 | 联系方式、消息正文、附件、完整云备份和删除快照 | 必须由 RLS/RPC 隔离；不得写日志、前端持久缓存或测试夹具；导出需显式用户动作 |
-| S2 敏感   | 客户、项目、提醒、配置等非公开业务数据           | Customer、项目金额、提醒、用户设置、导入结果          | 仅当前账号可访问；日志只能记录 ID、计数或不可逆摘要                         |
-| S1 内部   | 单独泄露影响较低的控制或分类数据                 | 标签、状态、计数、校验摘要、队列状态                  | 仍受账号隔离；可用于受控运维指标                                            |
-| S0 公开   | 可匿名公开的数据                                 | 当前没有用户业务表属于此级                            | 不适用                                                                      |
+| S2 敏感   | 客户、项目、提醒、配置等非公开业务数据           | Customer、项目金额、提醒、用户设置、导入结果   | 仅当前账号可访问；日志只能记录 ID、计数或不可逆摘要                         |
+| S1 内部   | 单独泄露影响较低的控制或分类数据                 | 标签、状态、计数、校验摘要、队列状态           | 仍受账号隔离；可用于受控运维指标                                            |
+| S0 公开   | 可匿名公开的数据                                 | 当前没有用户业务表属于此级                     | 不适用                                                                      |
 
 表级等级取该表字段的最高级别；视图继承所有源表中的最高级别。字段表中的等级用于精细化日志、导出和脱敏判断。
 
 ## 3. 公共安全与关系规则
 
 - `profiles` 通过 `id = auth.uid()` 隔离；其余业务和运维表通过 `owner_user_id = auth.uid()` 隔离。
-- 20 张表全部启用并强制 RLS。普通业务表允许认证用户在 owner policy 内读写；`backup_snapshots` 和 `import_jobs` 仅允许认证用户读取，写入必须走 RPC。
-- `customer_purge_jobs` 不允许客户端直接访问。
+- 21 张表全部启用并强制 RLS。普通业务表允许认证用户在 owner policy 内读写；`backup_snapshots` 和 `import_jobs` 仅允许认证用户读取，写入必须走 RPC。
+- `customer_purge_jobs` 和 `admin_account_cleanup_jobs` 不允许客户端直接访问。
 - 关键父子关系使用 `(owner_user_id, parent_id)` 复合外键，防止伪造 ID 形成跨账号引用；多数业务外键为 `DEFERRABLE INITIALLY DEFERRED`，支持事务内合并、恢复和批量导入。
 - `anon` 对 `public` schema 的表、序列和函数无业务权限。客户端只能持有公开 anon key 和用户会话，严禁持有 `service_role`。
 - 所有 `SECURITY DEFINER` 函数固定 `search_path = ''`，并在函数内使用带 schema 的对象名。
@@ -36,20 +36,21 @@
 
 ## 4. 枚举字典
 
-| 枚举                        | 允许值                                                                                  | 用途                                  |
-| --------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------- |
-| `customer_grade`            | `A`, `B`, `C`                                                                           | Customer 分级                         |
-| `customer_status`           | `active`, `inactive`                                                                    | Customer 业务状态，不等同于软删除状态 |
-| `deal_stage`                | `lead`, `qualified`, `proposal`, `negotiation`, `closed_won`, `closed_lost`, `archived` | 项目销售阶段                          |
-| `deal_grade`                | `S`, `A`, `B`, `C`                                                                      | 项目分级                              |
-| `follow_up_type`            | `call`, `email`, `chat`, `visit`, `note`, `message`                                     | 跟进类型                              |
-| `message_direction`         | `inbound`, `outbound`                                                                   | 消息方向                              |
-| `reminder_type`             | `fixed_time`, `waiting_reply`, `paused`                                                 | 提醒类型                              |
-| `reminder_status`           | `pending`, `completed`, `snoozed`, `ignored`, `overdue`, `replied`                      | 提醒状态                              |
-| `reminder_priority`         | `low`, `normal`, `high`, `urgent`                                                       | 提醒优先级                            |
-| `risk_severity`             | `low`, `medium`, `high`, `critical`                                                     | 风险严重度                            |
-| `risk_status`               | `open`, `handling`, `resolved`, `ignored`                                               | 风险状态                              |
-| `customer_purge_job_status` | `pending`, `processing`, `retry`, `completed`, `cancelled`                              | Customer 物理清理队列状态             |
+| 枚举                               | 允许值                                                                                  | 用途                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------- |
+| `customer_grade`                   | `A`, `B`, `C`                                                                           | Customer 分级                         |
+| `customer_status`                  | `active`, `inactive`                                                                    | Customer 业务状态，不等同于软删除状态 |
+| `deal_stage`                       | `lead`, `qualified`, `proposal`, `negotiation`, `closed_won`, `closed_lost`, `archived` | 项目销售阶段                          |
+| `deal_grade`                       | `S`, `A`, `B`, `C`                                                                      | 项目分级                              |
+| `follow_up_type`                   | `call`, `email`, `chat`, `visit`, `note`, `message`                                     | 跟进类型                              |
+| `message_direction`                | `inbound`, `outbound`                                                                   | 消息方向                              |
+| `reminder_type`                    | `fixed_time`, `waiting_reply`, `paused`                                                 | 提醒类型                              |
+| `reminder_status`                  | `pending`, `completed`, `snoozed`, `ignored`, `overdue`, `replied`                      | 提醒状态                              |
+| `reminder_priority`                | `low`, `normal`, `high`, `urgent`                                                       | 提醒优先级                            |
+| `risk_severity`                    | `low`, `medium`, `high`, `critical`                                                     | 风险严重度                            |
+| `risk_status`                      | `open`, `handling`, `resolved`, `ignored`                                               | 风险状态                              |
+| `customer_purge_job_status`        | `pending`, `processing`, `retry`, `completed`, `cancelled`                              | Customer 物理清理队列状态             |
+| `admin_account_cleanup_job_status` | `pending`, `processing`, `retry`, `completed`                                           | 受控管理员账号清理任务状态            |
 
 ## 5. 表字典
 
@@ -366,6 +367,28 @@
 | `created_at`    | `timestamptz`   | 非空，`now()`      |                                  | 创建时间 | S1   |
 | `updated_at`    | `timestamptz`   | 非空，`now()`      | 更新触发器维护                   | 更新时间 | S1   |
 
+### 5.21 `admin_account_cleanup_jobs`（S2）
+
+受控管理员账号清理的持久状态与审批证据。该表故意不引用 `auth.users` 或 `profiles`，确保目标账号删除后仍能保留 180 天的脱敏完成记录；客户端无直接访问权限。
+
+| 字段                      | PostgreSQL 类型                    | 空值/默认       | 约束/关系                | 含义            | 级别 |
+| ------------------------- | ---------------------------------- | --------------- | ------------------------ | --------------- | ---- |
+| `id`                      | `uuid`                             | 非空，随机 UUID | PK                       | 清理任务 ID     | S1   |
+| `target_user_id`          | `uuid`                             | 非空            | 无 FK                    | 目标 Auth 用户  | S2   |
+| `idempotency_key`         | `text`                             | 非空            | 唯一；安全字符，最长 128 | 工单级幂等键    | S1   |
+| `request_id`              | `text`                             | 非空            | 最长 128                 | 首次请求追踪 ID | S1   |
+| `approval_url`            | `text`                             | 非空            | 单个无空白 HTTPS URL     | 审批或工单证据  | S2   |
+| `requested_by`            | `text`                             | 非空            | 安全字符，最长 128       | 管理员标识      | S2   |
+| `status`                  | `admin_account_cleanup_job_status` | 非空，`pending` |                          | 当前状态        | S1   |
+| `attempt_count`           | `integer`                          | 非空，`0`       | 非负                     | 领取次数        | S1   |
+| `claimed_at`              | `timestamptz`                      | 可空            |                          | 最近领取时间    | S1   |
+| `last_error_code`         | `text`                             | 可空            | 仅脱敏大写错误码         | 最近失败类别    | S1   |
+| `last_error_at`           | `timestamptz`                      | 可空            |                          | 最近失败时间    | S1   |
+| `storage_objects_deleted` | `integer`                          | 非空，`0`       | 非负                     | 已删除附件数    | S1   |
+| `completed_at`            | `timestamptz`                      | 可空            |                          | 完成时间        | S1   |
+| `created_at`              | `timestamptz`                      | 非空，`now()`   |                          | 创建时间        | S1   |
+| `updated_at`              | `timestamptz`                      | 非空，`now()`   | 状态 RPC 维护            | 更新时间        | S1   |
+
 ## 6. 视图
 
 | 视图                | 等级 | 内容与安全语义                                                                                                                                                                                                      |
@@ -398,12 +421,17 @@
 
 ### 7.2 仅 `service_role` 的后台 RPC
 
-| 函数                                            | 核心语义                                                                            |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `purge_expired_customers(timestamptz, integer)` | 将超过软删除窗口的 Customer 放入 durable 清理队列；默认 cutoff 为当前时间前 30 天。 |
-| `claim_customer_purge_jobs(integer)`            | 使用 `FOR UPDATE SKIP LOCKED` 领取任务；处理超过 15 分钟的任务可重新领取。          |
-| `complete_customer_purge_job(uuid)`             | 复核 Customer 仍已过期及 Storage 路径快照未变化，再级联物理删除 Customer。          |
-| `fail_customer_purge_job(uuid, text)`           | 记录失败并按指数退避重试，最大等待 3600 秒。                                        |
+| 函数                                              | 核心语义                                                                             |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `purge_expired_customers(timestamptz, integer)`   | 将超过软删除窗口的 Customer 放入 durable 清理队列；默认 cutoff 为当前时间前 30 天。  |
+| `claim_customer_purge_jobs(integer)`              | 使用 `FOR UPDATE SKIP LOCKED` 领取任务；处理超过 15 分钟的任务可重新领取。           |
+| `complete_customer_purge_job(uuid)`               | 复核 Customer 仍已过期及 Storage 路径快照未变化，再级联物理删除 Customer。           |
+| `fail_customer_purge_job(uuid, text)`             | 记录失败并按指数退避重试，最大等待 3600 秒。                                         |
+| `enforce_data_retention(timestamptz)`             | 清理超过已批准保留期的备份、审计记录及终态 Customer/账号清理任务，返回各类删除数量。 |
+| `request_admin_account_cleanup(...)`              | 以目标账号、工单和审批证据创建或重放幂等清理任务。                                   |
+| `claim_admin_account_cleanup(uuid, integer)`      | 领取任务并精确快照目标账号在 `attachments` Bucket 中的对象路径。                     |
+| `complete_admin_account_cleanup(uuid, integer)`   | 强校验 Auth、Profile 和 Storage 均已清除后标记完成。                                 |
+| `fail_admin_account_cleanup(uuid, text, integer)` | 仅保存脱敏错误码与本次已删除对象数，并把任务转为可重试。                             |
 
 ### 7.3 内部函数，禁止客户端直接执行
 
@@ -426,9 +454,11 @@
 
 - Customer 软删除后 30 天内可恢复；默认物理清理 cutoff 为 `now() - interval '30 days'`。
 - 删除事务保存开放提醒的 `status/resolution` 快照。恢复采用 `deletion_event_id` 作为比较并交换标记，只恢复仍由该删除动作控制的提醒，避免覆盖删除后的用户操作。
-- `customer_purge_jobs` 不引用 Customer，因此 Customer 级联删除后仍可保留清理结果和重试历史；受控管理员清理账号时通过 owner 外键级联删除。
+- `customer_purge_jobs` 不引用 Customer，因此 Customer 级联删除后仍可保留清理结果和重试历史；`completed/cancelled` 终态记录从最后更新时间起保留 180 天，受控管理员清理账号时通过 owner 外键级联删除。
 - PostgreSQL 始终是唯一业务事实源，当前 schema 不包含 SQLite 导入会话或暂存表。
-- `audit_events`、`backup_snapshots` 和 `import_jobs` 当前没有自动 TTL。上线前必须通过隐私/容量评审确定保留期，不能把“暂无 TTL”理解为允许无限期保留。
+- `backup_snapshots` 创建满 35 天后自动淘汰，`audit_events` 发生满 180 天后自动淘汰；严格早于截止点的记录才会删除，边界记录留到下一轮任务。
+- 数据库内 `pg_cron` 任务 `dealpilot-data-retention-daily` 每日 03:17 UTC 调用 `enforce_data_retention(now())`；该调度不依赖 GitHub 部署环境审批，也不负责 Storage 对象清理。
+- CSV/XLSX 原文件只在浏览器中解析且不上传。`import_jobs` 只保存幂等结果和摘要；当前 PRD 未批准这类摘要的独立 TTL，因此保留至受控账号清理，后续确定更短期限时必须以前向 migration 调整。
 - 关系数据备份不包含 Auth 凭据、Storage 对象、`customer_purge_jobs` 或 `backup_snapshots` 自身。恢复对象和数据库必须分别演练。
 - 数据库保留 `auth.users` 删除后的级联约束，供受控管理员清理使用；Web、API Client 和 `delete-account` Edge Function 均不提供自助删号，后者固定返回 `FEATURE_DISABLED`。
 
@@ -442,12 +472,12 @@
 
 ## 11. 已知实现差距
 
-| 项目           | 当前实现                                                      | 目标/后续动作                                               |
-| -------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
-| 运维表 TTL     | 审计、备份和导入任务无自动 TTL                                | 完成隐私、合规和容量评审后增加保留策略                      |
-| Storage 备份   | DB 快照不包含对象本体                                         | 建立独立对象备份/恢复和核对流程                             |
-| 云端验收       | schema migration、RLS、RPC、Storage 策略已有静态实现          | 仍需在受控 Supabase 项目执行双账号隔离、备份恢复和回滚门禁  |
+| 项目         | 当前实现                                             | 目标/后续动作                                              |
+| ------------ | ---------------------------------------------------- | ---------------------------------------------------------- |
+| 导入摘要 TTL | `import_jobs` 当前随账号保留                         | 完成幂等重试窗口、隐私和容量评审后确定独立保留期           |
+| Storage 备份 | DB 快照不包含对象本体                                | 建立独立对象备份/恢复和核对流程                            |
+| 云端验收     | schema migration、RLS、RPC、Storage 策略已有静态实现 | 仍需在受控 Supabase 项目执行双账号隔离、备份恢复和回滚门禁 |
 
 ## 12. Schema migration 事实源
 
-[`supabase/migrations`](../supabase/migrations/) 按文件名顺序构成 schema 事实源。fresh schema 只包含本文列出的 12 个枚举、20 张表、2 个视图和函数集合；安全门禁同时验证已退役的本地数据导入对象不存在。已部署环境通过最后的前向 retirement migration 收敛到同一结构，不执行反向 migration 或数据库重置。
+[`supabase/migrations`](../supabase/migrations/) 按文件名顺序构成 schema 事实源。fresh schema 只包含本文列出的 13 个枚举、21 张表、2 个视图和函数集合；安全门禁同时验证已退役的本地数据导入对象不存在。已部署环境通过最后的前向 retirement migration 收敛到同一结构，不执行反向 migration 或数据库重置。

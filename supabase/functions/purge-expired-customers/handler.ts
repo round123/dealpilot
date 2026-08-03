@@ -211,6 +211,22 @@ export const createPurgeHandler = (dependencies: PurgeHandlerDependencies) => {
         }
       }
 
+      if (failed > 0) {
+        logError("Customer purge completed with retryable failures", {
+          request_id: requestId,
+          claimed: jobs.length,
+          completed,
+          resnapshotted,
+          failed,
+        });
+        return errorResponse(
+          503,
+          "PURGE_PARTIAL_FAILURE",
+          "One or more customer purge jobs failed and were queued for retry",
+          requestId,
+        );
+      }
+
       return jsonResponse(
         200,
         {

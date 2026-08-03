@@ -262,7 +262,7 @@ jobs:
       - name: Install hosted Preview E2E browser
         if: needs.plan.outputs.channel == 'preview'
         run: pnpm --filter @dealpilot/cloud exec playwright install --with-deps chromium
-      - name: Gate Preview with hosted two-account acceptance
+      - name: Gate Preview with hosted account, import, and export acceptance
         if: needs.plan.outputs.channel == 'preview'
         env:
           SUPABASE_URL: ${{ env.VITE_SUPABASE_URL }}
@@ -284,6 +284,7 @@ jobs:
             echo "- Pre-login smoke: passed"
             if [ "$RELEASE_CHANNEL" = "preview" ]; then
               echo "- Hosted two-account Customer acceptance: passed"
+              echo "- Hosted CSV import persistence and isolated XLSX export: passed"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

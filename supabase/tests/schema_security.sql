@@ -6,6 +6,7 @@ begin;
 do $$
 declare
   expected_tables constant text[] := array[
+    'admin_account_cleanup_jobs',
     'audit_events',
     'backup_snapshots',
     'companies',
@@ -595,6 +596,11 @@ begin
   into failures
   from (
     values
+      ('public.request_admin_account_cleanup(uuid,text,text,text,text)', 'jsonb'),
+      ('public.claim_admin_account_cleanup(uuid,integer)', 'jsonb'),
+      ('public.complete_admin_account_cleanup(uuid,integer)', 'jsonb'),
+      ('public.fail_admin_account_cleanup(uuid,text,integer)', 'jsonb'),
+      ('public.enforce_data_retention(timestamptz)', 'jsonb'),
       ('public.purge_expired_customers(timestamptz,integer)', 'int8'),
       ('public.claim_customer_purge_jobs(integer)', 'jsonb'),
       ('public.complete_customer_purge_job(uuid)', 'jsonb'),
@@ -614,7 +620,7 @@ begin
     );
 
   if failures is not null then
-    raise exception 'service-only purge RPC security differs from baseline: %', failures;
+    raise exception 'service-only operational RPC security differs from baseline: %', failures;
   end if;
 
   select array_agg(expected.signature order by expected.signature)
