@@ -43,8 +43,10 @@ export async function runCloudSmoke({
   });
 
   for (const functionName of functions) {
+    const expectedStatuses =
+      functionName === "delete-account" ? [404] : [401, 403];
     await retry(
-      `Unauthenticated Edge rejection (${functionName})`,
+      `Unavailable Edge function (${functionName})`,
       attempts,
       retryDelayMs,
       async () => {
@@ -59,8 +61,10 @@ export async function runCloudSmoke({
             body: "{}",
           },
         );
-        if (![401, 403].includes(response.status)) {
-          throw new Error(`expected 401/403, received ${response.status}`);
+        if (!expectedStatuses.includes(response.status)) {
+          throw new Error(
+            `expected ${expectedStatuses.join("/")}, received ${response.status}`,
+          );
         }
       },
     );

@@ -44,6 +44,37 @@ test("checks release identity, PostgreSQL services and pre-login Edge denial", a
   ]);
 });
 
+test("expects the retired account deletion endpoint to remain unavailable", async (t) => {
+  const server = createServer((request, response) => {
+    if (request.url === "/release.json") {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ sha: "release-sha" }));
+      return;
+    }
+    if (request.url === "/functions/v1/delete-account") {
+      response.statusCode = 404;
+      response.end();
+      return;
+    }
+    response.statusCode = 200;
+    response.end("ok");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const address = server.address();
+  assert.notEqual(typeof address, "string");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  await runCloudSmoke({
+    webUrl: baseUrl,
+    supabaseUrl: baseUrl,
+    publishableKey: "public-key",
+    releaseSha: "release-sha",
+    functions: ["delete-account"],
+    attempts: 1,
+  });
+});
+
 test("rejects a stale Web release marker", async () => {
   await assert.rejects(
     runCloudSmoke({
