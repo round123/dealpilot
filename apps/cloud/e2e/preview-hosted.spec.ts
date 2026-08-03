@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import * as XLSX from "xlsx";
 
 type PreviewEnvironment = {
@@ -723,7 +724,9 @@ test("hosted Preview imports CSV persistently and exports isolated XLSX data", a
         );
         const downloadPath = await download.path();
         expect(downloadPath).not.toBeNull();
-        const workbook = XLSX.readFile(downloadPath!);
+        const workbook = XLSX.read(await readFile(downloadPath!), {
+          type: "buffer",
+        });
         expect(workbook.SheetNames).toEqual([
           "客户",
           "联系人",
