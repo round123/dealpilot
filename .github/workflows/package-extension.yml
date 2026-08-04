@@ -2,6 +2,11 @@ name: Package Browser Extension
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag matching extension-v<package version>
+        required: true
+        type: string
   workflow_run:
     workflows:
       - CI
@@ -35,10 +40,20 @@ jobs:
       VITE_SB_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_SHA }}
+      - name: Validate manual extension release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          expected_tag="$(node -p "'extension-v' + require('./apps/extension/package.json').version")"
+          if [ "$RELEASE_TAG" != "$expected_tag" ]; then
+            echo "release_tag must exactly match $expected_tag." >&2
+            exit 1
+          fi
       - name: Verify manual release SHA passed CI
         if: github.event_name == 'workflow_dispatch'
         shell: bash
@@ -106,4 +121,78 @@ jobs:
             echo "- Chrome artifact: dealpilot-extension-chrome-$RELEASE_SHA"
             echo "- Edge artifact: dealpilot-extension-edge-$RELEASE_SHA"
             echo "- Store upload: manual approval required"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish verified extension ZIPs to GitHub Release
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: cloud-production
+    permissions:
+      actions: read
+      contents: write
+    env:
+      RELEASE_SHA: ${{ github.sha }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - name: Download verified Chrome package
+        uses: actions/download-artifact@v4
+        with:
+          name: dealpilot-extension-chrome-${{ env.RELEASE_SHA }}
+          path: release-input/chrome
+      - name: Download verified Edge package
+        uses: actions/download-artifact@v4
+        with:
+          name: dealpilot-extension-edge-${{ env.RELEASE_SHA }}
+          path: release-input/edge
+      - name: Prepare stable Release asset names
+        shell: bash
+        run: |
+          shopt -s nullglob
+          chrome_packages=(release-input/chrome/*.zip)
+          edge_packages=(release-input/edge/*.zip)
+          if [ "${#chrome_packages[@]}" -ne 1 ] || [ "${#edge_packages[@]}" -ne 1 ]; then
+            echo "Expected exactly one verified inner ZIP for each browser." >&2
+            exit 1
+          fi
+
+          mkdir release-assets
+          cp "${chrome_packages[0]}" release-assets/dealpilot-extension-chrome.zip
+          cp "${edge_packages[0]}" release-assets/dealpilot-extension-edge.zip
+          (
+            cd release-assets
+            sha256sum ./*.zip | tee SHA256SUMS.txt
+          )
+      - name: Create immutable GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Git tag $RELEASE_TAG already exists; extension releases are immutable." >&2
+            exit 1
+          fi
+
+          version="${RELEASE_TAG#extension-v}"
+          gh release create "$RELEASE_TAG" \
+            release-assets/dealpilot-extension-chrome.zip \
+            release-assets/dealpilot-extension-edge.zip \
+            release-assets/SHA256SUMS.txt \
+            --target "$RELEASE_SHA" \
+            --title "DealPilot Browser Extension $version" \
+            --notes "Verified Chrome and Edge Manifest V3 store candidates built from main commit $RELEASE_SHA. Store submission remains manual." \
+            --latest=false
+      - name: Record GitHub Release evidence
+        shell: bash
+        run: |
+          {
+            echo "### Browser extension GitHub Release"
+            echo "- Tag: $RELEASE_TAG"
+            echo "- Release SHA: $RELEASE_SHA"
+            echo "- Chrome asset: dealpilot-extension-chrome.zip"
+            echo "- Edge asset: dealpilot-extension-edge.zip"
+            echo "- Store submission: manual"
           } >> "$GITHUB_STEP_SUMMARY"

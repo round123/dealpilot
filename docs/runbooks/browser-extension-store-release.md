@@ -1,13 +1,16 @@
 # DealPilot 浏览器扩展商店发布清单
 
-本清单适用于 Chrome Web Store 和 Microsoft Edge Add-ons 的候选包准备与人工提交。GitHub 工作流只构建、验证并保存候选 ZIP，**不代表已经上传商店、提交审核或审核通过**。商店后台的实时字段和尺寸要求高于本文；如后台要求变化，应先更新清单和素材再提交。
+本清单适用于 Chrome Web Store 和 Microsoft Edge Add-ons 的候选包准备与人工提交。GitHub Actions 会构建、验证并保存候选 ZIP；只有在 `main` 上手动运行工作流并明确填写版本 tag，才会创建长期保留的 GitHub Release。**GitHub Release 不代表已经上传商店、提交审核或审核通过**。商店后台的实时字段和尺寸要求高于本文；如后台要求变化，应先更新清单和素材再提交。
 
 ## 1. 候选包与版本
 
-- [ ] 从 `main` 成功 CI 自动触发的 `Package Browser Extension`，或经 `cloud-production` 环境审批的 main 手动运行中，下载两个独立 artifact：`dealpilot-extension-chrome-<SHA>`、`dealpilot-extension-edge-<SHA>`。
-- [ ] 核对 artifact 的提交 SHA 是计划发布的 SHA，不使用本机临时包或其他运行的产物。
+- [ ] 日常 `main` CI 成功后，从自动触发的 `Package Browser Extension` 下载两个短期 Actions artifacts：`dealpilot-extension-chrome-<SHA>`、`dealpilot-extension-edge-<SHA>`。它们保留 30 天，供测试使用，不会自动创建永久 Release。
+- [ ] 准备正式候选版时，先把 `apps/extension/package.json` 的版本调整为目标版本并合入 `main`，等待该 `main` SHA 的 `CI` 成功。
+- [ ] 在 Actions 中手动运行 `Package Browser Extension`，分支必须选择 `main`，`release_tag` 必须填写为 `extension-v<package.json version>`，例如版本 `0.1.0` 对应 `extension-v0.1.0`。工作流会再次校验同一 SHA 已有成功的 main push CI。
+- [ ] 经 `cloud-production` 环境审批后，从对应 GitHub Release 下载 `dealpilot-extension-chrome.zip`、`dealpilot-extension-edge.zip` 和 `SHA256SUMS.txt`。固定文件名只在各自 Release 内使用，tag 和目标 SHA 才是版本身份。
+- [ ] 核对 Release tag、目标提交 SHA 和计划发布内容，不使用本机临时包、其他运行的 artifact 或已存在 tag。Release tag 创建后不可覆盖；修复必须提升扩展版本并创建新 tag。
 - [ ] 核对 `apps/extension/package.json`、Chrome ZIP 文件名、Edge ZIP 文件名及两份 ZIP 内 `manifest.json.version` 完全一致。
-- [ ] 保存两个 ZIP 的 SHA-256、工作流 URL、提交 SHA、版本号和验证人；不要在实际提交前填写商店提交 ID 或审核结论。
+- [ ] 用 `SHA256SUMS.txt` 核对两个 ZIP，保存 GitHub Release URL、工作流 URL、提交 SHA、版本号和验证人；不要在实际提交前填写商店提交 ID 或审核结论。
 - [ ] 分别在当前 Chrome、Edge 中以开发者模式加载对应解压包，完成登录、WhatsApp/Telegram 客户识别、跟进标记和提醒操作冒烟测试。
 
 ## 2. 中文商店信息与素材
@@ -26,13 +29,13 @@
 
 提交前逐项对照最终 ZIP 内 Manifest，不复制旧版本申报：
 
-| 权限或 Host | 必要用途 | 申报要点 |
-| --- | --- | --- |
-| `storage` | 在扩展私有存储中保存 Supabase 登录会话，并限制 Content Script 读取 | 仅用于登录状态和核心功能，不用于广告或跨产品画像 |
-| `alarms` | 定时刷新待办提醒角标 | 只执行提醒刷新，不在浏览器关闭后提供系统级通知 |
-| `https://web.whatsapp.com/*` | 在 WhatsApp Web 当前会话中显示 CRM 浮窗、识别会话并由用户标记消息 | 只在支持站点运行，不申请 `<all_urls>` |
-| `https://web.telegram.org/*` | 在 Telegram Web 当前会话中显示 CRM 浮窗、识别会话并由用户标记消息 | 只在支持站点运行，不申请 `<all_urls>` |
-| 生产 Supabase HTTPS Origin | 登录并读取或写入用户自己的 Customer、跟进和提醒数据 | 只使用公开 publishable key 和用户会话，禁止嵌入 service-role/secret key |
+| 权限或 Host                  | 必要用途                                                           | 申报要点                                                                |
+| ---------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `storage`                    | 在扩展私有存储中保存 Supabase 登录会话，并限制 Content Script 读取 | 仅用于登录状态和核心功能，不用于广告或跨产品画像                        |
+| `alarms`                     | 定时刷新待办提醒角标                                               | 只执行提醒刷新，不在浏览器关闭后提供系统级通知                          |
+| `https://web.whatsapp.com/*` | 在 WhatsApp Web 当前会话中显示 CRM 浮窗、识别会话并由用户标记消息  | 只在支持站点运行，不申请 `<all_urls>`                                   |
+| `https://web.telegram.org/*` | 在 Telegram Web 当前会话中显示 CRM 浮窗、识别会话并由用户标记消息  | 只在支持站点运行，不申请 `<all_urls>`                                   |
+| 生产 Supabase HTTPS Origin   | 登录并读取或写入用户自己的 Customer、跟进和提醒数据                | 只使用公开 publishable key 和用户会话，禁止嵌入 service-role/secret key |
 
 - [ ] 在两个商店如实申报处理账号信息、客户/联系人资料、消息内容（仅用户主动标记时）、网站内容/会话标识和产品交互数据的实际范围。
 - [ ] 说明数据传输到 DealPilot 的 Supabase 云端以提供 CRM 功能，并与已发布隐私政策中的供应商、跨境处理、保留和删除规则一致。
@@ -50,13 +53,14 @@
 
 ## 5. 发布记录模板
 
-| 字段 | 值 |
-| --- | --- |
-| Release SHA / 版本 | 待填写 |
-| Chrome artifact / SHA-256 | 待填写 |
-| Edge artifact / SHA-256 | 待填写 |
-| 冒烟测试记录 | 待填写 |
-| 权限与数据申报复核人 | 待填写 |
-| Chrome 提交 ID / 状态 | 未提交 |
-| Edge 提交 ID / 状态 | 未提交 |
-| 人工审批记录 | 待填写 |
+| 字段                           | 值                                        |
+| ------------------------------ | ----------------------------------------- |
+| Release SHA / 版本             | 待填写                                    |
+| GitHub Release tag / URL       | 待填写                                    |
+| Chrome Release asset / SHA-256 | `dealpilot-extension-chrome.zip` / 待填写 |
+| Edge Release asset / SHA-256   | `dealpilot-extension-edge.zip` / 待填写   |
+| 冒烟测试记录                   | 待填写                                    |
+| 权限与数据申报复核人           | 待填写                                    |
+| Chrome 提交 ID / 状态          | 未提交                                    |
+| Edge 提交 ID / 状态            | 未提交                                    |
+| 人工审批记录                   | 待填写                                    |

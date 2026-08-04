@@ -143,6 +143,7 @@ jobs:
       RELEASE_CHANNEL: ${{ needs.plan.outputs.channel }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ needs.plan.outputs.channel == 'production' && secrets.SUPABASE_DB_PASSWORD || needs.plan.outputs.channel == 'canary' && secrets.CANARY_SUPABASE_DB_PASSWORD || secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
+      PRODUCTION_DATABASE_URL: ${{ needs.plan.outputs.channel == 'production' && secrets.PRODUCTION_DATABASE_URL || '' }}
       SUPABASE_PROJECT_REF: ${{ needs.plan.outputs.channel == 'production' && secrets.SUPABASE_PROJECT_REF || needs.plan.outputs.channel == 'canary' && secrets.CANARY_SUPABASE_PROJECT_REF || secrets.PREVIEW_SUPABASE_PROJECT_REF }}
       PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
     steps:
@@ -156,9 +157,15 @@ jobs:
         shell: bash
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN"
-          test -n "$SUPABASE_DB_PASSWORD"
           test -n "$SUPABASE_PROJECT_REF"
-          if [ "$RELEASE_CHANNEL" != "production" ]; then
+          if [ "$RELEASE_CHANNEL" = "production" ]; then
+            test -n "$PRODUCTION_DATABASE_URL"
+            if [[ "$PRODUCTION_DATABASE_URL" != postgresql://* ]] || [[ "$PRODUCTION_DATABASE_URL" != *"$SUPABASE_PROJECT_REF"* ]]; then
+              echo "PRODUCTION_DATABASE_URL must be a percent-encoded PostgreSQL URL for the production project." >&2
+              exit 1
+            fi
+          else
+            test -n "$SUPABASE_DB_PASSWORD"
             test -n "$PRODUCTION_PROJECT_REF"
             if [ "$SUPABASE_PROJECT_REF" = "$PRODUCTION_PROJECT_REF" ]; then
               echo "Preview/canary project must not equal the production project." >&2
@@ -166,18 +173,30 @@ jobs:
             fi
           fi
       - name: Link selected Supabase project
-        run: >-
-          supabase link
-          --project-ref "$SUPABASE_PROJECT_REF"
-          --password "$SUPABASE_DB_PASSWORD"
+        shell: bash
+        run: |
+          if [ "$RELEASE_CHANNEL" = "production" ]; then
+            supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          else
+            supabase link \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              --password "$SUPABASE_DB_PASSWORD"
+          fi
       - name: Push Supabase Auth configuration
         run: supabase config push --project-ref "$SUPABASE_PROJECT_REF" --yes
       - name: Apply forward-only database migrations
-        run: >-
-          supabase db push
-          --linked
-          --include-all
-          --password "$SUPABASE_DB_PASSWORD"
+        shell: bash
+        run: |
+          if [ "$RELEASE_CHANNEL" = "production" ]; then
+            supabase db push \
+              --db-url "$PRODUCTION_DATABASE_URL" \
+              --include-all
+          else
+            supabase db push \
+              --linked \
+              --include-all \
+              --password "$SUPABASE_DB_PASSWORD"
+          fi
       - name: Deploy Edge Functions
         shell: bash
         run: |

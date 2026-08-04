@@ -22,12 +22,13 @@
 5. 首版是个人云 CRM：每个账号拥有自己的业务数据。不建设团队 workspace、成员、角色、邀请或企业 SSO。
 6. PostgreSQL 从账号创建起就是永久唯一事实源，不提供本地写模式、双写或云端回写 SQLite。
 
-当前实现口径（2026-08-03）：Web/PWA、统一 API 客户端、Customer 与业务域界面、
-导入/导出、加密云备份、浏览器扩展及发布/回滚自动化已完成静态实现和
-CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider 已从当前工作树删除；
-历史实现仅由 `v1-local-final` Git tag 保存，不作为当前产品的数据来源。
-托管 Supabase 的空库 migration、双账号隔离、真实 Auth、外部平台 DOM、
-备份恢复与生产回滚演练仍是发布前验收项；在这些证据产生前不得宣称云端发布完成。
+当前实现口径（2026-08-04）：Web/PWA、统一 API 客户端、Customer 与业务域界面、
+导入/导出、用户级加密云备份、浏览器扩展候选包及发布/回滚自动化已经通过
+CI 和托管 Supabase 验收。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider
+已从当前工作树删除；历史实现仅由 `v1-local-final` Git tag 保存，不作为当前产品的数据来源。
+当前交付是封闭预览：只保证受控账号登录与会话，不承诺公开注册和密码重置邮件投递；
+整项目基础设施灾备、RPO/RTO、扩展商店审核及 WhatsApp/Telegram 真实页面兼容性
+不属于 WebCloud 核心发布门，扩展真实平台结果由产品所有者单独 UAT。
 
 ## 2. 分阶段运行形态
 
@@ -47,7 +48,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - PostgreSQL、Auth、Storage、Edge Functions 使用受控云环境。
 - OIDC/Supabase Auth 令牌只证明用户身份；业务查询通过 RLS 和服务端授权限制到当前用户数据。
 - 所有客户端继续使用同一个类型化 API 客户端，不能直接在组件中调用 Supabase 或 `fetch`。
-- 生产发布前完成隐私、跨境数据、备份恢复、受控管理员数据清理和安全事件流程评审。
+- 生产发布前完成隐私、跨境数据、用户级备份恢复、受控管理员数据清理和安全事件流程评审。
 
 ## 3. 用户与核心流程
 
@@ -55,7 +56,7 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 
 核心流程：
 
-1. 用户在 Web 注册或登录个人账号。
+1. 封闭预览用户使用受控个人账号登录；公开自助注册和邮件密码重置另行开放。
 2. 用户在 Web 导入客户资料并处理重复候选。
 3. 用户维护客户、联系人、社媒账号、项目、跟进、提醒、风险和里程碑。
 4. 用户在 Web 查看 Dashboard、客户详情、项目详情和提醒列表。
@@ -98,7 +99,8 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - 唯一匹配显示客户摘要；多匹配必须人工确认；无稳定标识允许人工绑定。
 - 群组、频道和无法识别场景明确显示不支持。
 - 用户主动标记单条消息后才读取正文，不自动发送、修改、删除或批量抓取消息。
-- 开发通过配置连接 Supabase 开发项目/API；正式配对方式、商店发布和平台合规另设发布门。
+- 开发通过配置连接 Supabase 开发项目/API；CI 产出 Chrome/Edge 候选包和明确版本的 GitHub Release。
+- WhatsApp/Telegram 真实页面兼容性由产品所有者执行 UAT；商店提交、审核和上架不阻塞 WebCloud 核心发布。
 
 ## 5. 后端与数据架构
 
@@ -126,6 +128,9 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 - 不提供 SQLite 数据迁移、Agent/SQLite 业务后端、PostgreSQL 与 SQLite 双写或本地回退模式。
 - 不做团队 workspace、成员角色、邀请、共享客户或企业 SSO。
 - 首版不提供自助删除账号；Web、API Client 和公开 Edge API 均不暴露删号能力。
+- 封闭预览不配置自定义 SMTP，不承诺公开注册确认或密码重置邮件的投递额度与 SLA。
+- 首版不建设整项目 Supabase 基础设施灾备恢复，也不承诺 Auth、Storage 和 PostgreSQL 的 RPO/RTO；用户级加密云备份恢复仍属于产品能力。
+- 浏览器扩展商店提交、审核、上架和真实第三方平台兼容性由产品所有者单独验收，不作为 WebCloud 核心发布阻塞项。
 - 不做自动发消息、自动监听新消息、微信/邮件推送、AI 功能和 ERP/财务系统。
 
 ## 7. 验收门槛
@@ -140,10 +145,12 @@ CI 门禁。旧 `apps/web`、`apps/agent`、EXE/NSIS 和 Cloud Agent provider �
 
 ### 云端发布门槛
 
-- 真实 Auth/OIDC、数据导出、备份恢复、受控管理员数据清理和密钥轮换演练通过。
+- 受控账号的真实 Auth/OIDC、数据导出、用户级备份恢复、受控管理员数据清理和密钥轮换演练通过。
 - 两个真实测试账号的 RLS、父子引用、Storage、RPC 和 Edge 隔离矩阵通过。
 - 隐私政策、跨境处理、供应商和数据保留评审通过。
 - 灰度发布、旧 API 兼容回滚和 PostgreSQL 唯一事实源演练通过。
+
+自定义 SMTP、整项目基础设施灾备、扩展真实平台 UAT 和商店分发按第 6 节处理，不计入上述 WebCloud 核心发布门。
 
 ## 8. 发布与回滚语义
 
