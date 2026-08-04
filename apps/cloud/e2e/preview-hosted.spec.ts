@@ -1500,7 +1500,7 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
           type: "paused",
           status: "pending",
           due_at: "2000-01-03T00:00:00.000Z",
-          pause_reason: `Hosted pause ${suffix}`,
+          resolution: `Hosted pause ${suffix}`,
           priority: "high",
         }),
         insert(asAlpha, "reminders", {
