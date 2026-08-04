@@ -1,4 +1,4 @@
-import type { ConversationInfo } from "./platform-detect";
+import type { ConversationInfo } from "./platform-adapter";
 
 export function conversationIdentity(
   conversation: ConversationInfo | null,
@@ -18,8 +18,8 @@ export function canReuseRememberedMessage(
 ): boolean {
   return Boolean(
     isConnected &&
-      rememberedIdentity &&
-      currentIdentity &&
-      rememberedIdentity === currentIdentity,
+    rememberedIdentity &&
+    currentIdentity &&
+    rememberedIdentity === currentIdentity,
   );
 }

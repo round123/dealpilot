@@ -76,19 +76,22 @@ export const buildContact = (overrides: Partial<Contact> = {}): Contact => ({
 });
 
 export const StoryWrapper = ({
+  authProvider: authProviderOverride,
   children,
   data,
   dataProvider: dataProviderOverrides,
   initialEntries,
   silent = import.meta.env.MODE === "test",
 }: {
+  authProvider?: AuthProvider;
   children: ReactNode;
   data?: Partial<Db>;
   dataProvider?: Partial<ReturnType<typeof createDataProvider>>;
   initialEntries?: string[];
   silent?: boolean;
 }) => {
-  const authProvider = useMemo(() => createTestAuthProvider(), []);
+  const defaultAuthProvider = useMemo(() => createTestAuthProvider(), []);
+  const authProvider = authProviderOverride ?? defaultAuthProvider;
   const dataProvider = useMemo(
     () => ({
       ...createDataProvider({ db: createCrmDb(cloneDeep(data)), silent }),

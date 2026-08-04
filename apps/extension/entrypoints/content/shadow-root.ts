@@ -10,6 +10,9 @@ import designTokensCss from "../../src/assets/design-tokens.css?inline";
 /** Shadow DOM 宿主元素 ID */
 const HOST_ELEMENT_ID = "dealpilot-float-host";
 
+/** Closed roots are retained only inside the isolated Content Script world. */
+const shadowRoots = new WeakMap<HTMLElement, ShadowRoot>();
+
 /** Shadow DOM 宿主元素样式 */
 const HOST_STYLE = `
   position: fixed;
@@ -29,8 +32,12 @@ const HOST_STYLE = `
 export function createShadowHost(): { host: HTMLElement; shadow: ShadowRoot } {
   // 检查是否已存在
   const existing = document.getElementById(HOST_ELEMENT_ID);
-  if (existing && existing.shadowRoot) {
-    return { host: existing, shadow: existing.shadowRoot };
+  if (existing) {
+    const shadow = shadowRoots.get(existing);
+    if (shadow) return { host: existing, shadow };
+
+    // A closed root from an obsolete Content Script world cannot be reused.
+    existing.remove();
   }
 
   // 创建宿主元素
@@ -49,7 +56,8 @@ export function createShadowHost(): { host: HTMLElement; shadow: ShadowRoot } {
   }
 
   // 创建 Shadow DOM
-  const shadow = host.attachShadow({ mode: "open" });
+  const shadow = host.attachShadow({ mode: "closed" });
+  shadowRoots.set(host, shadow);
 
   // 注入 design tokens（:host 变量定义）
   const styleEl = document.createElement("style");
@@ -89,6 +97,7 @@ export function createShadowHost(): { host: HTMLElement; shadow: ShadowRoot } {
 export function removeShadowHost(): void {
   const host = document.getElementById(HOST_ELEMENT_ID);
   if (host) {
+    shadowRoots.delete(host);
     host.remove();
   }
 }

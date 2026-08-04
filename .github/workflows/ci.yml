@@ -33,12 +33,12 @@ jobs:
       - name: Test release gates and smoke checks
         run: >-
           node --test
-          apps/extension/scripts/verify-package.test.mjs
           scripts/audit-v2-production.test.mjs
           scripts/check-migration-compatibility.test.mjs
           scripts/cloud-smoke.test.mjs
           scripts/disaster-recovery.test.mjs
           scripts/release-workflows.test.mjs
+          scripts/verify-extension-production-config.test.mjs
       - name: Verify retired V1 runtime stays absent
         run: node scripts/check-v1-retirement.mjs
       - uses: pnpm/action-setup@v4
@@ -52,6 +52,8 @@ jobs:
         with:
           bun-version: 1.3.14
       - run: pnpm install --frozen-lockfile
+      - name: Test extension package verifier
+        run: node --test apps/extension/scripts/verify-package.test.mjs
       - name: Audit V2 production dependencies
         run: pnpm audit:v2
       - name: Test Edge handlers without network access
@@ -95,12 +97,21 @@ jobs:
           VITE_SUPABASE_URL: https://dealpilot-ci.supabase.co
           VITE_SB_PUBLISHABLE_KEY: ci-publishable-key-not-a-secret
           VITE_DEALPILOT_WEB_URL: https://dealpilot-ci.example.com/
-        run: pnpm --filter @dealpilot/extension package:chrome
-      - name: Upload extension packaging smoke artifact
+        run: pnpm --filter @dealpilot/extension package:stores
+      - name: Upload Chrome packaging smoke artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dealpilot-extension-ci-smoke-${{ github.sha }}
+          name: dealpilot-extension-chrome-ci-smoke-${{ github.sha }}
           path: apps/extension/.output/*-chrome.zip
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - name: Upload Edge packaging smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dealpilot-extension-edge-ci-smoke-${{ github.sha }}
+          path: apps/extension/.output/*-edge.zip
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 3
 

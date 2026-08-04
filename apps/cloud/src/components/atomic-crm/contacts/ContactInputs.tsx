@@ -1,4 +1,5 @@
 import {
+  CanAccess,
   email,
   required,
   useRecordContext,
@@ -266,20 +267,22 @@ const ContactMiscInputs = () => {
       </h6>
       <TextInput source="background" multiline helperText={false} />
       <BooleanInput source="has_newsletter" helperText={false} />
-      <ReferenceInput
-        reference="sales"
-        source="sales_id"
-        sort={{ field: "last_name", order: "ASC" }}
-        filter={{
-          "disabled@neq": true,
-        }}
-      >
-        <SelectInput
-          helperText={false}
-          optionText={saleOptionRenderer}
-          validate={required()}
-        />
-      </ReferenceInput>
+      <CanAccess resource="sales" action="list">
+        <ReferenceInput
+          reference="sales"
+          source="sales_id"
+          sort={{ field: "last_name", order: "ASC" }}
+          filter={{
+            "disabled@neq": true,
+          }}
+        >
+          <SelectInput
+            helperText={false}
+            optionText={saleOptionRenderer}
+            validate={required()}
+          />
+        </ReferenceInput>
+      </CanAccess>
     </div>
   );
 };

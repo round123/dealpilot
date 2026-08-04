@@ -5,6 +5,10 @@ import test from "node:test";
 const deploy = readFileSync(".github/workflows/deploy-cloud.yml", "utf8");
 const rollback = readFileSync(".github/workflows/rollback-cloud.yml", "utf8");
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const extensionPackage = readFileSync(
+  ".github/workflows/package-extension.yml",
+  "utf8",
+);
 const customerPurge = readFileSync(
   ".github/workflows/purge-expired-customers.yml",
   "utf8",
@@ -17,6 +21,22 @@ const adminAccountCleanup = readFileSync(
   ".github/workflows/admin-account-cleanup.yml",
   "utf8",
 );
+const previewScale = readFileSync(
+  ".github/workflows/scale-cloud-preview.yml",
+  "utf8",
+);
+const supabaseConfig = readFileSync("supabase/config.toml", "utf8");
+
+test("hosted Auth keeps exact signup and password recovery redirects", () => {
+  assert.match(
+    supabaseConfig,
+    /https:\/\/round123\.github\.io\/dealpilot\/auth-callback\.html/,
+  );
+  assert.match(
+    supabaseConfig,
+    /https:\/\/round123\.github\.io\/dealpilot\/set-password/,
+  );
+});
 
 test("quality CI tests and runs the V2 production audit after install", () => {
   const auditTest = ci.indexOf("scripts/audit-v2-production.test.mjs");
@@ -32,6 +52,87 @@ test("CI runs PR commits once and reserves push validation for main", () => {
   assert.match(triggers, /pull_request:/);
   assert.match(triggers, /push:\s+branches:\s+- main/);
   assert.doesNotMatch(triggers, /codex\/\*\*/);
+});
+
+test("CI runs the ZIP verifier tests only after installing adm-zip", () => {
+  const install = ci.indexOf("pnpm install --frozen-lockfile");
+  const verifierTest = ci.indexOf(
+    "node --test apps/extension/scripts/verify-package.test.mjs",
+  );
+  assert.ok(install > 0);
+  assert.ok(verifierTest > install);
+});
+
+test("extension release and CI verify and upload separate Chrome and Edge packages", () => {
+  for (const workflow of [extensionPackage, ci]) {
+    assert.match(workflow, /package:stores/);
+    assert.match(workflow, /apps\/extension\/\.output\/\*-chrome\.zip/);
+    assert.match(workflow, /apps\/extension\/\.output\/\*-edge\.zip/);
+    assert.match(workflow, /dealpilot-extension-chrome-/);
+    assert.match(workflow, /dealpilot-extension-edge-/);
+  }
+  assert.match(extensionPackage, /Store upload: manual approval required/);
+});
+
+test("production extension candidates require successful CI for the same main SHA", () => {
+  const triggers = extensionPackage.slice(
+    0,
+    extensionPackage.indexOf("\n\npermissions:"),
+  );
+  assert.match(
+    triggers,
+    /workflow_run:\s+workflows:\s+- CI\s+types:\s+- completed/,
+  );
+  assert.doesNotMatch(triggers, /\n  push:/);
+  assert.match(
+    extensionPackage,
+    /github\.event\.workflow_run\.event == 'push'[\s\S]+github\.event\.workflow_run\.conclusion == 'success'[\s\S]+github\.event\.workflow_run\.head_branch == 'main'/,
+  );
+  assert.match(
+    extensionPackage,
+    /github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main'/,
+  );
+  assert.match(extensionPackage, /environment:\s+name: cloud-production/);
+  assert.match(extensionPackage, /actions: read/);
+  assert.match(
+    extensionPackage,
+    /RELEASE_SHA: \$\{\{ github\.event_name == 'workflow_run' && github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/,
+  );
+  assert.match(extensionPackage, /ref: \$\{\{ env\.RELEASE_SHA \}\}/);
+  assert.match(
+    extensionPackage,
+    /name: dealpilot-extension-chrome-\$\{\{ env\.RELEASE_SHA \}\}/,
+  );
+  assert.match(
+    extensionPackage,
+    /name: dealpilot-extension-edge-\$\{\{ env\.RELEASE_SHA \}\}/,
+  );
+  const manualGate =
+    extensionPackage.match(
+      /- name: Verify manual release SHA passed CI[\s\S]*?(?=\n      - name:)/,
+    )?.[0] ?? "";
+  assert.match(manualGate, /if: github\.event_name == 'workflow_dispatch'/);
+  assert.match(manualGate, /actions\/workflows\/ci\.yml\/runs/);
+  assert.match(manualGate, /head_sha=\$RELEASE_SHA/);
+  assert.match(manualGate, /event=push&status=success/);
+  assert.match(manualGate, /\.head_branch == \"main\"/);
+});
+
+test("extension candidates verify the exact production Auth project before packaging", () => {
+  const validation = extensionPackage.slice(
+    extensionPackage.indexOf("Validate public extension configuration"),
+    extensionPackage.indexOf("pnpm install --frozen-lockfile"),
+  );
+  assert.match(
+    extensionPackage,
+    /SUPABASE_PROJECT_REF: \$\{\{ secrets\.SUPABASE_PROJECT_REF \}\}/,
+  );
+  assert.match(validation, /test -n "\$SUPABASE_PROJECT_REF"/);
+  assert.match(
+    validation,
+    /node scripts\/verify-extension-production-config\.mjs/,
+  );
+  assert.match(ci, /scripts\/verify-extension-production-config\.test\.mjs/);
 });
 
 test("database security CI gates Dashboard, backup, retention, and account cleanup", () => {
@@ -224,6 +325,49 @@ test("Preview gates the built artifact with ordinary hosted accounts and data to
     )?.[0] ?? "",
     /SERVICE_ROLE/,
   );
+});
+
+test("hosted Preview scale acceptance is isolated, manual, and transactionally disposable", () => {
+  const triggers = previewScale.slice(
+    0,
+    previewScale.indexOf("\n\npermissions:"),
+  );
+  assert.match(triggers, /workflow_dispatch:/);
+  assert.doesNotMatch(triggers, /pull_request:|push:|schedule:|workflow_run:/);
+  assert.match(previewScale, /permissions:\s+contents: read/);
+  assert.match(
+    previewScale,
+    /concurrency:\s+group: webcloud-preview\s+cancel-in-progress: false/,
+  );
+  assert.match(previewScale, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(previewScale, /environment:\s+name: cloud-preview/);
+  assert.match(
+    previewScale,
+    /PREVIEW_DATABASE_URL: \$\{\{ secrets\.PREVIEW_DATABASE_URL \}\}/,
+  );
+  assert.match(
+    previewScale,
+    /PREVIEW_PROJECT_REF: \$\{\{ secrets\.PREVIEW_SUPABASE_PROJECT_REF \}\}/,
+  );
+  assert.match(
+    previewScale,
+    /PRODUCTION_PROJECT_REF: \$\{\{ vars\.PRODUCTION_SUPABASE_PROJECT_REF \}\}/,
+  );
+  assert.match(
+    previewScale,
+    /Preview scale acceptance must not target production/,
+  );
+  assert.match(previewScale, /PGAPPNAME: dealpilot-scale-/);
+  assert.match(previewScale, /statement_timeout=180000/);
+  assert.match(previewScale, /lock_timeout=5000/);
+  assert.match(
+    previewScale,
+    /--file supabase\/tests\/cloud_scale_acceptance\.sql/,
+  );
+  assert.match(previewScale, /grep -Eo 'scale:\.\*'/);
+  assert.match(previewScale, /GITHUB_STEP_SUMMARY/);
+  assert.match(previewScale, /retention-days: 30/);
+  assert.doesNotMatch(previewScale, /SERVICE_ROLE|SUPABASE_ACCESS_TOKEN/);
 });
 
 test("rollback redeploys only immutable Edge and Web application code", () => {

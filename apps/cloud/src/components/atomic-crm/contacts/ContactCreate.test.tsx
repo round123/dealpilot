@@ -1,4 +1,20 @@
 import { render } from "vitest-browser-react";
+import type * as RaCore from "ra-core";
+
+const mocks = vi.hoisted(() => ({
+  identityResult: {
+    identity: undefined,
+    isPending: true,
+  } as {
+    identity: RaCore.UserIdentity | undefined;
+    isPending: boolean;
+  },
+}));
+
+vi.mock("ra-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof RaCore>()),
+  useGetIdentity: () => mocks.identityResult,
+}));
 
 import { ContactCreateBasic } from "./ContactCreate.stories";
 import { page } from "vitest/browser";
@@ -12,6 +28,14 @@ describe("ContactCreate", () => {
   beforeAll(() => {
     page.viewport(1600, 900);
   });
+
+  beforeEach(() => {
+    mocks.identityResult = {
+      identity: { id: 0, fullName: "Test User" },
+      isPending: false,
+    };
+  });
+
   it("shows empty email and phone placeholder inputs", async () => {
     const screen = await render(<ContactCreateBasic />);
 
@@ -19,6 +43,66 @@ describe("ContactCreate", () => {
     await expect
       .element(screen.getByPlaceholder("Phone number"))
       .toBeInTheDocument();
+  });
+
+  it("waits for identity before mounting an editable form", async () => {
+    const getList = vi.fn().mockImplementation(async (resource: string) => ({
+      data:
+        resource === "companies"
+          ? [{ id: 42, name: "Analytical Engines" }]
+          : [],
+      total: resource === "companies" ? 1 : 0,
+    }));
+    mocks.identityResult = { identity: undefined, isPending: true };
+    const screen = await render(
+      <ContactCreateBasic dataProvider={{ getList }} />,
+    );
+
+    await expect.element(screen.getByText("Loading")).toBeVisible();
+    expect(
+      screen.container.querySelector('input[name="first_name"]'),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: /^save$/i }).query()).toBeNull();
+
+    mocks.identityResult = {
+      identity: { id: 0, fullName: "Test User" },
+      isPending: false,
+    };
+    await screen.rerender(<ContactCreateBasic dataProvider={{ getList }} />);
+
+    const firstName = screen.getByLabelText(/first name/i);
+    const lastName = screen.getByLabelText(/last name/i);
+    await firstName.fill("Ada");
+    await lastName.fill("Lovelace");
+    await screen.getByRole("combobox", { name: /company/i }).click();
+    await screen.getByRole("option", { name: "Analytical Engines" }).click();
+
+    await expect.element(firstName).toHaveValue("Ada");
+    await expect.element(lastName).toHaveValue("Lovelace");
+  });
+
+  it("preserves entered names after selecting a company", async () => {
+    const getList = vi.fn().mockImplementation(async (resource: string) => ({
+      data:
+        resource === "companies"
+          ? [{ id: 42, name: "Analytical Engines" }]
+          : [],
+      total: resource === "companies" ? 1 : 0,
+    }));
+    const screen = await render(
+      <ContactCreateBasic dataProvider={{ getList }} />,
+    );
+
+    const firstName = screen.getByLabelText(/first name/i);
+    const lastName = screen.getByLabelText(/last name/i);
+    await firstName.fill("Ada");
+    await lastName.fill("Lovelace");
+
+    await screen.getByRole("combobox", { name: /company/i }).click();
+    await screen.getByRole("option", { name: "Analytical Engines" }).click();
+
+    await expect.element(firstName).toHaveValue("Ada");
+    await expect.element(lastName).toHaveValue("Lovelace");
   });
 
   it("shows only provider-supported fields with one email and phone", async () => {

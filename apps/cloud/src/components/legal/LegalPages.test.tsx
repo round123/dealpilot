@@ -37,6 +37,25 @@ describe("public legal pages", () => {
     await expect
       .element(screen.getByText(/不会根据客户邮箱域名请求 favicon/))
       .toBeVisible();
+    await expect
+      .element(screen.getByText(/主动进入受支持的一对一会话时/))
+      .toBeVisible();
+    await expect
+      .element(screen.getByText(/将这些会话身份数据传输到位于新加坡的/))
+      .toBeVisible();
+    await expect
+      .element(screen.getByText(/主动点击“标记消息”时/))
+      .toBeVisible();
+    await expect
+      .element(
+        screen.getByText(
+          /读取该单条消息的正文、方向和可用时间，并将其传输到位于新加坡的/,
+        ),
+      )
+      .toBeVisible();
+    await expect
+      .element(screen.getByText(/卸载扩展不会自动删除已传输到云端的数据/))
+      .toBeVisible();
 
     await screen.getByRole("link", { name: "查看服务条款" }).click();
     await expect

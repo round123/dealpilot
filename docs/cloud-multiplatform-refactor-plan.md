@@ -1,7 +1,7 @@
 # DealPilot 基于 Atomic CRM 的个人云改造计划
 
-> 状态：云端优先 demo 持续验收中
-> 日期：2026-08-03
+> 状态：生产环境持续验收中，尚未达到全部完成定义
+> 日期：2026-08-04
 > 目标版本：V2.1
 > 产品决策：`docs/DealPilot_PRD_V2.1_WebCloud.md`
 > 当前架构决策：`docs/adr/ADR-V2-002-atomic-crm-personal-cloud.md`
@@ -96,15 +96,32 @@ Customer 纵向切片必须同时满足：
 
 ## 6. 当前进度
 
-| 阶段 | 当前状态 | 已有证据                                                                                                               | 剩余门槛                                                             |
-| ---- | -------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| G0   | 已完成   | Cloud-only 目录、产品文档和退役 CI 门禁                                                                                | 无                                                                   |
-| P1   | 部分验收 | Atomic 基线、中文界面、统一构建测试、生产账号密码登录                                                                  | 自定义 SMTP 与真实注册确认/密码重置邮件全链路                        |
-| P2   | 已验收   | RLS、复合外键、Storage、双账号 SQL/browser 门禁及 Hosted Preview 双账号复跑                                            | 无                                                                   |
-| P3   | 已验收   | Hosted Preview 真实账号完成 Customer CRUD、关联详情、合并、删除/恢复与提醒联动                                         | 无                                                                   |
-| P4   | 部分验收 | 领域界面、1000 行导入门禁、Hosted CSV 持久化与隔离 XLSX 导出、加密云备份                                               | 托管项目备份恢复、其余 P0 领域 Hosted E2E 与规模复跑                 |
-| P5   | 部分完成 | PWA manifest/SW/离线壳、扩展单测与打包门禁                                                                             | 真实移动设备和 WhatsApp/Telegram DOM/商店合规                        |
-| P6   | 部分验收 | preview/canary/production 发布、生产认证 smoke、15 分钟健康监控、数据保留调度、受控管理员清理及加密灾备/旧应用回滚流程 | SMTP、异地备份恢复实跑、管理员清理实跑、密钥轮换、生产回滚与合规演练 |
+| 阶段 | 当前状态 | 已有证据                                                                                                                                | 剩余门槛                                                     |
+| ---- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| G0   | 已完成   | Cloud-only 目录、产品文档和退役 CI 门禁                                                                                                 | 无                                                           |
+| P1   | 部分验收 | Atomic 基线、中文界面、统一构建测试；生产真实注册、精确确认回调、邮箱确认后登录已通过                                                   | 自定义 SMTP 与真实密码重置邮件全链路                         |
+| P2   | 已验收   | RLS、复合外键、Storage、双账号 SQL/browser 门禁及 Hosted Preview 双账号复跑                                                             | 无                                                           |
+| P3   | 已验收   | Hosted Preview 真实账号完成 Customer CRUD、关联详情、合并、删除/恢复与提醒联动                                                          | 无                                                           |
+| P4   | 部分验收 | 领域界面、1000 行导入门禁、Hosted CSV 持久化与隔离 XLSX 导出、加密云备份、Hosted P0 全业务域 E2E 及托管备份恢复                              | 托管项目规模复跑                                             |
+| P5   | 部分完成 | PWA manifest/SW/离线壳、扩展单测、Chrome/Edge 双包和商店候选包门禁                                                                      | 真实移动设备、真实 WhatsApp/Telegram 平台验收和商店提交/审核 |
+| P6   | 部分验收 | preview/canary/production 发布、生产认证 smoke、15 分钟健康监控、数据保留调度、生产加密备份、受控管理员清理、密钥轮换及上一兼容应用回滚 | SMTP、隔离环境恢复实跑、合规演练与灾备私钥离线保管           |
+
+### 6.1 已完成的生产验收证据
+
+- 2026-08-04 使用一次性真实邮箱完成生产注册；确认邮件的 `redirect_to` 精确为 `https://round123.github.io/dealpilot/auth-callback.html`，实际点击后回调页可达且确认账号能够登录生产工作台。
+- Hosted Preview 的 Customer、项目、风险、里程碑、跟进、提醒和 Dashboard P0 流程已由 [`preview-hosted.spec.ts` 完整复跑](https://github.com/round123/dealpilot/actions/runs/30876618013)并通过。
+- Hosted Preview 的加密备份下载、快照账号隔离、普通恢复、上传预检和加密恢复已由 [`preview-hosted.spec.ts` 完整复跑](https://github.com/round123/dealpilot/actions/runs/30878881028)并通过；同一提交的 [CI](https://github.com/round123/dealpilot/actions/runs/30878883739)同时通过本地 PostgreSQL 备份恢复、账号隔离及浏览器/API 隔离门禁。
+- 生产上一兼容应用版本已由 [Roll back WebCloud application](https://github.com/round123/dealpilot/actions/runs/30812975250)完成回滚演练，当前 PostgreSQL schema 保持可读。
+- 注册测试账号通过 Issue [#11](https://github.com/round123/dealpilot/issues/11) 审批，并由 [Controlled administrator account cleanup](https://github.com/round123/dealpilot/actions/runs/30868224588) 永久清理；工作流完成后再次通过 Auth Admin API 确认账号不存在。
+- 首次真实生产加密灾备已由 [Disaster recovery backup](https://github.com/round123/dealpilot/actions/runs/30822849928) 成功生成仅包含 `.tar.age` 的受保护 artifact；该证据只证明备份生成成功，不等于恢复演练已经通过。
+- 生产数据库密码已轮换并同步更新生产发布与运维环境 secret；灾备 age 私钥仅保存在本机 ACL 受限文件，尚待转移到独立离线介质。
+
+### 6.2 仍不得宣称完成的发布门槛
+
+- Supabase 默认邮件发送额度不足以支持公开注册；必须配置自定义 SMTP，并重新验证注册确认和密码重置邮件链路。
+- 灾备恢复必须在明确批准的隔离 canary 目标上实跑；不得为演练覆盖生产或未经确认的 Preview 数据库，也不得把 age 私钥降级保存到 GitHub Secret。
+- 1000 Customer / 10000 follow-up 的托管 Preview 规模工作流必须在合入 `main` 后实跑并留存四项查询指标；当前仅有本地事务回滚基线，不得据此宣称托管规模门槛通过。
+- 合规检查、真实 WhatsApp/Telegram 页面验收以及 Chrome/Edge 商店提交和审核仍需留存外部证据。
 
 ## 7. 测试与质量门禁
 
