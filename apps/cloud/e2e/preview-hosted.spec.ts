@@ -1079,7 +1079,14 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       await page
         .locator('input[name="first_name"]')
         .fill(alphaNames.webContactUpdated);
+      const contactUpdateResponse = waitForPostgrestResponse(
+        page,
+        "PATCH",
+        "contacts",
+        webContactId,
+      );
       await page.getByRole("button", { name: "保存", exact: true }).click();
+      expect((await contactUpdateResponse).ok()).toBe(true);
       await expect(page).toHaveURL(
         new RegExp(`#/contacts/${webContactId}/show(?:/.*)?$`),
       );
