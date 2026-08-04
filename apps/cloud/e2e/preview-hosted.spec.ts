@@ -2000,9 +2000,7 @@ test("hosted Preview exports and restores isolated encrypted cloud backups", asy
 
     await updateAlpha(alphaEncryptedMutationName, "C");
     await page.goto("/#/settings/cloud-data");
-    await page
-      .getByLabel("加密备份文件", { exact: true })
-      .setInputFiles(downloadPath!);
+    await page.locator("#encrypted-backup-file").setInputFiles(downloadPath!);
     await page.getByLabel("文件密码", { exact: true }).fill(backupPassword);
     await page.getByRole("button", { name: "预检备份" }).click();
     await expect(page.getByText(/预检通过 ·/)).toBeVisible({
