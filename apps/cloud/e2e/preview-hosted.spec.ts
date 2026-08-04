@@ -1212,11 +1212,9 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       await dealDialog
         .getByRole("textbox", { name: "失单或关闭原因", exact: true })
         .fill(closedReason);
-      const updateResponse = waitForPostgrestResponse(
+      const updateResponse = waitForRpcResponse(
         page,
-        "PATCH",
-        "deals",
-        alphaIds.deal,
+        "update_deal_with_contacts",
       );
       await dealDialog
         .getByRole("button", { name: "保存", exact: true })
