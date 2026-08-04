@@ -442,6 +442,17 @@ test("hosted Preview scale acceptance is isolated, manual, and transactionally d
     /PGHOST: aws-0-ap-southeast-1\.pooler\.supabase\.com/,
   );
   assert.match(previewScale, /PGUSER=postgres\.\$PREVIEW_PROJECT_REF/);
+  assert.match(
+    previewScale,
+    /EVIDENCE_DIR="\$RUNNER_TEMP\/cloud-preview-scale-evidence"/,
+  );
+  assert.doesNotMatch(
+    previewScale.slice(
+      previewScale.indexOf("    env:"),
+      previewScale.indexOf("    steps:"),
+    ),
+    /runner\.temp/,
+  );
   assert.match(previewScale, /statement_timeout=180000/);
   assert.match(previewScale, /lock_timeout=5000/);
   assert.match(

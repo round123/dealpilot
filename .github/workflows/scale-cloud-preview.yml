@@ -27,7 +27,6 @@ jobs:
       PGPASSWORD: ${{ secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
       PGAPPNAME: dealpilot-scale-${{ github.run_id }}
       PGOPTIONS: -c statement_timeout=180000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=300000
-      EVIDENCE_DIR: ${{ runner.temp }}/cloud-preview-scale-evidence
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +35,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          EVIDENCE_DIR="$RUNNER_TEMP/cloud-preview-scale-evidence"
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
           mkdir -p "$EVIDENCE_DIR"
           for variable in PREVIEW_PROJECT_REF PRODUCTION_PROJECT_REF PGPASSWORD; do
             if [ -z "${!variable:-}" ]; then
