@@ -19,9 +19,12 @@ jobs:
     environment:
       name: cloud-preview
     env:
-      PREVIEW_DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
       PREVIEW_PROJECT_REF: ${{ secrets.PREVIEW_SUPABASE_PROJECT_REF }}
       PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: 5432
+      PGDATABASE: postgres
+      PGPASSWORD: ${{ secrets.PREVIEW_SUPABASE_DB_PASSWORD }}
       PGAPPNAME: dealpilot-scale-${{ github.run_id }}
       PGOPTIONS: -c statement_timeout=180000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=300000
     steps:
@@ -32,9 +35,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for variable in PREVIEW_DATABASE_URL PREVIEW_PROJECT_REF PRODUCTION_PROJECT_REF; do
+          EVIDENCE_DIR="$RUNNER_TEMP/cloud-preview-scale-evidence"
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$EVIDENCE_DIR"
+          for variable in PREVIEW_PROJECT_REF PRODUCTION_PROJECT_REF PGPASSWORD; do
             if [ -z "${!variable:-}" ]; then
               echo "Missing required configuration: $variable" >&2
+              echo "missing_configuration=$variable" > "$EVIDENCE_DIR/configuration-error.txt"
               exit 1
             fi
           done
@@ -46,10 +53,7 @@ jobs:
             echo "PREVIEW_PROJECT_REF has an invalid format." >&2
             exit 1
           fi
-          if [[ "$PREVIEW_DATABASE_URL" != postgresql://* ]] || [[ "$PREVIEW_DATABASE_URL" != *"$PREVIEW_PROJECT_REF"* ]]; then
-            echo "PREVIEW_DATABASE_URL must be a percent-encoded PostgreSQL URL for the Preview project." >&2
-            exit 1
-          fi
+          echo "PGUSER=postgres.$PREVIEW_PROJECT_REF" >> "$GITHUB_ENV"
       - name: Install PostgreSQL client
         shell: bash
         run: |
@@ -59,15 +63,13 @@ jobs:
       - name: Record hosted schema identity
         shell: bash
         env:
-          EVIDENCE_DIR: ${{ runner.temp }}/cloud-preview-scale-evidence
           RELEASE_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           mkdir -p "$EVIDENCE_DIR"
           migration_version="$(
-            psql "$PREVIEW_DATABASE_URL" \
-              --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 \
+            psql --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 \
               --command "select coalesce(max(version), 'unknown') from supabase_migrations.schema_migrations"
           )"
           migration_version="$(printf '%s' "$migration_version" | tr -d '[:space:]')"
@@ -81,12 +83,9 @@ jobs:
           } > "$EVIDENCE_DIR/metadata.txt"
       - name: Run hosted PostgreSQL scale acceptance
         shell: bash
-        env:
-          EVIDENCE_DIR: ${{ runner.temp }}/cloud-preview-scale-evidence
         run: |
           set -euo pipefail
-          psql "$PREVIEW_DATABASE_URL" \
-            --no-psqlrc --set ON_ERROR_STOP=1 \
+          psql --no-psqlrc --set ON_ERROR_STOP=1 \
             --file supabase/tests/cloud_scale_acceptance.sql \
             2>&1 | tee "$EVIDENCE_DIR/scale.log"
           grep -Eo 'scale:.*' "$EVIDENCE_DIR/scale.log" > "$EVIDENCE_DIR/metrics.txt"
@@ -94,8 +93,6 @@ jobs:
       - name: Summarize hosted scale evidence
         if: always()
         shell: bash
-        env:
-          EVIDENCE_DIR: ${{ runner.temp }}/cloud-preview-scale-evidence
         run: |
           {
             echo "### Hosted Preview scale acceptance"

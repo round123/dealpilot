@@ -111,6 +111,9 @@ HTTP / Edge adapter
 - 当前工作树中的 V1 Web、Agent provider、EXE/NSIS 构建链和 Native Messaging host。
 - 团队 workspace、成员角色、邀请、共享客户和企业 SSO。
 - 微服务拆分、Kubernetes 和第二套云端 CRUD API。
+- 封闭预览的自定义 SMTP 与公开邮件投递 SLA；认证模块仍保留标准注册和密码重置接口，开放前另行配置和验收邮件服务。
+- 整项目 Supabase 基础设施灾备编排及 RPO/RTO 承诺；当前 Backup/Restore 模块只负责账号内用户级加密备份和原子恢复。
+- 浏览器扩展商店自动提交；CI/Release 只交付候选 ZIP，真实平台 UAT 与商店操作由产品所有者执行。
 
 ## 9. 架构验收
 

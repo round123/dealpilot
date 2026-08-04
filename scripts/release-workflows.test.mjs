@@ -118,6 +118,62 @@ test("production extension candidates require successful CI for the same main SH
   assert.match(manualGate, /\.head_branch == \"main\"/);
 });
 
+test("extension GitHub Releases are explicit, versioned, and main-only", () => {
+  const triggers = extensionPackage.slice(
+    0,
+    extensionPackage.indexOf("\n\npermissions:"),
+  );
+  assert.match(
+    triggers,
+    /workflow_dispatch:\s+inputs:\s+release_tag:\s+description:[\s\S]+required: true[\s\S]+type: string/,
+  );
+  assert.doesNotMatch(triggers, /\n  release:/);
+
+  const releaseJob = extensionPackage.slice(
+    extensionPackage.indexOf("\n  release:"),
+  );
+  assert.match(
+    releaseJob,
+    /if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main'/,
+  );
+  assert.match(releaseJob, /needs: package/);
+  assert.match(releaseJob, /permissions:\s+actions: read\s+contents: write/);
+  assert.match(
+    releaseJob,
+    /name: dealpilot-extension-chrome-\$\{\{ env\.RELEASE_SHA \}\}/,
+  );
+  assert.match(
+    releaseJob,
+    /name: dealpilot-extension-edge-\$\{\{ env\.RELEASE_SHA \}\}/,
+  );
+  assert.match(releaseJob, /dealpilot-extension-chrome\.zip/);
+  assert.match(releaseJob, /dealpilot-extension-edge\.zip/);
+  assert.match(releaseJob, /gh release create "\$RELEASE_TAG"/);
+  assert.match(releaseJob, /--target "\$RELEASE_SHA"/);
+
+  const globalPermissions = extensionPackage.slice(
+    extensionPackage.indexOf("\npermissions:"),
+    extensionPackage.indexOf("\n\nconcurrency:"),
+  );
+  assert.doesNotMatch(globalPermissions, /contents: write/);
+  assert.equal(
+    extensionPackage.match(/contents: write/g)?.length,
+    1,
+    "only the Release job may write repository contents",
+  );
+});
+
+test("manual extension release tag exactly follows the package version", () => {
+  const tagGate =
+    extensionPackage.match(
+      /- name: Validate manual extension release tag[\s\S]*?(?=\n      - name:)/,
+    )?.[0] ?? "";
+  assert.match(tagGate, /if: github\.event_name == 'workflow_dispatch'/);
+  assert.match(tagGate, /apps\/extension\/package\.json/);
+  assert.match(tagGate, /'extension-v'/);
+  assert.match(tagGate, /"\$RELEASE_TAG" != "\$expected_tag"/);
+});
+
 test("extension candidates verify the exact production Auth project before packaging", () => {
   const validation = extensionPackage.slice(
     extensionPackage.indexOf("Validate public extension configuration"),
@@ -212,6 +268,29 @@ test("normal release orders link, Auth config, migrations, Edge, Web and smoke",
   assert.match(
     deploy,
     /supabase config push --project-ref "\$SUPABASE_PROJECT_REF" --yes/,
+  );
+});
+
+test("production migrations use the single rotated database URL secret", () => {
+  const backend = deploy.slice(
+    deploy.indexOf("  deploy-backend:"),
+    deploy.indexOf("\n  build-web:"),
+  );
+  assert.match(
+    backend,
+    /PRODUCTION_DATABASE_URL: \$\{\{ needs\.plan\.outputs\.channel == 'production' && secrets\.PRODUCTION_DATABASE_URL \|\| '' \}\}/,
+  );
+  assert.match(
+    backend,
+    /PRODUCTION_DATABASE_URL" != \*"\$SUPABASE_PROJECT_REF"\*/,
+  );
+  assert.match(
+    backend,
+    /if \[ "\$RELEASE_CHANNEL" = "production" \]; then[\s\S]*?supabase db push[\s\S]*?--db-url "\$PRODUCTION_DATABASE_URL"/,
+  );
+  assert.match(
+    backend,
+    /else[\s\S]*?supabase db push[\s\S]*?--linked[\s\S]*?--password "\$SUPABASE_DB_PASSWORD"/,
   );
 });
 
@@ -343,7 +422,7 @@ test("hosted Preview scale acceptance is isolated, manual, and transactionally d
   assert.match(previewScale, /environment:\s+name: cloud-preview/);
   assert.match(
     previewScale,
-    /PREVIEW_DATABASE_URL: \$\{\{ secrets\.PREVIEW_DATABASE_URL \}\}/,
+    /PGPASSWORD: \$\{\{ secrets\.PREVIEW_SUPABASE_DB_PASSWORD \}\}/,
   );
   assert.match(
     previewScale,
@@ -358,6 +437,22 @@ test("hosted Preview scale acceptance is isolated, manual, and transactionally d
     /Preview scale acceptance must not target production/,
   );
   assert.match(previewScale, /PGAPPNAME: dealpilot-scale-/);
+  assert.match(
+    previewScale,
+    /PGHOST: aws-0-ap-southeast-1\.pooler\.supabase\.com/,
+  );
+  assert.match(previewScale, /PGUSER=postgres\.\$PREVIEW_PROJECT_REF/);
+  assert.match(
+    previewScale,
+    /EVIDENCE_DIR="\$RUNNER_TEMP\/cloud-preview-scale-evidence"/,
+  );
+  assert.doesNotMatch(
+    previewScale.slice(
+      previewScale.indexOf("    env:"),
+      previewScale.indexOf("    steps:"),
+    ),
+    /runner\.temp/,
+  );
   assert.match(previewScale, /statement_timeout=180000/);
   assert.match(previewScale, /lock_timeout=5000/);
   assert.match(
