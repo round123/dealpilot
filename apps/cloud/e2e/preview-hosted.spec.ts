@@ -1324,9 +1324,15 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       await risks
         .getByRole("combobox", { name: "严重程度", exact: true })
         .selectOption("high");
+      const riskCreateResponse = waitForPostgrestResponse(
+        page,
+        "POST",
+        "deal_risks",
+      );
       await risks
         .getByRole("button", { name: "保存风险", exact: true })
         .click();
+      expect((await riskCreateResponse).ok()).toBe(true);
       await expect(
         risks.getByText(alphaNames.webRisk, { exact: true }),
       ).toBeVisible();
@@ -1369,9 +1375,15 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       await milestones
         .getByRole("textbox", { name: "里程碑名称", exact: true })
         .fill(alphaNames.webMilestone);
+      const milestoneCreateResponse = waitForPostgrestResponse(
+        page,
+        "POST",
+        "deal_milestones",
+      );
       await milestones
         .getByRole("button", { name: "保存里程碑", exact: true })
         .click();
+      expect((await milestoneCreateResponse).ok()).toBe(true);
       await expect(
         milestones.getByText(alphaNames.webMilestone, { exact: true }),
       ).toBeVisible();
@@ -1926,16 +1938,16 @@ const selectHostedChoice = async (
 
 const waitForPostgrestResponse = (
   page: Page,
-  method: "GET" | "PATCH",
+  method: "GET" | "PATCH" | "POST",
   resource: string,
-  id: string,
+  id?: string,
 ) =>
   page.waitForResponse((response) => {
     const url = new URL(response.url());
     return (
       response.request().method() === method &&
       url.pathname.endsWith(`/rest/v1/${resource}`) &&
-      url.searchParams.get("id") === `eq.${id}`
+      (id === undefined || url.searchParams.get("id") === `eq.${id}`)
     );
   });
 
