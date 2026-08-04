@@ -1,6 +1,7 @@
 import type { ReferenceInputBaseProps } from "ra-core";
 import { ReferenceInputBase } from "ra-core";
 import { AutocompleteInput } from "./autocomplete-input";
+import { getDefaultReferenceSort } from "./reference-input-sort";
 
 /**
  * Form input for editing foreign key relationships with autocompletion.
@@ -33,7 +34,14 @@ export const ReferenceInput = (props: ReferenceInputProps) => {
     );
   }
 
-  return <ReferenceInputBase {...rest}>{children}</ReferenceInputBase>;
+  return (
+    <ReferenceInputBase
+      {...rest}
+      sort={getDefaultReferenceSort(rest.reference, rest.sort)}
+    >
+      {children}
+    </ReferenceInputBase>
+  );
 };
 
 const defaultChildren = <AutocompleteInput />;
