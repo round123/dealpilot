@@ -181,6 +181,7 @@ jobs:
             release-assets/dealpilot-extension-chrome.zip \
             release-assets/dealpilot-extension-edge.zip \
             release-assets/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
             --target "$RELEASE_SHA" \
             --title "DealPilot Browser Extension $version" \
             --notes "Verified Chrome and Edge Manifest V3 store candidates built from main commit $RELEASE_SHA. Store submission remains manual." \
