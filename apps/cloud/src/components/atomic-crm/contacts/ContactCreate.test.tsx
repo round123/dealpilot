@@ -21,6 +21,30 @@ describe("ContactCreate", () => {
       .toBeInTheDocument();
   });
 
+  it("preserves entered names after selecting a company", async () => {
+    const getList = vi.fn().mockImplementation(async (resource: string) => ({
+      data:
+        resource === "companies"
+          ? [{ id: 42, name: "Analytical Engines" }]
+          : [],
+      total: resource === "companies" ? 1 : 0,
+    }));
+    const screen = await render(
+      <ContactCreateBasic dataProvider={{ getList }} />,
+    );
+
+    const firstName = screen.getByLabelText(/first name/i);
+    const lastName = screen.getByLabelText(/last name/i);
+    await firstName.fill("Ada");
+    await lastName.fill("Lovelace");
+
+    await screen.getByRole("combobox", { name: /company/i }).click();
+    await screen.getByRole("option", { name: "Analytical Engines" }).click();
+
+    await expect.element(firstName).toHaveValue("Ada");
+    await expect.element(lastName).toHaveValue("Lovelace");
+  });
+
   it("shows only provider-supported fields with one email and phone", async () => {
     const screen = await render(
       <ContactCreateBasic

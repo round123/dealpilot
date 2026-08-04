@@ -1,4 +1,5 @@
 import { useGetIdentity, useTranslate } from "ra-core";
+import { useMemo } from "react";
 import { CreateSheet } from "../misc/CreateSheet";
 import { ContactInputs } from "./ContactInputs";
 import {
@@ -21,15 +22,19 @@ export const ContactCreateSheet = ({
   const { identity } = useGetIdentity();
   const translate = useTranslate();
   const capabilities = useCrmProviderCapabilities();
+  const defaultValues = useMemo(
+    () => ({
+      sales_id: identity?.id,
+      email_jsonb: defaultEmailJsonb,
+      phone_jsonb: defaultPhoneJsonb,
+    }),
+    [identity?.id],
+  );
   return (
     <CreateSheet
       resource="contacts"
       title={translate("resources.contacts.action.new")}
-      defaultValues={{
-        sales_id: identity?.id,
-        email_jsonb: defaultEmailJsonb,
-        phone_jsonb: defaultPhoneJsonb,
-      }}
+      defaultValues={defaultValues}
       transform={(data) =>
         applyContactCapabilities(cleanupContactForCreate(data), capabilities)
       }

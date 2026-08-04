@@ -1061,7 +1061,23 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
         .fill(alphaNames.webContact);
       await page.locator('input[name="last_name"]').fill("User");
       await selectHostedAutocomplete(page, "所属客户", alphaNames.company);
+      await expect(page.locator('input[name="first_name"]')).toHaveValue(
+        alphaNames.webContact,
+      );
+      await expect(page.locator('input[name="last_name"]')).toHaveValue("User");
+      const contactCreateResponse = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          response.request().method() === "POST" &&
+          url.pathname.endsWith("/rest/v1/contacts")
+        );
+      });
       await page.getByRole("button", { name: "保存", exact: true }).click();
+      const createdContactResponse = await contactCreateResponse;
+      expect(
+        createdContactResponse.ok(),
+        `Contact create failed with HTTP ${createdContactResponse.status()}`,
+      ).toBe(true);
       await expect(page).toHaveURL(/#\/contacts\/[^/]+\/show(?:\/.*)?$/);
 
       const contactIdMatch = page.url().match(/#\/contacts\/([^/]+)\/show/);
