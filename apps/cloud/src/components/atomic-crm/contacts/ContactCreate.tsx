@@ -1,5 +1,6 @@
 import { CreateBase, Form, useGetIdentity, type MutationMode } from "ra-core";
 import { Card, CardContent } from "@/components/ui/card";
+import { Loading } from "@/components/admin/loading";
 import { useMemo } from "react";
 
 import { ContactInputs } from "./ContactInputs";
@@ -17,7 +18,7 @@ export const ContactCreate = ({
 }: {
   mutationMode?: MutationMode;
 }) => {
-  const { identity } = useGetIdentity();
+  const { identity, isPending } = useGetIdentity();
   const capabilities = useCrmProviderCapabilities();
   const defaultValues = useMemo(
     () => ({
@@ -27,6 +28,10 @@ export const ContactCreate = ({
     }),
     [identity?.id],
   );
+
+  if (isPending) {
+    return <Loading delay={0} />;
+  }
 
   return (
     <CreateBase

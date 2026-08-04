@@ -19,7 +19,7 @@ export const ContactCreateSheet = ({
   open,
   onOpenChange,
 }: ContactCreateSheetProps) => {
-  const { identity } = useGetIdentity();
+  const { identity, isPending } = useGetIdentity();
   const translate = useTranslate();
   const capabilities = useCrmProviderCapabilities();
   const defaultValues = useMemo(
@@ -30,6 +30,9 @@ export const ContactCreateSheet = ({
     }),
     [identity?.id],
   );
+
+  if (isPending) return null;
+
   return (
     <CreateSheet
       resource="contacts"
