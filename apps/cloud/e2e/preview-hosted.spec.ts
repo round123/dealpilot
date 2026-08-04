@@ -1570,7 +1570,7 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
         repliedRow.getByText("已回复", { exact: true }),
       ).toBeVisible();
 
-      const laterRow = customerReminderRows.filter({ hasText: "暂停提醒" });
+      const laterRow = customerReminderRows.filter({ hasText: "暂不跟进" });
       await expect(laterRow).toHaveCount(1);
       statusResponse = waitForRpcResponse(
         page,
