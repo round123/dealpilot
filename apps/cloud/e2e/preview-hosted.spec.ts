@@ -1554,7 +1554,13 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
         .getByRole("button", { name: "已收到回复", exact: true })
         .click();
       expect((await statusResponse).ok()).toBe(true);
-      await expect(replyRow.getByText("已回复", { exact: true })).toBeVisible();
+      const repliedRow = customerReminderRows
+        .filter({ hasText: "等待回复" })
+        .filter({ hasText: "已回复" });
+      await expect(repliedRow).toHaveCount(1);
+      await expect(
+        repliedRow.getByText("已回复", { exact: true }),
+      ).toBeVisible();
 
       const laterRow = customerReminderRows.filter({ hasText: "暂停提醒" });
       await expect(laterRow).toHaveCount(1);
@@ -1592,8 +1598,12 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
         .getByRole("button", { name: "完成", exact: true })
         .click();
       expect((await statusResponse).ok()).toBe(true);
+      const completedRow = customerReminderRows
+        .filter({ hasText: "等待回复" })
+        .filter({ hasText: "已完成" });
+      await expect(completedRow).toHaveCount(1);
       await expect(
-        completeRow.getByText("已完成", { exact: true }),
+        completedRow.getByText("已完成", { exact: true }),
       ).toBeVisible();
 
       expect(await readReminder(asAlpha, webReplyReminderId)).toMatchObject({
