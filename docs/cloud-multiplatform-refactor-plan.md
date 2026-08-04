@@ -104,8 +104,8 @@ Customer 纵向切片必须同时满足：
 | P1   | 已验收     | Atomic 基线、中文界面、统一构建测试；受控账号登录/会话、真实注册确认回调均已通过                                                      | 无；公共邮件投递不在封闭预览范围                       |
 | P2   | 已验收     | RLS、复合外键、Storage、双账号 SQL/browser 门禁及 Hosted Preview 双账号复跑                                                           | 无                                                     |
 | P3   | 已验收     | Hosted Preview 真实账号完成 Customer CRUD、关联详情、合并、删除/恢复与提醒联动                                                        | 无                                                     |
-| P4   | 部分验收   | 领域界面、1000 行导入门禁、Hosted CSV 持久化与隔离 XLSX 导出、加密云备份、Hosted P0 全业务域 E2E 及托管备份恢复                       | 托管项目规模复跑                                       |
-| P5   | 工程已验收 | PWA manifest/SW/离线壳、扩展单测、Chrome/Edge 双包和商店候选包门禁                                                                    | 产品所有者执行真实 WhatsApp/Telegram UAT；商店分发可选 |
+| P4   | 已验收     | 领域界面、1000 行导入、Hosted CSV/XLSX、加密云备份、Hosted P0 全业务域 E2E、托管恢复及 1000/10000 规模复跑                            | 无                                                     |
+| P5   | 工程已验收 | PWA manifest/SW/离线壳、扩展单测、Chrome/Edge 双包、候选包门禁及 `extension-v0.1.0` GitHub Release                                    | 产品所有者执行真实 WhatsApp/Telegram UAT；商店分发可选 |
 | P6   | 部分验收   | preview/canary/production 发布、生产认证 smoke、15 分钟健康监控、数据保留调度、用户级加密备份恢复、受控管理员清理、密钥轮换及应用回滚 | 合规、隐私、跨境及供应商评审                           |
 
 ### 6.1 已完成的生产验收证据
@@ -113,6 +113,8 @@ Customer 纵向切片必须同时满足：
 - 2026-08-04 使用一次性真实邮箱完成生产注册；确认邮件的 `redirect_to` 精确为 `https://round123.github.io/dealpilot/auth-callback.html`，实际点击后回调页可达且确认账号能够登录生产工作台。
 - Hosted Preview 的 Customer、项目、风险、里程碑、跟进、提醒和 Dashboard P0 流程已由 [`preview-hosted.spec.ts` 完整复跑](https://github.com/round123/dealpilot/actions/runs/30876618013)并通过。
 - Hosted Preview 的加密备份下载、快照账号隔离、普通恢复、上传预检和加密恢复已由 [`preview-hosted.spec.ts` 完整复跑](https://github.com/round123/dealpilot/actions/runs/30878881028)并通过；同一提交的 [CI](https://github.com/round123/dealpilot/actions/runs/30878883739)同时通过本地 PostgreSQL 备份恢复、账号隔离及浏览器/API 隔离门禁。
+- [Hosted Preview 规模验收](https://github.com/round123/dealpilot/actions/runs/30886814061)已在事务回滚模式下通过：1000 行导入 134.53 ms、10000 条跟进写入 231.42 ms、1000 Customer 列表计数与首屏 9.70 ms、10000 条跟进下的 Customer 详情 6.42 ms；证据 artifact 为 `cloud-preview-scale-30886814061`。
+- [生产发布](https://github.com/round123/dealpilot/actions/runs/30886398546)已完成 PostgreSQL migration、Auth 配置、Edge Functions、Web/PWA、GitHub Pages 和认证 smoke；[浏览器扩展 0.1.0](https://github.com/round123/dealpilot/releases/tag/extension-v0.1.0)同时提供 Chrome、Edge ZIP 与 `SHA256SUMS.txt`。
 - 生产上一兼容应用版本已由 [Roll back WebCloud application](https://github.com/round123/dealpilot/actions/runs/30812975250)完成回滚演练，当前 PostgreSQL schema 保持可读。
 - 注册测试账号通过 Issue [#11](https://github.com/round123/dealpilot/issues/11) 审批，并由 [Controlled administrator account cleanup](https://github.com/round123/dealpilot/actions/runs/30868224588) 永久清理；工作流完成后再次通过 Auth Admin API 确认账号不存在。
 - 首次真实生产基础设施备份已由 [Disaster recovery backup](https://github.com/round123/dealpilot/actions/runs/30822849928) 成功生成仅包含 `.tar.age` 的受保护 artifact；该可选运维证据不构成首版 RPO/RTO 承诺。
@@ -122,7 +124,6 @@ Customer 纵向切片必须同时满足：
 
 - 当前按封闭预览交付，不承诺公开注册确认和密码重置邮件投递；未来开放公共注册前必须配置自定义 SMTP 并重新验收。
 - 整项目基础设施恢复和 RPO/RTO 已移出首版范围；不得将已有备份 artifact 表述为已验证的灾备能力。
-- 1000 Customer / 10000 follow-up 的托管 Preview 规模工作流必须在合入 `main` 后实跑并留存四项查询指标；当前仅有本地事务回滚基线，不得据此宣称托管规模门槛通过。
 - 合规、隐私、跨境和供应商评审仍需留存外部证据；真实 WhatsApp/Telegram 与 Chrome/Edge 商店结果由产品所有者单独记录，不阻塞 WebCloud 核心发布。
 
 ## 7. 测试与质量门禁
