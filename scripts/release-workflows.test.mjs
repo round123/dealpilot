@@ -21,6 +21,10 @@ const adminAccountCleanup = readFileSync(
   ".github/workflows/admin-account-cleanup.yml",
   "utf8",
 );
+const previewScale = readFileSync(
+  ".github/workflows/scale-cloud-preview.yml",
+  "utf8",
+);
 const supabaseConfig = readFileSync("supabase/config.toml", "utf8");
 
 test("hosted Auth keeps exact signup and password recovery redirects", () => {
@@ -128,10 +132,7 @@ test("extension candidates verify the exact production Auth project before packa
     validation,
     /node scripts\/verify-extension-production-config\.mjs/,
   );
-  assert.match(
-    ci,
-    /scripts\/verify-extension-production-config\.test\.mjs/,
-  );
+  assert.match(ci, /scripts\/verify-extension-production-config\.test\.mjs/);
 });
 
 test("database security CI gates Dashboard, backup, retention, and account cleanup", () => {
@@ -324,6 +325,49 @@ test("Preview gates the built artifact with ordinary hosted accounts and data to
     )?.[0] ?? "",
     /SERVICE_ROLE/,
   );
+});
+
+test("hosted Preview scale acceptance is isolated, manual, and transactionally disposable", () => {
+  const triggers = previewScale.slice(
+    0,
+    previewScale.indexOf("\n\npermissions:"),
+  );
+  assert.match(triggers, /workflow_dispatch:/);
+  assert.doesNotMatch(triggers, /pull_request:|push:|schedule:|workflow_run:/);
+  assert.match(previewScale, /permissions:\s+contents: read/);
+  assert.match(
+    previewScale,
+    /concurrency:\s+group: webcloud-preview\s+cancel-in-progress: false/,
+  );
+  assert.match(previewScale, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(previewScale, /environment:\s+name: cloud-preview/);
+  assert.match(
+    previewScale,
+    /PREVIEW_DATABASE_URL: \$\{\{ secrets\.PREVIEW_DATABASE_URL \}\}/,
+  );
+  assert.match(
+    previewScale,
+    /PREVIEW_PROJECT_REF: \$\{\{ secrets\.PREVIEW_SUPABASE_PROJECT_REF \}\}/,
+  );
+  assert.match(
+    previewScale,
+    /PRODUCTION_PROJECT_REF: \$\{\{ vars\.PRODUCTION_SUPABASE_PROJECT_REF \}\}/,
+  );
+  assert.match(
+    previewScale,
+    /Preview scale acceptance must not target production/,
+  );
+  assert.match(previewScale, /PGAPPNAME: dealpilot-scale-/);
+  assert.match(previewScale, /statement_timeout=180000/);
+  assert.match(previewScale, /lock_timeout=5000/);
+  assert.match(
+    previewScale,
+    /--file supabase\/tests\/cloud_scale_acceptance\.sql/,
+  );
+  assert.match(previewScale, /grep -Eo 'scale:\.\*'/);
+  assert.match(previewScale, /GITHUB_STEP_SUMMARY/);
+  assert.match(previewScale, /retention-days: 30/);
+  assert.doesNotMatch(previewScale, /SERVICE_ROLE|SUPABASE_ACCESS_TOKEN/);
 });
 
 test("rollback redeploys only immutable Edge and Web application code", () => {

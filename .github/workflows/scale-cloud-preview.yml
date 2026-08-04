@@ -1,0 +1,121 @@
+name: Scale Cloud Preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webcloud-preview
+  cancel-in-progress: false
+
+jobs:
+  scale-preview:
+    name: Run hosted Preview scale acceptance
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: cloud-preview
+    env:
+      PREVIEW_DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+      PREVIEW_PROJECT_REF: ${{ secrets.PREVIEW_SUPABASE_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+      PGAPPNAME: dealpilot-scale-${{ github.run_id }}
+      PGOPTIONS: -c statement_timeout=180000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=300000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Validate isolated Preview target
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variable in PREVIEW_DATABASE_URL PREVIEW_PROJECT_REF PRODUCTION_PROJECT_REF; do
+            if [ -z "${!variable:-}" ]; then
+              echo "Missing required configuration: $variable" >&2
+              exit 1
+            fi
+          done
+          if [ "$PREVIEW_PROJECT_REF" = "$PRODUCTION_PROJECT_REF" ]; then
+            echo "Preview scale acceptance must not target production." >&2
+            exit 1
+          fi
+          if [[ ! "$PREVIEW_PROJECT_REF" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "PREVIEW_PROJECT_REF has an invalid format." >&2
+            exit 1
+          fi
+          if [[ "$PREVIEW_DATABASE_URL" != postgresql://* ]] || [[ "$PREVIEW_DATABASE_URL" != *"$PREVIEW_PROJECT_REF"* ]]; then
+            echo "PREVIEW_DATABASE_URL must be a percent-encoded PostgreSQL URL for the Preview project." >&2
+            exit 1
+          fi
+      - name: Install PostgreSQL client
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends postgresql-client
+          psql --version
+      - name: Record hosted schema identity
+        shell: bash
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/cloud-preview-scale-evidence
+          RELEASE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          migration_version="$(
+            psql "$PREVIEW_DATABASE_URL" \
+              --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 \
+              --command "select coalesce(max(version), 'unknown') from supabase_migrations.schema_migrations"
+          )"
+          migration_version="$(printf '%s' "$migration_version" | tr -d '[:space:]')"
+          {
+            echo "release_sha=$RELEASE_SHA"
+            echo "run_id=$RUN_ID"
+            echo "migration_version=$migration_version"
+            echo "fixture_customers=1000"
+            echo "fixture_follow_ups=10000"
+            echo "transaction_outcome=rollback"
+          } > "$EVIDENCE_DIR/metadata.txt"
+      - name: Run hosted PostgreSQL scale acceptance
+        shell: bash
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/cloud-preview-scale-evidence
+        run: |
+          set -euo pipefail
+          psql "$PREVIEW_DATABASE_URL" \
+            --no-psqlrc --set ON_ERROR_STOP=1 \
+            --file supabase/tests/cloud_scale_acceptance.sql \
+            2>&1 | tee "$EVIDENCE_DIR/scale.log"
+          grep -Eo 'scale:.*' "$EVIDENCE_DIR/scale.log" > "$EVIDENCE_DIR/metrics.txt"
+          test "$(grep -c '^scale:' "$EVIDENCE_DIR/metrics.txt")" -eq 4
+      - name: Summarize hosted scale evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/cloud-preview-scale-evidence
+        run: |
+          {
+            echo "### Hosted Preview scale acceptance"
+            if [ -f "$EVIDENCE_DIR/metadata.txt" ]; then
+              sed 's/^/- /' "$EVIDENCE_DIR/metadata.txt"
+            fi
+            if [ -s "$EVIDENCE_DIR/metrics.txt" ]; then
+              echo
+              echo '```text'
+              cat "$EVIDENCE_DIR/metrics.txt"
+              echo '```'
+            else
+              echo "- metrics=unavailable"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload hosted scale evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-preview-scale-${{ github.run_id }}
+          path: ${{ runner.temp }}/cloud-preview-scale-evidence
+          if-no-files-found: error
+          retention-days: 30
