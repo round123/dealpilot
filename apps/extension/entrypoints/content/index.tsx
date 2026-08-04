@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import { FloatApp } from "./App";
 import { createShadowHost, getMountPoint } from "./shadow-root";
 import { detectPlatform } from "../../src/lib/platform-detect";
+import { initializePlatformAdapter } from "../../src/lib/platform-adapter";
 
 /** 初始化浮窗 */
 function initFloat(): void {
@@ -40,6 +41,7 @@ function initFloat(): void {
 export default defineContentScript({
   matches: ["https://web.whatsapp.com/*", "https://web.telegram.org/*"],
   main() {
+    initializePlatformAdapter();
     // 等 DOM 就绪后初始化
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", initFloat);

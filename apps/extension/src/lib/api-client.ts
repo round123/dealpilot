@@ -36,6 +36,7 @@ import {
 import { z } from "zod";
 
 import { extensionErrorMessage } from "./extension-errors";
+import { canonicalPlatformIdentifier } from "./platform-identity";
 
 const CloudConfigSchema = z.object({
   url: z.string().url(),
@@ -150,7 +151,10 @@ export function setExtensionApiClient(client?: ApiClient): void {
   apiClient = client;
 }
 
-export function signInToCloud(email: string, password: string): Promise<AuthSession> {
+export function signInToCloud(
+  email: string,
+  password: string,
+): Promise<AuthSession> {
   return getExtensionApiClient().auth.signInWithPassword(email, password);
 }
 
@@ -158,7 +162,9 @@ export function signOutFromCloud(): Promise<void> {
   return getExtensionApiClient().auth.signOut();
 }
 
-export function getCloudSession(signal?: AbortSignal): Promise<AuthSession | null> {
+export function getCloudSession(
+  signal?: AbortSignal,
+): Promise<AuthSession | null> {
   return getExtensionApiClient().auth.getSession({ signal });
 }
 
@@ -194,15 +200,6 @@ function parseDomain<T>(schema: z.ZodType<T>, value: unknown): T {
   return parsed.data;
 }
 
-function canonicalIdentifier(platform: string, value: string): string {
-  const trimmed = value.trim().toLocaleLowerCase();
-  if (platform === "whatsapp") return trimmed.replace(/\D/g, "");
-  return trimmed
-    .replace(/^https?:\/\/(?:www\.)?t\.me\//, "")
-    .replace(/^@/, "")
-    .replace(/\/+$/, "");
-}
-
 function toFollowUp(value: z.infer<typeof CloudFollowUpSchema>): FollowUp {
   return parseDomain(FollowUpSchema, {
     ...value,
@@ -235,20 +232,28 @@ async function matchingAccounts(
   rawIdentifier: string,
   signal?: AbortSignal,
 ) {
-  const result = await client.list("social_accounts", CloudSocialAccountSchema, {
-    filters: { platform },
-    pagination: { page: 1, perPage: 1000 },
-    signal,
-  });
-  const identifier = canonicalIdentifier(platform, rawIdentifier);
+  const result = await client.list(
+    "social_accounts",
+    CloudSocialAccountSchema,
+    {
+      filters: { platform },
+      pagination: { page: 1, perPage: 1000 },
+      signal,
+    },
+  );
+  const identifier = canonicalPlatformIdentifier(platform, rawIdentifier);
   return result.data.filter(
     (account) =>
-      canonicalIdentifier(platform, account.normalized_identifier) === identifier ||
-      canonicalIdentifier(platform, account.raw_identifier) === identifier,
+      canonicalPlatformIdentifier(platform, account.normalized_identifier) ===
+        identifier ||
+      canonicalPlatformIdentifier(platform, account.raw_identifier) ===
+        identifier,
   );
 }
 
-export async function fetchPopupReminders(signal?: AbortSignal): Promise<PopupReminder[]> {
+export async function fetchPopupReminders(
+  signal?: AbortSignal,
+): Promise<PopupReminder[]> {
   const client = await authenticatedClient(signal);
   const reminderResult = await client.list("reminders", CloudReminderSchema, {
     filters: { status: ["pending", "snoozed"] },
@@ -258,7 +263,9 @@ export async function fetchPopupReminders(signal?: AbortSignal): Promise<PopupRe
   });
   if (reminderResult.data.length === 0) return [];
 
-  const customerIds = [...new Set(reminderResult.data.map((item) => item.company_id))];
+  const customerIds = [
+    ...new Set(reminderResult.data.map((item) => item.company_id)),
+  ];
   const dealIds = [
     ...new Set(
       reminderResult.data
@@ -298,10 +305,15 @@ export async function fetchPopupReminders(signal?: AbortSignal): Promise<PopupRe
   const dealById = new Map(deals.data.map((item) => [item.id, item]));
   const highRiskDeals = new Set(
     risks.data
-      .filter((item) => item.severity === "high" || item.severity === "critical")
+      .filter(
+        (item) => item.severity === "high" || item.severity === "critical",
+      )
       .map((item) => item.deal_id),
   );
-  const accountByCustomer = new Map<string, z.infer<typeof CloudSocialAccountSchema>>();
+  const accountByCustomer = new Map<
+    string,
+    z.infer<typeof CloudSocialAccountSchema>
+  >();
   for (const account of accounts.data) {
     if (!accountByCustomer.has(account.company_id)) {
       accountByCustomer.set(account.company_id, account);
@@ -316,10 +328,15 @@ export async function fetchPopupReminders(signal?: AbortSignal): Promise<PopupRe
       return parseDomain(PopupReminderSchema, {
         ...toReminder(item),
         customer_name: customer.name,
-        project_name: item.deal_id ? (dealById.get(item.deal_id)?.name ?? null) : null,
+        project_name: item.deal_id
+          ? (dealById.get(item.deal_id)?.name ?? null)
+          : null,
         has_high_risk: item.deal_id ? highRiskDeals.has(item.deal_id) : false,
         conversation_target: account
-          ? { platform: account.platform, raw_identifier: account.raw_identifier }
+          ? {
+              platform: account.platform,
+              raw_identifier: account.raw_identifier,
+            }
           : null,
       });
     })
@@ -327,7 +344,9 @@ export async function fetchPopupReminders(signal?: AbortSignal): Promise<PopupRe
     .slice(0, POPUP_REMINDER_LIMIT);
 }
 
-export async function fetchPendingReminderCount(signal?: AbortSignal): Promise<number> {
+export async function fetchPendingReminderCount(
+  signal?: AbortSignal,
+): Promise<number> {
   const client = await authenticatedClient(signal);
   const result = await client.list("reminders", CloudReminderSchema, {
     filters: { status: ["pending", "snoozed"] },
@@ -351,12 +370,16 @@ export async function fetchCustomerDetail(
   signal?: AbortSignal,
 ): Promise<CustomerDetail> {
   const client = await authenticatedClient(signal);
-  const detail = await client.customers.getCustomerDetail(id as never, { signal });
+  const detail = await client.customers.getCustomerDetail(id as never, {
+    signal,
+  });
   return parseDomain(CustomerDetailSchema, {
     ...detail,
     contacts: detail.contacts.map((contact) => ({
       id: contact.id,
-      name: contact.name ?? [contact.first_name, contact.last_name].filter(Boolean).join(" "),
+      name:
+        contact.name ??
+        [contact.first_name, contact.last_name].filter(Boolean).join(" "),
       title: contact.title,
       email: firstJsonField(contact.email_jsonb, "email"),
       phone: firstJsonField(contact.phone_jsonb, "number"),
@@ -368,7 +391,10 @@ export async function fetchCustomerDetail(
   });
 }
 
-function firstJsonField(values: readonly unknown[], field: string): string | null {
+function firstJsonField(
+  values: readonly unknown[],
+  field: string,
+): string | null {
   for (const value of values) {
     if (typeof value === "object" && value !== null && field in value) {
       const candidate = (value as Record<string, unknown>)[field];
@@ -383,10 +409,17 @@ export async function resolveMatch(
   signal?: AbortSignal,
 ): Promise<MatchResolveResponse> {
   const client = await authenticatedClient(signal);
-  const accounts = await matchingAccounts(client, data.platform, data.raw_identifier, signal);
+  const accounts = await matchingAccounts(
+    client,
+    data.platform,
+    data.raw_identifier,
+    signal,
+  );
   const preferred = accounts.filter((account) => account.manually_bound);
   const selectedAccounts = preferred.length === 1 ? preferred : accounts;
-  const customerIds = [...new Set(selectedAccounts.map((account) => account.company_id))];
+  const customerIds = [
+    ...new Set(selectedAccounts.map((account) => account.company_id)),
+  ];
   if (customerIds.length === 0) {
     return { status: MatchStatus.NONE, match_method: null };
   }
@@ -405,16 +438,37 @@ export async function resolveMatch(
   return parseDomain(
     MatchResolveResponseSchema,
     result.data.length === 1
-      ? { status: MatchStatus.UNIQUE, match_method: matchMethod, customer: result.data[0] }
-      : { status: MatchStatus.MULTIPLE, match_method: matchMethod, candidates: result.data },
+      ? {
+          status: MatchStatus.UNIQUE,
+          match_method: matchMethod,
+          customer: result.data[0],
+        }
+      : {
+          status: MatchStatus.MULTIPLE,
+          match_method: matchMethod,
+          candidates: result.data,
+        },
   );
 }
 
 export async function bindMatch(data: MatchBind): Promise<Binding> {
   const client = await authenticatedClient();
-  const normalized = canonicalIdentifier(data.platform, data.raw_identifier);
-  const accounts = await matchingAccounts(client, data.platform, data.raw_identifier);
-  const exact = accounts.find((account) => account.normalized_identifier === normalized);
+  const normalized = canonicalPlatformIdentifier(
+    data.platform,
+    data.raw_identifier,
+  );
+  const accounts = await matchingAccounts(
+    client,
+    data.platform,
+    data.raw_identifier,
+  );
+  const exact = accounts.find(
+    (account) =>
+      canonicalPlatformIdentifier(
+        data.platform,
+        account.normalized_identifier,
+      ) === normalized,
+  );
   const input = {
     company_id: data.customer_id,
     contact_id: null,
@@ -424,14 +478,23 @@ export async function bindMatch(data: MatchBind): Promise<Binding> {
     manually_bound: true,
   };
   const account = exact
-    ? await client.update("social_accounts", exact.id, input, CloudSocialAccountSchema)
+    ? await client.update(
+        "social_accounts",
+        exact.id,
+        input,
+        CloudSocialAccountSchema,
+      )
     : await client.create("social_accounts", input, CloudSocialAccountSchema);
   return toBinding(account);
 }
 
 export async function unbindMatch(data: MatchUnbind): Promise<void> {
   const client = await authenticatedClient();
-  const accounts = await matchingAccounts(client, data.platform, data.raw_identifier);
+  const accounts = await matchingAccounts(
+    client,
+    data.platform,
+    data.raw_identifier,
+  );
   const manual = accounts.find((account) => account.manually_bound);
   if (manual) {
     await client.delete("social_accounts", manual.id, CloudSocialAccountSchema);
@@ -496,7 +559,9 @@ export async function fetchFollowUps(
 export async function createReminder(data: ReminderCreate): Promise<Reminder> {
   const client = await authenticatedClient();
   const dueAt =
-    data.due_at ?? data.reevaluate_at ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    data.due_at ??
+    data.reevaluate_at ??
+    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const value = await client.create(
     "reminders",
     {
@@ -506,7 +571,8 @@ export async function createReminder(data: ReminderCreate): Promise<Reminder> {
       status: "pending",
       due_at: dueAt,
       priority: data.priority,
-      snooze_until: data.type === "paused" ? (data.reevaluate_at ?? null) : null,
+      snooze_until:
+        data.type === "paused" ? (data.reevaluate_at ?? null) : null,
       resolution: data.type === "paused" ? (data.pause_reason ?? null) : null,
     },
     CloudReminderSchema,

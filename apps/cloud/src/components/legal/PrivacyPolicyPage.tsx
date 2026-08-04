@@ -34,13 +34,43 @@ export const PrivacyPolicyPage = () => (
       </ul>
     </LegalSection>
 
-    <LegalSection title="3. 处理目的">
+    <LegalSection title="3. 浏览器扩展">
+      <p>
+        DealPilot 浏览器扩展仅在 WhatsApp Web 和 Telegram Web
+        的受支持页面运行。当你主动进入受支持的一对一会话时，扩展读取当前会话的显示名称、平台和会话标识，并将这些会话身份数据传输到位于新加坡的
+        Supabase，用于匹配或绑定对应客户；不支持的群组和频道不会用于客户匹配。
+      </p>
+      <p>
+        扩展不会扫描或同步会话历史。只有当你选中或点击一条消息并主动点击“标记消息”时，扩展才读取该单条消息的正文、方向和可用时间，并将其传输到位于新加坡的
+        Supabase，保存为当前客户的跟进记录。未被主动标记的消息正文不会传输到 DealPilot。
+      </p>
+      <ul>
+        <li>
+          WhatsApp Web 和 Telegram Web
+          宿主权限仅用于显示扩展浮窗、识别当前受支持的一对一会话，以及在主动标记时读取单条消息。
+        </li>
+        <li>
+          配置的 Supabase
+          宿主权限仅用于账号认证、客户匹配、跟进与提醒等云端请求；扩展不请求未使用的活动标签页权限。
+        </li>
+        <li>
+          浏览器存储权限用于保存 Supabase 登录会话，闹钟权限用于更新待处理提醒角标；内容脚本不能读取保存在扩展后台的登录令牌。
+        </li>
+      </ul>
+      <p>
+        当前会话和失败重试中的单条消息只保存在页面内存中，刷新或关闭页面后清除。登录会话保留至退出登录、会话失效或卸载扩展。已保存的会话绑定和消息跟进属于
+        CRM
+        业务数据，保留至你删除对应记录、客户进入永久清理，或完成受控账号关闭流程；卸载扩展不会自动删除已传输到云端的数据。
+      </p>
+    </LegalSection>
+
+    <LegalSection title="4. 处理目的">
       <p>
         上述数据仅用于提供账号认证、客户管理、跟进提醒、数据导入导出、加密备份恢复、安全审计、故障排查和服务保护。未经另行明确同意，不用于广告画像或出售给第三方。
       </p>
     </LegalSection>
 
-    <LegalSection title="4. 云端存储、跨境处理与供应商">
+    <LegalSection title="5. 云端存储、跨境处理与供应商">
       <p>
         DealPilot 的生产数据库、身份认证、对象存储和 Edge Functions 由 Supabase
         托管，首选区域为新加坡。中国大陆用户提交的账号及 CRM
@@ -68,7 +98,7 @@ export const PrivacyPolicyPage = () => (
       </p>
     </LegalSection>
 
-    <LegalSection title="5. 数据隔离与安全">
+    <LegalSection title="6. 数据隔离与安全">
       <p>
         每条业务记录绑定当前账号，数据库通过行级安全策略和复合外键阻止跨账号访问与引用。公网传输使用
         TLS，数据库、对象存储及供应商备份使用其提供的静态加密能力。客户端不会获得
@@ -81,7 +111,7 @@ export const PrivacyPolicyPage = () => (
       </p>
     </LegalSection>
 
-    <LegalSection title="6. 保留与删除">
+    <LegalSection title="7. 保留与删除">
       <ul>
         <li>活跃业务数据保留至你删除相应记录或完成受控账号关闭流程。</li>
         <li>
@@ -102,7 +132,7 @@ export const PrivacyPolicyPage = () => (
       </p>
     </LegalSection>
 
-    <LegalSection title="7. 你的权利">
+    <LegalSection title="8. 你的权利">
       <p>
         你可以在产品内查看、更正、导出或删除有权限访问的业务数据。账号关闭、访问副本、更正或其他数据权利请求，请通过
         DealPilot
@@ -121,7 +151,7 @@ export const PrivacyPolicyPage = () => (
       </p>
     </LegalSection>
 
-    <LegalSection title="8. 政策更新">
+    <LegalSection title="9. 政策更新">
       <p>
         当处理目的、存储区域、主要供应商或保留规则发生实质变化时，我们会更新生效日期，并在需要时重新取得明确同意。
       </p>

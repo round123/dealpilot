@@ -1,4 +1,12 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Browser,
+  type BrowserContext,
+  type Page,
+  type Request,
+  type Response as PlaywrightResponse,
+} from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import * as XLSX from "xlsx";
 
@@ -798,7 +806,7 @@ test("hosted Preview imports CSV persistently and exports isolated XLSX data", a
 test("hosted Preview accepts the complete P0 business workflow", async ({
   browser,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const environment = requirePreviewEnvironment();
   const suffix = `preview-p0-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
   const alphaSession = await signIn(environment, environment.alpha);
@@ -835,6 +843,12 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
     risk: `Alpha critical risk ${suffix}`,
     milestone: `Alpha milestone ${suffix}`,
     followUp: `Alpha follow-up ${suffix}`,
+    webContact: `Alpha Web Contact ${suffix}`,
+    webContactUpdated: `Alpha Web Contact Updated ${suffix}`,
+    webSocialAccount: `@alpha-web-${suffix}`,
+    webRisk: `Alpha Web risk ${suffix}`,
+    webMilestone: `Alpha Web milestone ${suffix}`,
+    webFollowUp: `Alpha Web follow-up ${suffix}`,
   };
   const betaNames = {
     company: `Beta P0 Customer ${suffix}`,
@@ -853,6 +867,17 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
     .slice(0, 10);
   const context = await browser.newContext();
   const page = await context.newPage();
+  const extraCleanupTargets: Array<readonly [string, string]> = [];
+  const reminderCommandIds = {
+    later: crypto.randomUUID(),
+    ignore: crypto.randomUUID(),
+    dashboard: crypto.randomUUID(),
+  };
+  let webContactId: string | undefined;
+  let webRiskId: string | undefined;
+  let webMilestoneId: string | undefined;
+  let webFollowUpId: string | undefined;
+  let webReplyReminderId: string | undefined;
 
   try {
     await Promise.all([
@@ -1029,6 +1054,174 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
 
     await login(page, environment.alpha);
 
+    await test.step("Web creates and edits a Contact without exposing it to Beta", async () => {
+      await page.goto("/#/contacts/create");
+      await page
+        .locator('input[name="first_name"]')
+        .fill(alphaNames.webContact);
+      await page.locator('input[name="last_name"]').fill("User");
+      await selectHostedAutocomplete(page, "所属客户", alphaNames.company);
+      await page.getByRole("button", { name: "保存", exact: true }).click();
+      await expect(page).toHaveURL(/#\/contacts\/[^/]+\/show(?:\/.*)?$/);
+
+      const contactIdMatch = page.url().match(/#\/contacts\/([^/]+)\/show/);
+      expect(
+        contactIdMatch,
+        `Unable to read Contact ID from ${page.url()}`,
+      ).not.toBeNull();
+      webContactId = decodeURIComponent(contactIdMatch![1]);
+      extraCleanupTargets.push(["contacts", `id=eq.${webContactId}`]);
+
+      await page.goto(`/#/contacts/${webContactId}`);
+      await expect(page.locator('input[name="first_name"]')).toHaveValue(
+        alphaNames.webContact,
+      );
+      await page
+        .locator('input[name="first_name"]')
+        .fill(alphaNames.webContactUpdated);
+      await page.getByRole("button", { name: "保存", exact: true }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`#/contacts/${webContactId}/show(?:/.*)?$`),
+      );
+
+      const persisted = await expectJson<
+        Array<{
+          id: string;
+          first_name: string;
+          last_name: string;
+          company_id: string;
+        }>
+      >(
+        await asAlpha(
+          `/rest/v1/contacts?id=eq.${webContactId}&select=id,first_name,last_name,company_id`,
+        ),
+        200,
+      );
+      expect(persisted).toEqual([
+        {
+          id: webContactId,
+          first_name: alphaNames.webContactUpdated,
+          last_name: "User",
+          company_id: alphaIds.company,
+        },
+      ]);
+      expect(
+        await expectJson<unknown[]>(
+          await asBeta(`/rest/v1/contacts?id=eq.${webContactId}&select=id`),
+          200,
+        ),
+      ).toEqual([]);
+    });
+
+    await test.step("Web adds and removes a Customer social account", async () => {
+      await page.goto(`/#/companies/${alphaIds.company}/show`);
+      const socialAccounts = page.getByRole("region", {
+        name: "社媒账号",
+        exact: true,
+      });
+      await socialAccounts
+        .getByRole("button", { name: "添加账号", exact: true })
+        .click();
+      await socialAccounts
+        .getByLabel("平台", { exact: true })
+        .selectOption("telegram");
+      await socialAccounts
+        .getByLabel("账号标识", { exact: true })
+        .fill(alphaNames.webSocialAccount);
+      await socialAccounts
+        .getByRole("button", { name: "保存账号", exact: true })
+        .click();
+      await expect(
+        socialAccounts.getByText(alphaNames.webSocialAccount, { exact: true }),
+      ).toBeVisible();
+
+      const createdAccounts = await expectJson<Array<{ id: string }>>(
+        await asAlpha(
+          `/rest/v1/social_accounts?company_id=eq.${alphaIds.company}&raw_identifier=eq.${encodeURIComponent(alphaNames.webSocialAccount)}&select=id`,
+        ),
+        200,
+      );
+      expect(createdAccounts).toHaveLength(1);
+      expect(
+        await expectJson<unknown[]>(
+          await asBeta(
+            `/rest/v1/social_accounts?id=eq.${createdAccounts[0].id}&select=id`,
+          ),
+          200,
+        ),
+      ).toEqual([]);
+
+      await socialAccounts
+        .getByRole("button", {
+          name: `删除账号 ${alphaNames.webSocialAccount}`,
+          exact: true,
+        })
+        .click();
+      await expect(
+        socialAccounts.getByText(alphaNames.webSocialAccount, { exact: true }),
+      ).toHaveCount(0);
+      expect(
+        await expectJson<unknown[]>(
+          await asAlpha(
+            `/rest/v1/social_accounts?id=eq.${createdAccounts[0].id}&select=id`,
+          ),
+          200,
+        ),
+      ).toEqual([]);
+    });
+
+    await test.step("Web updates every required Deal commercial field", async () => {
+      await page.goto(`/#/deals/${alphaIds.deal}`);
+      const dealDialog = page.getByRole("dialog");
+      await expect(dealDialog).toBeVisible();
+      await dealDialog
+        .getByRole("spinbutton", { name: "项目金额", exact: true })
+        .fill("175000");
+      await dealDialog
+        .getByRole("textbox", { name: "币种", exact: true })
+        .fill("USD");
+      await dealDialog
+        .getByRole("spinbutton", { name: "成交概率（%）", exact: true })
+        .fill("80");
+      await selectHostedChoice(page, "项目评级", "B");
+      await selectHostedChoice(page, "项目阶段", "未成交");
+      const closedReason = `Hosted close reason ${suffix}`;
+      await dealDialog
+        .getByRole("textbox", { name: "失单或关闭原因", exact: true })
+        .fill(closedReason);
+      const updateResponse = waitForPostgrestResponse(
+        page,
+        "PATCH",
+        "deals",
+        alphaIds.deal,
+      );
+      await dealDialog
+        .getByRole("button", { name: "保存", exact: true })
+        .click();
+      expect((await updateResponse).ok()).toBe(true);
+      await expect(page).toHaveURL(
+        new RegExp(`#/deals/${alphaIds.deal}/show(?:/.*)?$`),
+      );
+
+      expect(
+        await expectJson(
+          await asAlpha(
+            `/rest/v1/deals?id=eq.${alphaIds.deal}&select=stage,amount,currency,probability,grade,closed_reason`,
+          ),
+          200,
+        ),
+      ).toEqual([
+        {
+          stage: "closed_lost",
+          amount: 175000,
+          currency: "USD",
+          probability: 80,
+          grade: "B",
+          closed_reason: closedReason,
+        },
+      ]);
+    });
+
     await test.step("Contacts and Customer social details render without cross-account leakage", async () => {
       await page.goto("/#/contacts");
       await expect(
@@ -1065,10 +1258,10 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       await expect(dealDialog).toBeVisible();
       await expect(
         dealDialog.getByText("项目评级", { exact: true }).locator(".."),
-      ).toContainText("A");
+      ).toContainText("B");
       await expect(
         dealDialog.getByText("成交概率（%）", { exact: true }).locator(".."),
-      ).toContainText("65%");
+      ).toContainText("80%");
       await expect(
         dealDialog.getByText(alphaNames.contact, { exact: false }),
       ).toBeVisible();
@@ -1085,6 +1278,154 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       await expect(
         dealDialog.getByText(betaNames.risk, { exact: false }),
       ).toHaveCount(0);
+    });
+
+    await test.step("Web creates a risk and milestone and persists their status", async () => {
+      await page.goto(`/#/deals/${alphaIds.deal}/show`);
+      const dealDialog = page.getByRole("dialog").filter({
+        has: page.getByRole("heading", {
+          name: alphaNames.deal,
+          exact: true,
+        }),
+      });
+      await expect(dealDialog).toBeVisible();
+
+      const risks = dealDialog.getByRole("region", {
+        name: "项目风险",
+        exact: true,
+      });
+      await risks
+        .getByRole("button", { name: "添加风险", exact: true })
+        .click();
+      await risks
+        .getByRole("textbox", { name: "风险描述", exact: true })
+        .fill(alphaNames.webRisk);
+      await risks
+        .getByRole("combobox", { name: "严重程度", exact: true })
+        .selectOption("high");
+      await risks
+        .getByRole("button", { name: "保存风险", exact: true })
+        .click();
+      await expect(
+        risks.getByText(alphaNames.webRisk, { exact: true }),
+      ).toBeVisible();
+      const webRiskRows = await expectJson<Array<{ id: string }>>(
+        await asAlpha(
+          `/rest/v1/deal_risks?deal_id=eq.${alphaIds.deal}&description=eq.${encodeURIComponent(alphaNames.webRisk)}&select=id`,
+        ),
+        200,
+      );
+      expect(webRiskRows).toHaveLength(1);
+      webRiskId = webRiskRows[0].id;
+      extraCleanupTargets.push(["deal_risks", `id=eq.${webRiskId}`]);
+      const webRiskItem = risks
+        .getByRole("listitem")
+        .filter({ hasText: alphaNames.webRisk });
+      const riskStatusResponse = waitForPostgrestResponse(
+        page,
+        "PATCH",
+        "deal_risks",
+        webRiskId,
+      );
+      await webRiskItem
+        .getByRole("combobox", { name: "更新风险状态", exact: true })
+        .selectOption("resolved");
+      expect((await riskStatusResponse).ok()).toBe(true);
+      await expect(
+        webRiskItem.getByRole("combobox", {
+          name: "更新风险状态",
+          exact: true,
+        }),
+      ).toHaveValue("resolved");
+
+      const milestones = dealDialog.getByRole("region", {
+        name: "项目里程碑",
+        exact: true,
+      });
+      await milestones
+        .getByRole("button", { name: "添加里程碑", exact: true })
+        .click();
+      await milestones
+        .getByRole("textbox", { name: "里程碑名称", exact: true })
+        .fill(alphaNames.webMilestone);
+      await milestones
+        .getByRole("button", { name: "保存里程碑", exact: true })
+        .click();
+      await expect(
+        milestones.getByText(alphaNames.webMilestone, { exact: true }),
+      ).toBeVisible();
+      const webMilestoneRows = await expectJson<Array<{ id: string }>>(
+        await asAlpha(
+          `/rest/v1/deal_milestones?deal_id=eq.${alphaIds.deal}&name=eq.${encodeURIComponent(alphaNames.webMilestone)}&select=id`,
+        ),
+        200,
+      );
+      expect(webMilestoneRows).toHaveLength(1);
+      webMilestoneId = webMilestoneRows[0].id;
+      extraCleanupTargets.push(["deal_milestones", `id=eq.${webMilestoneId}`]);
+      const webMilestoneItem = milestones
+        .getByRole("listitem")
+        .filter({ hasText: alphaNames.webMilestone });
+      const completed = webMilestoneItem.getByRole("checkbox", {
+        name: "切换里程碑完成状态",
+        exact: true,
+      });
+      const milestoneStatusResponse = waitForPostgrestResponse(
+        page,
+        "PATCH",
+        "deal_milestones",
+        webMilestoneId,
+      );
+      await completed.click();
+      expect((await milestoneStatusResponse).ok()).toBe(true);
+      await expect(completed).toBeChecked();
+
+      expect(
+        await expectJson(
+          await asAlpha(
+            `/rest/v1/deal_risks?id=eq.${webRiskId}&select=severity,status`,
+          ),
+          200,
+        ),
+      ).toEqual([{ severity: "high", status: "resolved" }]);
+      expect(
+        await expectJson(
+          await asAlpha(
+            `/rest/v1/deal_milestones?id=eq.${webMilestoneId}&select=completed`,
+          ),
+          200,
+        ),
+      ).toEqual([{ completed: true }]);
+    });
+
+    await test.step("Web creates a Follow-up linked to the Customer and Deal", async () => {
+      await page.goto("/#/follow_ups/create");
+      await expect(
+        page.getByRole("heading", { name: "新建跟进", exact: true }),
+      ).toBeVisible();
+      await selectHostedChoice(page, "跟进类型", "电话");
+      await selectHostedAutocomplete(page, "客户", alphaNames.company);
+      await selectHostedAutocomplete(page, "项目", alphaNames.deal);
+      await page
+        .getByRole("textbox", { name: "备注", exact: true })
+        .fill(alphaNames.webFollowUp);
+      await page.getByRole("button", { name: "保存跟进", exact: true }).click();
+      await expect(page).toHaveURL(/#\/follow_ups(?:\?.*)?$/);
+      const webFollowUpRows = await expectJson<Array<{ id: string }>>(
+        await asAlpha(
+          `/rest/v1/follow_ups?company_id=eq.${alphaIds.company}&note=eq.${encodeURIComponent(alphaNames.webFollowUp)}&select=id`,
+        ),
+        200,
+      );
+      expect(webFollowUpRows).toHaveLength(1);
+      webFollowUpId = webFollowUpRows[0].id;
+      extraCleanupTargets.push(["follow_ups", `id=eq.${webFollowUpId}`]);
+      expect(
+        await expectJson<unknown[]>(
+          await asBeta(`/rest/v1/follow_ups?id=eq.${webFollowUpId}&select=id`),
+          200,
+        ),
+      ).toEqual([]);
     });
 
     await test.step("Follow-up list resolves the Customer and Deal references", async () => {
@@ -1129,42 +1470,224 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       await expect(priority).not.toContainText(betaNames.company);
     });
 
-    await test.step("Reminder completion persists and leaves Dashboard priority work", async () => {
-      await page.goto("/#/reminders");
-      const reminderRow = page
+    await test.step("Web creates a Reminder and executes every status command", async () => {
+      await Promise.all([
+        insert(asAlpha, "reminders", {
+          id: reminderCommandIds.later,
+          company_id: alphaIds.company,
+          deal_id: alphaIds.deal,
+          type: "paused",
+          status: "pending",
+          due_at: "2000-01-03T00:00:00.000Z",
+          pause_reason: `Hosted pause ${suffix}`,
+          priority: "high",
+        }),
+        insert(asAlpha, "reminders", {
+          id: reminderCommandIds.ignore,
+          company_id: alphaIds.company,
+          deal_id: alphaIds.deal,
+          type: "fixed_time",
+          status: "pending",
+          due_at: "2000-01-04T00:00:00.000Z",
+          priority: "normal",
+        }),
+      ]);
+      extraCleanupTargets.push(
+        ["reminders", `id=eq.${reminderCommandIds.later}`],
+        ["reminders", `id=eq.${reminderCommandIds.ignore}`],
+      );
+
+      await page.goto("/#/reminders/create");
+      await expect(
+        page.getByRole("heading", { name: "新建提醒", exact: true }),
+      ).toBeVisible();
+      await selectHostedAutocomplete(page, "客户", alphaNames.company);
+      await selectHostedAutocomplete(page, "项目", alphaNames.deal);
+      await selectHostedChoice(page, "提醒类型", "等待回复");
+      await page.getByRole("button", { name: "保存提醒", exact: true }).click();
+      await expect(page).toHaveURL(/#\/reminders(?:\?.*)?$/);
+
+      const webReplyRows = await expectJson<Array<{ id: string }>>(
+        await asAlpha(
+          `/rest/v1/reminders?company_id=eq.${alphaIds.company}&type=eq.waiting_reply&id=neq.${alphaIds.reminder}&select=id&order=created_at.desc&limit=1`,
+        ),
+        200,
+      );
+      expect(webReplyRows).toHaveLength(1);
+      webReplyReminderId = webReplyRows[0].id;
+      extraCleanupTargets.push(["reminders", `id=eq.${webReplyReminderId}`]);
+
+      const customerReminderRows = page
         .locator("article")
         .filter({ hasText: alphaNames.company })
         .filter({ hasText: alphaNames.deal });
-      await expect(reminderRow).toHaveCount(1);
-      const statusResponse = waitForRpcResponse(
+      const replyRow = customerReminderRows
+        .filter({ hasText: "等待回复" })
+        .filter({ hasText: "待处理" });
+      await expect(replyRow).toHaveCount(1);
+      let statusResponse = waitForRpcResponse(
         page,
         "update_reminder_status_idempotent",
       );
-      await reminderRow
+      await replyRow
+        .getByRole("button", { name: "已收到回复", exact: true })
+        .click();
+      expect((await statusResponse).ok()).toBe(true);
+      await expect(replyRow.getByText("已回复", { exact: true })).toBeVisible();
+
+      const laterRow = customerReminderRows.filter({ hasText: "暂停提醒" });
+      await expect(laterRow).toHaveCount(1);
+      statusResponse = waitForRpcResponse(
+        page,
+        "update_reminder_status_idempotent",
+      );
+      await laterRow.getByRole("button", { name: "稍后", exact: true }).click();
+      expect((await statusResponse).ok()).toBe(true);
+      await expect(laterRow.getByText("已稍后", { exact: true })).toBeVisible();
+
+      const ignoreRow = customerReminderRows.filter({ hasText: "指定时间" });
+      await expect(ignoreRow).toHaveCount(1);
+      statusResponse = waitForRpcResponse(
+        page,
+        "update_reminder_status_idempotent",
+      );
+      await ignoreRow
+        .getByRole("button", { name: "忽略", exact: true })
+        .click();
+      expect((await statusResponse).ok()).toBe(true);
+      await expect(
+        ignoreRow.getByText("已忽略", { exact: true }),
+      ).toBeVisible();
+
+      const completeRow = customerReminderRows
+        .filter({ hasText: "等待回复" })
+        .filter({ hasText: "已逾期" });
+      await expect(completeRow).toHaveCount(1);
+      statusResponse = waitForRpcResponse(
+        page,
+        "update_reminder_status_idempotent",
+      );
+      await completeRow
         .getByRole("button", { name: "完成", exact: true })
         .click();
       expect((await statusResponse).ok()).toBe(true);
       await expect(
-        reminderRow.getByText("已完成", { exact: true }),
+        completeRow.getByText("已完成", { exact: true }),
       ).toBeVisible();
-      expect(await readReminder(asAlpha, alphaIds.reminder)).toEqual({
+
+      expect(await readReminder(asAlpha, webReplyReminderId)).toMatchObject({
+        id: webReplyReminderId,
+        status: "replied",
+        resolution: "reply_received",
+      });
+      expect(
+        await readReminder(asAlpha, reminderCommandIds.later),
+      ).toMatchObject({
+        id: reminderCommandIds.later,
+        status: "snoozed",
+      });
+      expect(
+        await readReminder(asAlpha, reminderCommandIds.ignore),
+      ).toMatchObject({
+        id: reminderCommandIds.ignore,
+        status: "ignored",
+        resolution: "ignored",
+      });
+      expect(await readReminder(asAlpha, alphaIds.reminder)).toMatchObject({
         id: alphaIds.reminder,
         status: "completed",
         resolution: "completed",
-        deletion_event_id: null,
       });
+    });
 
-      const updatedSummary = await readDashboardSummary(asAlpha);
-      expect(
-        updatedSummary.priority_reminders.map(({ id }) => id),
-      ).not.toContain(alphaIds.reminder);
+    await test.step("Dashboard and Customer detail reflect hosted writes with Beta isolation", async () => {
+      await insert(asAlpha, "reminders", {
+        id: reminderCommandIds.dashboard,
+        company_id: alphaIds.company,
+        deal_id: alphaIds.deal,
+        type: "fixed_time",
+        status: "pending",
+        due_at: "2000-01-05T00:00:00.000Z",
+        priority: "urgent",
+      });
+      extraCleanupTargets.push([
+        "reminders",
+        `id=eq.${reminderCommandIds.dashboard}`,
+      ]);
+
+      const summary = await readDashboardSummary(asAlpha);
+      expect(summary.follow_up_count).toBeGreaterThanOrEqual(2);
+      expect(summary.priority_reminders.map(({ id }) => id)).toContain(
+        reminderCommandIds.dashboard,
+      );
+      expect(summary.priority_reminders.map(({ id }) => id)).not.toContain(
+        betaIds.reminder,
+      );
+
       await page.goto("/#/");
+      const priority = page.getByRole("region", {
+        name: "优先待办",
+        exact: true,
+      });
+      await expect(priority).toContainText(alphaNames.company);
+      await expect(priority).toContainText(alphaNames.deal);
+      await expect(priority).not.toContainText(betaNames.company);
+
+      await page.goto(`/#/companies/${alphaIds.company}/show`);
       await expect(
-        page.getByRole("region", { name: "优先待办", exact: true }),
-      ).not.toContainText(alphaNames.company);
+        page
+          .getByRole("region", { name: "联系人", exact: true })
+          .getByText(alphaNames.webContactUpdated, { exact: false }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "社媒账号", exact: true })
+          .getByText(alphaNames.socialAccount, { exact: false }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "项目", exact: true })
+          .getByText(alphaNames.deal, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "最近跟进", exact: true })
+          .getByText(alphaNames.webFollowUp, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "未完成提醒", exact: true })
+          .getByText("指定时间", { exact: true }),
+      ).toBeVisible();
+
+      for (const [resource, id] of [
+        ["contacts", webContactId],
+        ["deal_risks", webRiskId],
+        ["deal_milestones", webMilestoneId],
+        ["follow_ups", webFollowUpId],
+        ["reminders", webReplyReminderId],
+      ] as const) {
+        expect(id, `Missing Web-created ${resource} ID`).toBeTruthy();
+        expect(
+          await expectJson<unknown[]>(
+            await asBeta(`/rest/v1/${resource}?id=eq.${id}&select=id`),
+            200,
+          ),
+          `Beta must not read Alpha Web-created ${resource}`,
+        ).toEqual([]);
+      }
     });
   } finally {
     await closeContext(context);
+    for (const [resource, filter] of extraCleanupTargets.reverse()) {
+      const response = await asAlpha(`/rest/v1/${resource}?${filter}`, {
+        method: "DELETE",
+      });
+      expect(
+        response.ok,
+        `Preview P0 extra cleanup failed for ${resource} with HTTP ${response.status}: ${await response.text()}`,
+      ).toBe(true);
+    }
     await cleanupP0Fixture(asAlpha, alphaIds);
     await cleanupP0Fixture(asBeta, betaIds);
   }
@@ -1253,7 +1776,7 @@ const waitForRpcResponse = (page: Page, name: string) =>
 
 const observeExportDiagnostics = (page: Page) => {
   const events: string[] = [];
-  const onResponse = (response: import("@playwright/test").Response) => {
+  const onResponse = (response: PlaywrightResponse) => {
     const request = response.request();
     const url = new URL(response.url());
     if (
@@ -1266,7 +1789,7 @@ const observeExportDiagnostics = (page: Page) => {
       );
     }
   };
-  const onRequestFailed = (request: import("@playwright/test").Request) => {
+  const onRequestFailed = (request: Request) => {
     const url = new URL(request.url());
     events.push(
       `${request.method()} ${url.pathname} -> requestfailed: ${request.failure()?.errorText ?? "unknown"}`,
@@ -1303,9 +1826,7 @@ const observeExportDiagnostics = (page: Page) => {
   };
 };
 
-const closeContext = async (
-  context: import("@playwright/test").BrowserContext,
-) => {
+const closeContext = async (context: BrowserContext) => {
   try {
     await context.close();
   } catch (error) {
@@ -1331,6 +1852,37 @@ const selectImportSource = async (
   await expect(
     page.getByLabel(`${fieldLabel}源列`, { exact: true }),
   ).toContainText(sourceColumn);
+};
+
+const selectHostedAutocomplete = async (
+  page: Page,
+  label: string,
+  option: string,
+) => {
+  const closeToasts = page.getByRole("button", { name: "Close toast" });
+  await closeToasts.evaluateAll((buttons) =>
+    buttons.forEach((button) => (button as HTMLButtonElement).click()),
+  );
+  const trigger = page.getByRole("combobox", { name: label, exact: true });
+  await trigger.click();
+  const search = page.getByRole("combobox").last();
+  await expect(search).toBeVisible();
+  await search.fill(option);
+  const choice = page.getByRole("option", { name: option, exact: true });
+  await expect(choice).toBeVisible();
+  await choice.click();
+  await expect(trigger).toContainText(option);
+};
+
+const selectHostedChoice = async (
+  page: Page,
+  label: string,
+  option: string,
+) => {
+  const trigger = page.getByRole("combobox", { name: label, exact: true });
+  await trigger.click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+  await expect(trigger).toContainText(option);
 };
 
 const waitForPostgrestResponse = (

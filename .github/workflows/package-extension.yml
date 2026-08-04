@@ -2,37 +2,56 @@ name: Package Browser Extension
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/package-extension.yml"
-      - "apps/extension/**"
-      - "packages/api-client/**"
-      - "packages/shared/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
 
 permissions:
+  actions: read
   contents: read
   pages: read
 
 concurrency:
-  group: extension-production-${{ github.ref }}
+  group: extension-production
   cancel-in-progress: false
 
 jobs:
   package:
     name: Package production Chrome and Edge extension
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment:
+      name: cloud-production
     env:
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SB_PUBLISHABLE_KEY: ${{ secrets.VITE_SB_PUBLISHABLE_KEY }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - name: Verify manual release SHA passed CI
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ci_run_id="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$RELEASE_SHA&event=push&status=success&per_page=10" \
+            --jq '.workflow_runs | map(select(.head_branch == "main" and .conclusion == "success")) | .[0].id // empty')"
+          if [ -z "$ci_run_id" ]; then
+            echo "Manual extension packaging requires successful CI for the same main SHA." >&2
+            exit 1
+          fi
       - uses: pnpm/action-setup@v4
         with:
           version: 9.0.0
@@ -54,14 +73,26 @@ jobs:
           test -n "$VITE_SUPABASE_URL"
           test -n "$VITE_SB_PUBLISHABLE_KEY"
           test -n "$VITE_DEALPILOT_WEB_URL"
+          test -n "$SUPABASE_PROJECT_REF"
+      - name: Verify production Supabase Auth target
+        run: node scripts/verify-extension-production-config.mjs
       - run: pnpm install --frozen-lockfile
-      - name: Build and verify store-ready extension archive
-        run: pnpm --filter @dealpilot/extension package:chrome
-      - name: Upload production extension archive
+      - name: Build and verify Chrome and Edge store candidates
+        run: pnpm --filter @dealpilot/extension package:stores
+      - name: Upload Chrome store candidate
         uses: actions/upload-artifact@v4
         with:
-          name: dealpilot-extension-production-${{ github.sha }}
+          name: dealpilot-extension-chrome-${{ env.RELEASE_SHA }}
           path: apps/extension/.output/*-chrome.zip
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+      - name: Upload Edge store candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: dealpilot-extension-edge-${{ env.RELEASE_SHA }}
+          path: apps/extension/.output/*-edge.zip
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 30
       - name: Record extension package evidence
@@ -69,9 +100,10 @@ jobs:
         run: |
           {
             echo "### Production browser extension package"
-            echo "- Release SHA: $GITHUB_SHA"
+            echo "- Release SHA: $RELEASE_SHA"
             echo "- Browsers: Chrome and Edge (Manifest V3)"
             echo "- Web: $VITE_DEALPILOT_WEB_URL"
-            echo "- Artifact: dealpilot-extension-production-$GITHUB_SHA"
+            echo "- Chrome artifact: dealpilot-extension-chrome-$RELEASE_SHA"
+            echo "- Edge artifact: dealpilot-extension-edge-$RELEASE_SHA"
             echo "- Store upload: manual approval required"
           } >> "$GITHUB_STEP_SUMMARY"

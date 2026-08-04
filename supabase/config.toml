@@ -48,6 +48,7 @@ additional_redirect_urls = [
   "http://127.0.0.1:4188/**",
   "http://localhost:4188/**",
   "https://round123.github.io/dealpilot/**",
+  "https://round123.github.io/dealpilot/auth-callback.html",
   "https://round123.github.io/dealpilot/set-password"
 ]
 jwt_expiry = 3600
