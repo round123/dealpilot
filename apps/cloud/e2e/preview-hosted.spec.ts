@@ -1538,6 +1538,14 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
       webReplyReminderId = webReplyRows[0].id;
       extraCleanupTargets.push(["reminders", `id=eq.${webReplyReminderId}`]);
 
+      await page.reload();
+      await expect(
+        page.getByRole("heading", { name: "提醒", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("正在加载提醒...", { exact: true }),
+      ).toHaveCount(0);
+
       const customerReminderRows = page
         .locator("article")
         .filter({ hasText: alphaNames.company })
