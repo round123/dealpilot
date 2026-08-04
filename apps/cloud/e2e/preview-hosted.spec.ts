@@ -117,7 +117,14 @@ test("hosted Preview preserves account isolation and the Customer Web lifecycle"
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       );
 
+      const editCustomerResponse = waitForPostgrestResponse(
+        alphaPage,
+        "GET",
+        "companies_summary",
+        createdTargetId,
+      );
       await alphaPage.goto(`/#/companies/${createdTargetId}`);
+      expect((await editCustomerResponse).ok()).toBe(true);
       const customerNameInput = alphaPage.locator('input[name="name"]');
       const customerCompanyInput = alphaPage.locator('input[name="company"]');
       await expect(customerNameInput).toHaveValue(createdTargetName);
@@ -138,6 +145,10 @@ test("hosted Preview preserves account isolation and the Customer Web lifecycle"
         updateResponse.ok(),
         `Customer update failed with HTTP ${updateResponse.status()}: ${await updateResponse.text()}`,
       ).toBe(true);
+      expect(updateResponse.request().postDataJSON()).toMatchObject({
+        name: targetName,
+        company: `Target ${suffix}`,
+      });
       await expect(alphaPage).toHaveURL(
         new RegExp(`#/companies/${createdTargetId}/show(?:/.*)?$`),
       );
