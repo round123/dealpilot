@@ -33,9 +33,15 @@ export const applyContactCapabilities = (
   data: ReturnType<typeof cleanContactArrayFields>,
   capabilities: CrmProviderCapabilities,
 ) => {
-  if (capabilities.contacts.extendedProfile) return data;
-
   const input = data as typeof data & { name?: string };
+  if (capabilities.contacts.extendedProfile) {
+    const structuredName = [input.first_name, input.last_name]
+      .map((part) => part?.trim())
+      .filter(Boolean)
+      .join(" ");
+    return structuredName ? { ...data, name: structuredName } : data;
+  }
+
   const name =
     input.name?.trim() ||
     [input.first_name, input.last_name].filter(Boolean).join(" ").trim();
