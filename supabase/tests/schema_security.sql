@@ -673,6 +673,22 @@ begin
     raise exception 'internal backup payload validator is externally executable';
   end if;
 
+  if pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.backup_payload_with_typed_deals(jsonb)',
+    'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'anon',
+    'public.backup_payload_with_typed_deals(jsonb)',
+    'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'service_role',
+    'public.backup_payload_with_typed_deals(jsonb)',
+    'EXECUTE'
+  ) then
+    raise exception 'internal typed backup normalizer is externally executable';
+  end if;
+
   if not exists (
     select 1
     from pg_catalog.pg_proc as p

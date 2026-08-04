@@ -31,6 +31,14 @@ select set_config(
 insert into public.companies (id, name, grade)
 values ('31000000-0000-4000-8000-000000000010', 'Snapshot baseline', 'A');
 
+insert into public.deals (id, company_id, name, amount)
+values (
+  '31000000-0000-4000-8000-000000000011',
+  '31000000-0000-4000-8000-000000000010',
+  'Snapshot scaled amount',
+  175000.00
+);
+
 do $$
 declare
   result jsonb;
@@ -100,14 +108,25 @@ where id = '31000000-0000-4000-8000-000000000010';
 do $$
 declare
   exported jsonb := current_setting('dealpilot_test.exported_backup')::jsonb;
+  wire_payload jsonb;
   result jsonb;
   snapshot_count_before integer;
 begin
+  wire_payload := jsonb_set(
+    exported -> 'data' -> 'payload',
+    '{deals,0,amount}',
+    '175000'::jsonb
+  );
+  if encode(extensions.digest(wire_payload::text, 'sha256'), 'hex')
+    = exported -> 'data' ->> 'checksum' then
+    raise exception 'wire payload unexpectedly retained the scaled checksum';
+  end if;
+
   select count(*) into snapshot_count_before from public.backup_snapshots;
   select public.restore_backup_payload(
     (exported -> 'data' ->> 'schema_version')::integer,
     exported -> 'data' ->> 'checksum',
-    exported -> 'data' -> 'payload'
+    wire_payload
   ) into result;
 
   if result -> 'data' ->> 'checksum' <> exported -> 'data' ->> 'checksum'
@@ -131,6 +150,50 @@ begin
       and grade = 'A'
   ) then
     raise exception 'portable payload restore did not replace current owner data';
+  end if;
+  if not exists (
+    select 1 from public.deals
+    where id = '31000000-0000-4000-8000-000000000011'
+      and amount = 175000.00
+  ) then
+    raise exception 'portable payload restore did not preserve numeric scale';
+  end if;
+end;
+$$;
+
+update public.deals
+set amount = 190000.00
+where id = '31000000-0000-4000-8000-000000000011';
+
+do $$
+declare
+  exported jsonb := current_setting('dealpilot_test.exported_backup')::jsonb;
+  tampered_payload jsonb;
+  snapshot_count_before integer;
+begin
+  tampered_payload := jsonb_set(
+    exported -> 'data' -> 'payload',
+    '{deals,0,amount}',
+    '175001'::jsonb
+  );
+  select count(*) into snapshot_count_before from public.backup_snapshots;
+  begin
+    perform public.restore_backup_payload(
+      1,
+      exported -> 'data' ->> 'checksum',
+      tampered_payload
+    );
+    raise exception 'changed numeric value unexpectedly passed checksum validation';
+  exception
+    when invalid_parameter_value then null;
+  end;
+
+  if not exists (
+    select 1 from public.deals
+    where id = '31000000-0000-4000-8000-000000000011'
+      and amount = 190000.00
+  ) or (select count(*) from public.backup_snapshots) <> snapshot_count_before then
+    raise exception 'changed numeric restore modified current data or snapshots';
   end if;
 end;
 $$;
@@ -248,6 +311,13 @@ begin
       and grade = 'A'
   ) then
     raise exception 'restore did not replace the current owner data';
+  end if;
+  if not exists (
+    select 1 from public.deals
+    where id = '31000000-0000-4000-8000-000000000011'
+      and amount = 175000.00
+  ) then
+    raise exception 'restore did not preserve the scaled deal amount';
   end if;
 
   if not exists (
