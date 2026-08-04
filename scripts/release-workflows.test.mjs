@@ -8,7 +8,7 @@ const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const extensionPackage = readFileSync(
   ".github/workflows/package-extension.yml",
   "utf8",
-);
+).replaceAll("\r\n", "\n");
 const customerPurge = readFileSync(
   ".github/workflows/purge-expired-customers.yml",
   "utf8",
@@ -149,6 +149,7 @@ test("extension GitHub Releases are explicit, versioned, and main-only", () => {
   assert.match(releaseJob, /dealpilot-extension-chrome\.zip/);
   assert.match(releaseJob, /dealpilot-extension-edge\.zip/);
   assert.match(releaseJob, /gh release create "\$RELEASE_TAG"/);
+  assert.match(releaseJob, /--repo "\$GITHUB_REPOSITORY"/);
   assert.match(releaseJob, /--target "\$RELEASE_SHA"/);
 
   const globalPermissions = extensionPackage.slice(
