@@ -1744,6 +1744,323 @@ test("hosted Preview accepts the complete P0 business workflow", async ({
   }
 });
 
+test("hosted Preview exports and restores isolated encrypted cloud backups", async ({
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  const environment = requirePreviewEnvironment();
+  const alphaSession = await signIn(environment, environment.alpha);
+  const betaSession = await signIn(environment, environment.beta);
+  expect(alphaSession.user.id).not.toBe(betaSession.user.id);
+  const asAlpha = authenticatedRequest(environment, alphaSession);
+  const asBeta = authenticatedRequest(environment, betaSession);
+  const alphaCustomerId = "43000000-0000-4000-8000-000000000001";
+  const betaCustomerId = "44000000-0000-4000-8000-000000000002";
+  const transientCustomerId = "43000000-0000-4000-8000-000000000003";
+  const alphaBaselineName = "Hosted backup Alpha baseline";
+  const betaBaselineName = "Hosted backup Beta baseline";
+  const alphaMutatedName = "Hosted backup Alpha mutated";
+  const alphaEncryptedMutationName = "Hosted backup Alpha encrypted mutation";
+  const backupPassword = "hosted-preview-backup-secret";
+  const context = await browser.newContext({ acceptDownloads: true });
+  const page = await context.newPage();
+
+  type SnapshotRpcResult = {
+    data: {
+      id: string;
+      owner_user_id: string;
+      label: string;
+      schema_version: number;
+      checksum: string;
+      created_at: string;
+      row_counts: Record<string, number>;
+    };
+  };
+  type ExportRpcResult = {
+    data: {
+      id: string;
+      schema_version: number;
+      checksum: string;
+      created_at: string;
+      row_counts: Record<string, number>;
+      payload: Record<string, unknown>;
+    };
+  };
+  type RestoreRpcResult = {
+    data: {
+      id: string;
+      checksum: string;
+      safety_snapshot_id: string;
+      restored_counts: Record<string, number>;
+    };
+  };
+
+  const deleteCustomer = (request: AuthenticatedRequest, id: string) =>
+    request(`/rest/v1/companies?id=eq.${id}`, { method: "DELETE" });
+  const readCustomer = async (request: AuthenticatedRequest, id: string) =>
+    expectJson<Array<{ id: string; name: string; grade: string }>>(
+      await request(`/rest/v1/companies?id=eq.${id}&select=id,name,grade`),
+      200,
+    );
+  const updateAlpha = async (name: string, grade: string) => {
+    const response = await asAlpha(
+      `/rest/v1/companies?id=eq.${alphaCustomerId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ name, grade }),
+      },
+    );
+    expect(
+      response.ok,
+      `Alpha backup mutation failed with HTTP ${response.status}: ${await response.text()}`,
+    ).toBe(true);
+  };
+
+  try {
+    const staleCleanup = await Promise.all([
+      deleteCustomer(asAlpha, transientCustomerId),
+      deleteCustomer(asAlpha, alphaCustomerId),
+      deleteCustomer(asBeta, betaCustomerId),
+    ]);
+    for (const response of staleCleanup) {
+      expect(
+        response.ok,
+        `Hosted backup stale fixture cleanup failed with HTTP ${response.status}: ${await response.text()}`,
+      ).toBe(true);
+    }
+
+    await insert(asAlpha, "companies", {
+      id: alphaCustomerId,
+      name: alphaBaselineName,
+      grade: "A",
+    });
+    await insert(asBeta, "companies", {
+      id: betaCustomerId,
+      name: betaBaselineName,
+      grade: "B",
+    });
+    await login(page, environment.alpha);
+    await page.goto("/#/settings/cloud-data");
+    await expect(
+      page.getByRole("heading", { name: "导出与数据管理", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("正在加载备份...", { exact: true }),
+    ).toHaveCount(0);
+
+    await page.getByLabel("备份密码", { exact: true }).fill(backupPassword);
+    await page.getByLabel("确认备份密码", { exact: true }).fill(backupPassword);
+    const createResponsePromise = waitForRpcResponse(
+      page,
+      "create_backup_snapshot",
+    );
+    const exportResponsePromise = waitForRpcResponse(
+      page,
+      "export_backup_snapshot",
+    );
+    const downloadPromise = page.waitForEvent("download", { timeout: 60_000 });
+    await page.getByRole("button", { name: "创建并下载加密备份" }).click();
+    const [createResponse, exportResponse, download] = await Promise.all([
+      createResponsePromise,
+      exportResponsePromise,
+      downloadPromise,
+    ]);
+    expect(
+      createResponse.ok(),
+      `Backup snapshot creation failed with HTTP ${createResponse.status()}: ${await createResponse.text()}`,
+    ).toBe(true);
+    expect(
+      exportResponse.ok(),
+      `Backup snapshot export failed with HTTP ${exportResponse.status()}: ${await exportResponse.text()}`,
+    ).toBe(true);
+    const created = (await createResponse.json()) as SnapshotRpcResult;
+    const exported = (await exportResponse.json()) as ExportRpcResult;
+    expect(created.data).toMatchObject({
+      owner_user_id: alphaSession.user.id,
+      label: "加密文件备份",
+      schema_version: 1,
+    });
+    expect(created.data.checksum).toMatch(/^[0-9a-f]{64}$/);
+    expect(exported.data).toMatchObject({
+      id: created.data.id,
+      schema_version: 1,
+      checksum: created.data.checksum,
+    });
+    expect(exported.data.payload).toEqual(expect.any(Object));
+
+    expect(download.suggestedFilename()).toMatch(
+      /^dealpilot-cloud-backup-.*\.dpcloud$/,
+    );
+    const downloadPath = await download.path();
+    expect(downloadPath).not.toBeNull();
+    const archiveText = await readFile(downloadPath!, "utf8");
+    const archive = JSON.parse(archiveText) as Record<string, unknown>;
+    expect(archive).toMatchObject({
+      format: "dealpilot-cloud-backup",
+      archive_version: 1,
+      kdf: {
+        name: "PBKDF2",
+        hash: "SHA-256",
+        iterations: 310_000,
+        salt: expect.stringMatching(/^[A-Za-z0-9+/]+={0,2}$/),
+      },
+      cipher: {
+        name: "AES-GCM",
+        key_bits: 256,
+        tag_length: 128,
+        iv: expect.stringMatching(/^[A-Za-z0-9+/]+={0,2}$/),
+      },
+    });
+    expect(archive.content_sha256).toEqual(
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+    );
+    expect(archive.ciphertext).toEqual(expect.any(String));
+    expect(archiveText).not.toContain(backupPassword);
+
+    const alphaSnapshots = await expectJson<
+      Array<{
+        id: string;
+        owner_user_id: string;
+        label: string;
+        checksum: string;
+        row_counts: Record<string, number>;
+      }>
+    >(
+      await asAlpha(
+        `/rest/v1/backup_snapshots?id=eq.${created.data.id}&select=id,owner_user_id,label,checksum,row_counts`,
+      ),
+      200,
+    );
+    expect(alphaSnapshots).toEqual([
+      {
+        id: created.data.id,
+        owner_user_id: alphaSession.user.id,
+        label: "加密文件备份",
+        checksum: created.data.checksum,
+        row_counts: created.data.row_counts,
+      },
+    ]);
+    expect(
+      await expectJson<unknown[]>(
+        await asBeta(
+          `/rest/v1/backup_snapshots?id=eq.${created.data.id}&select=id`,
+        ),
+        200,
+      ),
+    ).toEqual([]);
+
+    await updateAlpha(alphaMutatedName, "C");
+    await insert(asAlpha, "companies", {
+      id: transientCustomerId,
+      name: "Hosted backup transient Customer",
+      grade: "C",
+    });
+
+    const checksumText = page.getByText(`SHA-256 ${created.data.checksum}`, {
+      exact: true,
+    });
+    await expect(checksumText).toBeVisible();
+    const snapshotRow = checksumText.locator("../..");
+    await snapshotRow
+      .getByRole("button", { name: "恢复", exact: true })
+      .click();
+    const cloudRestoreDialog = page
+      .getByRole("dialog")
+      .filter({ hasText: "确认恢复云端备份" });
+    await cloudRestoreDialog.getByLabel("输入“恢复备份”继续").fill("恢复备份");
+    const restoreSnapshotResponsePromise = waitForRpcResponse(
+      page,
+      "restore_backup_snapshot",
+    );
+    await cloudRestoreDialog
+      .getByRole("button", { name: "确认恢复", exact: true })
+      .click();
+    const restoreSnapshotResponse = await restoreSnapshotResponsePromise;
+    expect(
+      restoreSnapshotResponse.ok(),
+      `Cloud snapshot restore failed with HTTP ${restoreSnapshotResponse.status()}: ${await restoreSnapshotResponse.text()}`,
+    ).toBe(true);
+    const restoredSnapshot =
+      (await restoreSnapshotResponse.json()) as RestoreRpcResult;
+    expect(restoredSnapshot.data).toMatchObject({
+      id: created.data.id,
+      checksum: created.data.checksum,
+      safety_snapshot_id: expect.any(String),
+    });
+    expect(restoredSnapshot.data.restored_counts.companies).toBeGreaterThan(0);
+    await expect(page).toHaveURL(/#\/$/, { timeout: 15_000 });
+
+    expect(await readCustomer(asAlpha, alphaCustomerId)).toEqual([
+      { id: alphaCustomerId, name: alphaBaselineName, grade: "A" },
+    ]);
+    expect(await readCustomer(asAlpha, transientCustomerId)).toEqual([]);
+    expect(await readCustomer(asBeta, betaCustomerId)).toEqual([
+      { id: betaCustomerId, name: betaBaselineName, grade: "B" },
+    ]);
+
+    await updateAlpha(alphaEncryptedMutationName, "C");
+    await page.goto("/#/settings/cloud-data");
+    await page
+      .getByLabel("加密备份文件", { exact: true })
+      .setInputFiles(downloadPath!);
+    await page.getByLabel("文件密码", { exact: true }).fill(backupPassword);
+    await page.getByRole("button", { name: "预检备份" }).click();
+    await expect(page.getByText(/预检通过 ·/)).toBeVisible({
+      timeout: 30_000,
+    });
+    await page
+      .getByRole("button", { name: "恢复加密备份", exact: true })
+      .click();
+    const encryptedRestoreDialog = page
+      .getByRole("dialog")
+      .filter({ hasText: "确认恢复加密备份" });
+    await encryptedRestoreDialog
+      .getByLabel("输入“恢复加密备份”继续")
+      .fill("恢复加密备份");
+    const restorePayloadResponsePromise = waitForRpcResponse(
+      page,
+      "restore_backup_payload",
+    );
+    await encryptedRestoreDialog
+      .getByRole("button", { name: "确认恢复", exact: true })
+      .click();
+    const restorePayloadResponse = await restorePayloadResponsePromise;
+    expect(
+      restorePayloadResponse.ok(),
+      `Encrypted backup restore failed with HTTP ${restorePayloadResponse.status()}: ${await restorePayloadResponse.text()}`,
+    ).toBe(true);
+    const restoredPayload =
+      (await restorePayloadResponse.json()) as RestoreRpcResult;
+    expect(restoredPayload.data).toMatchObject({
+      checksum: created.data.checksum,
+      safety_snapshot_id: expect.any(String),
+    });
+    expect(restoredPayload.data.restored_counts.companies).toBeGreaterThan(0);
+    await expect(page).toHaveURL(/#\/$/, { timeout: 15_000 });
+
+    expect(await readCustomer(asAlpha, alphaCustomerId)).toEqual([
+      { id: alphaCustomerId, name: alphaBaselineName, grade: "A" },
+    ]);
+    expect(await readCustomer(asAlpha, transientCustomerId)).toEqual([]);
+    expect(await readCustomer(asBeta, betaCustomerId)).toEqual([
+      { id: betaCustomerId, name: betaBaselineName, grade: "B" },
+    ]);
+  } finally {
+    await closeContext(context);
+    const cleanupResponses = await Promise.all([
+      deleteCustomer(asAlpha, transientCustomerId),
+      deleteCustomer(asAlpha, alphaCustomerId),
+      deleteCustomer(asBeta, betaCustomerId),
+    ]);
+    for (const response of cleanupResponses) {
+      expect(
+        response.ok,
+        `Hosted backup cleanup failed with HTTP ${response.status}: ${await response.text()}`,
+      ).toBe(true);
+    }
+  }
+});
+
 const authenticatedRequest = (
   environment: Pick<PreviewEnvironment, "url" | "anonKey">,
   session: UserSession,
